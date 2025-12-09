@@ -31,6 +31,7 @@ vi.mock('../../../../services/apiService', () => ({
 vi.mock('../../../../lib/config', () => ({
   config: {
     apiBaseUrl: 'http://localhost:3002',
+    scholarFinderApiUrl: 'http://192.168.61.60:8000',
     enableDebugLogging: false,
   },
 }));
@@ -83,7 +84,7 @@ describe('ScholarFinderApiService', () => {
 
       // Assert
       expect(mockApiInstance.uploadFile).toHaveBeenCalledWith(
-        '/scholarfinder/upload_extract_metadata',
+        '/upload_extract_metadata',
         mockFile
       );
       expect(result).toEqual(mockResponse);
@@ -163,7 +164,7 @@ describe('ScholarFinderApiService', () => {
       const result = await apiService.getMetadata(jobId);
 
       // Assert
-      expect(mockApiInstance.get).toHaveBeenCalledWith(`/scholarfinder/metadata/${jobId}`, undefined);
+      expect(mockApiInstance.get).toHaveBeenCalledWith(`/metadata_extraction?job_id=${jobId}`, undefined);
       expect(result).toEqual(mockResponse);
     });
 
@@ -204,7 +205,7 @@ describe('ScholarFinderApiService', () => {
       const result = await apiService.enhanceKeywords(jobId);
 
       // Assert
-      expect(mockApiInstance.post).toHaveBeenCalledWith('/scholarfinder/keyword_enhancement', { job_id: jobId });
+      expect(mockApiInstance.post).toHaveBeenCalledWith('/keyword_enhancement', { job_id: jobId });
       expect(result).toEqual(mockResponse);
     });
   });
@@ -233,7 +234,7 @@ describe('ScholarFinderApiService', () => {
       const result = await apiService.generateKeywordString(jobId, keywords);
 
       // Assert
-      expect(mockApiInstance.post).toHaveBeenCalledWith('/scholarfinder/keyword_string_generator', {
+      expect(mockApiInstance.post).toHaveBeenCalledWith('/keyword_string_generator', {
         job_id: jobId,
         ...keywords,
       });
@@ -286,7 +287,7 @@ describe('ScholarFinderApiService', () => {
       const result = await apiService.searchDatabases(jobId, databases);
 
       // Assert
-      expect(mockApiInstance.post).toHaveBeenCalledWith('/scholarfinder/database_search', {
+      expect(mockApiInstance.post).toHaveBeenCalledWith('/database_search', {
         job_id: jobId,
         ...databases,
       });
@@ -340,7 +341,7 @@ describe('ScholarFinderApiService', () => {
       const result = await apiService.addManualAuthor(jobId, authorName);
 
       // Assert
-      expect(mockApiInstance.post).toHaveBeenCalledWith('/scholarfinder/manual_authors', {
+      expect(mockApiInstance.post).toHaveBeenCalledWith('/manual_authors', {
         job_id: jobId,
         author_name: authorName,
       });
@@ -389,7 +390,7 @@ describe('ScholarFinderApiService', () => {
       const result = await apiService.validateAuthors(jobId);
 
       // Assert
-      expect(mockApiInstance.post).toHaveBeenCalledWith('/scholarfinder/validate_authors', { job_id: jobId });
+      expect(mockApiInstance.post).toHaveBeenCalledWith('/validate_authors', { job_id: jobId });
       expect(result).toEqual(mockResponse);
     });
   });
@@ -420,7 +421,7 @@ describe('ScholarFinderApiService', () => {
       const result = await apiService.getValidationStatus(jobId);
 
       // Assert
-      expect(mockApiInstance.get).toHaveBeenCalledWith(`/scholarfinder/validation_status/${jobId}`, undefined);
+      expect(mockApiInstance.get).toHaveBeenCalledWith(`/validation_status/${jobId}`, undefined);
       expect(result).toEqual(mockResponse);
     });
   });
@@ -478,7 +479,7 @@ describe('ScholarFinderApiService', () => {
       const result = await apiService.getRecommendations(jobId);
 
       // Assert
-      expect(mockApiInstance.get).toHaveBeenCalledWith(`/scholarfinder/recommendations/${jobId}`, undefined);
+      expect(mockApiInstance.get).toHaveBeenCalledWith(`/recommended_reviewers?job_id=${jobId}`, undefined);
       expect(result).toEqual(mockResponse);
     });
   });
@@ -495,7 +496,7 @@ describe('ScholarFinderApiService', () => {
       const result = await apiService.checkJobStatus(jobId);
 
       // Assert
-      expect(mockApiInstance.get).toHaveBeenCalledWith(`/scholarfinder/job_status/${jobId}`, undefined);
+      expect(mockApiInstance.get).toHaveBeenCalledWith(`/job_status/${jobId}`, undefined);
       expect(result).toEqual(mockResponse);
     });
 
@@ -598,6 +599,126 @@ describe('ScholarFinderApiService', () => {
       // Assert
       expect(updatedConfig.timeout).toBe(180000);
       expect(updatedConfig.retries).toBe(5);
+    });
+
+    // Tests for Requirements 1.1, 1.2, 2.1, 2.2, 2.3
+    describe('ScholarFinderApiService configuration integration', () => {
+      it('should use config.scholarFinderApiUrl as default baseURL', () => {
+        // Arrange & Act
+        const service = new ScholarFinderApiService();
+        const config = service.getConfig();
+
+        // Assert - Should use the configured URL from environment
+        expect(config.baseURL).toBe('http://192.168.61.60:8000');
+      });
+
+      it('should allow custom configuration to override default', () => {
+        // Arrange
+        const customUrl = 'https://custom-api.example.com:9000';
+
+        // Act
+        const service = new ScholarFinderApiService({ baseURL: customUrl });
+        const config = service.getConfig();
+
+        // Assert - Custom URL should override default
+        expect(config.baseURL).toBe(customUrl);
+      });
+
+      it('should successfully instantiate service with default config', () => {
+        // Act
+        const service = new ScholarFinderApiService();
+
+        // Assert - Service should be created successfully
+        expect(service).toBeDefined();
+        expect(service.getConfig).toBeDefined();
+        expect(typeof service.uploadManuscript).toBe('function');
+      });
+
+      it('should successfully instantiate service with custom config', () => {
+        // Arrange
+        const customConfig = {
+          baseURL: 'https://custom.example.com',
+          timeout: 90000,
+          retries: 5,
+          retryDelay: 3000,
+        };
+
+        // Act
+        const service = new ScholarFinderApiService(customConfig);
+        const config = service.getConfig();
+
+        // Assert - Service should be created with custom config
+        expect(service).toBeDefined();
+        expect(config.baseURL).toBe(customConfig.baseURL);
+        expect(config.timeout).toBe(customConfig.timeout);
+        expect(config.retries).toBe(customConfig.retries);
+        expect(config.retryDelay).toBe(customConfig.retryDelay);
+      });
+
+      it('should merge partial custom config with defaults', () => {
+        // Arrange
+        const partialConfig = {
+          timeout: 150000,
+        };
+
+        // Act
+        const service = new ScholarFinderApiService(partialConfig);
+        const config = service.getConfig();
+
+        // Assert - Custom timeout, default other values
+        expect(config.baseURL).toBe('http://192.168.61.60:8000'); // Default from config
+        expect(config.timeout).toBe(150000); // Custom
+        expect(config.retries).toBe(3); // Default
+        expect(config.retryDelay).toBe(2000); // Default
+      });
+    });
+
+    it('should have correct timeout configured', () => {
+      // Act
+      const config = apiService.getConfig();
+
+      // Assert
+      expect(config.timeout).toBe(120000); // 2 minutes
+    });
+
+    it('should have correct retry configuration', () => {
+      // Act
+      const config = apiService.getConfig();
+
+      // Assert
+      expect(config.retries).toBe(3);
+      expect(config.retryDelay).toBe(2000);
+    });
+  });
+
+  describe('API endpoints verification', () => {
+    it('should have all 9 required API endpoints implemented', () => {
+      // Verify all methods exist
+      expect(typeof apiService.uploadManuscript).toBe('function');
+      expect(typeof apiService.getMetadata).toBe('function');
+      expect(typeof apiService.enhanceKeywords).toBe('function');
+      expect(typeof apiService.generateKeywordString).toBe('function');
+      expect(typeof apiService.searchDatabases).toBe('function');
+      expect(typeof apiService.addManualAuthor).toBe('function');
+      expect(typeof apiService.validateAuthors).toBe('function');
+      expect(typeof apiService.getValidationStatus).toBe('function');
+      expect(typeof apiService.getRecommendations).toBe('function');
+    });
+  });
+
+  describe('error type coverage', () => {
+    it('should have all required error types defined', () => {
+      // Verify all error types exist
+      expect(ScholarFinderErrorType.UPLOAD_ERROR).toBeDefined();
+      expect(ScholarFinderErrorType.METADATA_ERROR).toBeDefined();
+      expect(ScholarFinderErrorType.KEYWORD_ERROR).toBeDefined();
+      expect(ScholarFinderErrorType.SEARCH_ERROR).toBeDefined();
+      expect(ScholarFinderErrorType.VALIDATION_ERROR).toBeDefined();
+      expect(ScholarFinderErrorType.EXTERNAL_API_ERROR).toBeDefined();
+      expect(ScholarFinderErrorType.TIMEOUT_ERROR).toBeDefined();
+      expect(ScholarFinderErrorType.FILE_FORMAT_ERROR).toBeDefined();
+      expect(ScholarFinderErrorType.NETWORK_ERROR).toBeDefined();
+      expect(ScholarFinderErrorType.AUTHENTICATION_ERROR).toBeDefined();
     });
   });
 });

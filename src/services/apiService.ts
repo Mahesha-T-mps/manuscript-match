@@ -408,8 +408,22 @@ export class ApiService {
    * Make HTTP request with error handling and retry logic
    */
   async request<T = any>(requestConfig: RequestConfig): Promise<ApiResponse<T>> {
-    const maxRetries = 3;
+    // 🔥 FORCE FIX: Disable retries for manual_authors endpoint
+    if (requestConfig.url?.includes('manual_authors')) {
+      requestConfig.retries = 0;
+      console.log('🔥 FORCED retries to 0 for manual_authors endpoint');
+    }
+    
+    // Allow overriding retries per request (default to 3)
+    const maxRetries = requestConfig.retries !== undefined ? requestConfig.retries : 3;
     let lastError: any;
+
+    // Debug log to verify retries configuration
+    if (config.enableDevTools && requestConfig.url?.includes('manual_authors')) {
+      console.log(`[API Request] ${requestConfig.method} ${requestConfig.url}`);
+      console.log(`[API Request] retries config:`, requestConfig.retries);
+      console.log(`[API Request] maxRetries:`, maxRetries);
+    }
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
@@ -470,6 +484,12 @@ export class ApiService {
    * Determine if a request should be retried
    */
   private shouldRetryRequest(error: any, attemptNumber: number): boolean {
+    // 🔥 NEVER retry manual_authors endpoint
+    if (error.config?.url?.includes('manual_authors')) {
+      console.log('🔥 NOT retrying manual_authors endpoint');
+      return false;
+    }
+    
     // Don't retry if no response (might be network issue, but could be CORS, etc.)
     if (!error.response) {
       return true; // Retry network errors

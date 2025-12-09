@@ -223,11 +223,8 @@ export const formatFileSize = (bytes: number): string => {
  */
 export const getFileTypeDescription = (extension: string): string => {
   const descriptions: Record<string, string> = {
-    'pdf': 'PDF Document',
     'doc': 'Microsoft Word Document (Legacy)',
-    'docx': 'Microsoft Word Document',
-    'txt': 'Plain Text Document',
-    'rtf': 'Rich Text Format Document'
+    'docx': 'Microsoft Word Document'
   };
   
   return descriptions[extension.toLowerCase()] || `${extension.toUpperCase()} File`;
@@ -238,7 +235,7 @@ export const getFileTypeDescription = (extension: string): string => {
  */
 export const supportsMetadataExtraction = (fileName: string): boolean => {
   const extension = fileName.split('.').pop()?.toLowerCase();
-  const supportedForExtraction = ['pdf', 'doc', 'docx'];
+  const supportedForExtraction = ['doc', 'docx'];
   
   return extension ? supportedForExtraction.includes(extension) : false;
 };

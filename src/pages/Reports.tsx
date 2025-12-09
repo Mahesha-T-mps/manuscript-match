@@ -183,7 +183,7 @@ export default function Reports() {
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>Workflow Stage Distribution</CardTitle>
@@ -200,16 +200,16 @@ export default function Reports() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="overflow-hidden">
               <CardHeader>
                 <CardTitle>Process Timeline</CardTitle>
                 <CardDescription>
                   Process creation and completion over time
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-4 overflow-hidden">
                 {isLoading ? (
-                  <Skeleton className="h-[300px] w-full" />
+                  <Skeleton className="h-[350px] w-full" />
                 ) : (
                   <ProcessTimelineChart data={timelineData} />
                 )}
@@ -264,16 +264,16 @@ export default function Reports() {
 
         {/* Timeline Tab */}
         <TabsContent value="timeline">
-          <Card>
+          <Card className="overflow-hidden">
             <CardHeader>
               <CardTitle>Process Timeline Analysis</CardTitle>
               <CardDescription>
                 Detailed timeline view of process creation and completion
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 overflow-hidden">
               {isLoading ? (
-                <Skeleton className="h-[400px] w-full" />
+                <Skeleton className="h-[450px] w-full" />
               ) : (
                 <ProcessTimelineChart data={timelineData} detailed />
               )}

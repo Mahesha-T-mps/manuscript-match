@@ -62,6 +62,17 @@ export interface DatabaseSearchResponse {
     databases_searched: string[];
     search_status: Record<string, 'success' | 'failed' | 'in_progress'>;
     preview_reviewers?: Reviewer[];
+    reviewers_count?: number;
+    keyword_string?: string;
+    selected_websites?: string[];
+    reviewers_raw_data_preview?: any[];
+    author_email_affiliation_preview?: Array<{
+      author: string;
+      email: string;
+      aff: string;
+      city?: string;
+      country?: string;
+    }>;
   };
 }
 
@@ -73,6 +84,21 @@ export interface ManualAuthorResponse {
     search_term: string;
     total_found: number;
   };
+}
+
+// New interface for the actual /manual_authors endpoint response
+export interface ManualAuthorSearchResponse {
+  message: string;
+  job_id: string;
+  author_data: ManualAuthorData;
+}
+
+export interface ManualAuthorData {
+  author: string;
+  email: string;
+  aff: string;
+  city: string;
+  country: string;
 }
 
 export interface ValidationResponse {

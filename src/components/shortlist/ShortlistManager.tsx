@@ -4,11 +4,12 @@
  */
 
 import React, { useState } from 'react';
-import { Plus, Download, Edit, Trash2, Users } from 'lucide-react';
+import { Plus, Download, Edit, Trash2, Users, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { useShortlists, useDeleteShortlist, useExportShortlist } from '../../hooks/useShortlists';
+import { Separator } from '../ui/separator';
+import { useShortlists, useDeleteShortlist, useExportShortlist, useUpdateShortlist } from '../../hooks/useShortlists';
 import { useToast } from '../../hooks/use-toast';
 import { CreateShortlistDialog } from './CreateShortlistDialog';
 import { EditShortlistDialog } from './EditShortlistDialog';
@@ -32,6 +33,7 @@ export const ShortlistManager: React.FC<ShortlistManagerProps> = ({
   const { data: shortlists, isLoading, error } = useShortlists(processId);
   const deleteShortlistMutation = useDeleteShortlist();
   const exportShortlistMutation = useExportShortlist();
+  const updateShortlistMutation = useUpdateShortlist();
 
   const handleDeleteShortlist = async (shortlist: Shortlist) => {
     if (!confirm(`Are you sure you want to delete "${shortlist.name}"?`)) {
@@ -60,6 +62,32 @@ export const ShortlistManager: React.FC<ShortlistManagerProps> = ({
 
   const handleExportShortlist = (shortlist: Shortlist) => {
     setExportingShortlist(shortlist);
+  };
+
+  const handleRemoveReviewer = async (shortlist: Shortlist, reviewerId: string) => {
+    try {
+      const updatedReviewers = shortlist.selectedReviewers.filter(id => id !== reviewerId);
+      
+      await updateShortlistMutation.mutateAsync({
+        processId,
+        shortlistId: shortlist.id,
+        data: {
+          selectedReviewers: updatedReviewers
+        }
+      });
+      
+      toast({
+        title: 'Success',
+        description: 'Reviewer removed from shortlist',
+        variant: 'default'
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to remove reviewer',
+        variant: 'destructive'
+      });
+    }
   };
 
   if (isLoading) {
@@ -153,6 +181,7 @@ export const ShortlistManager: React.FC<ShortlistManagerProps> = ({
                       variant="outline"
                       size="sm"
                       onClick={() => handleExportShortlist(shortlist)}
+                      disabled={shortlist.selectedReviewers.length === 0}
                     >
                       <Download className="h-4 w-4" />
                     </Button>
@@ -168,14 +197,58 @@ export const ShortlistManager: React.FC<ShortlistManagerProps> = ({
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary">
-                    {shortlist.selectedReviewers.length} reviewers
-                  </Badge>
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary">
+                      {shortlist.selectedReviewers.length} reviewer{shortlist.selectedReviewers.length !== 1 ? 's' : ''}
+                    </Badge>
+                    {shortlist.selectedReviewers.length > 0 && (
+                      <span className="text-sm text-gray-600">
+                        Ready for export
+                      </span>
+                    )}
+                  </div>
+
                   {shortlist.selectedReviewers.length > 0 && (
-                    <span className="text-sm text-gray-600">
-                      Ready for export
-                    </span>
+                    <>
+                      <Separator />
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-medium">Reviewers in this shortlist:</h4>
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                          {shortlist.selectedReviewers.map((reviewerId) => {
+                            // Find reviewer details from availableReviewers
+                            const reviewer = availableReviewers?.find(r => r.id === reviewerId || r.email === reviewerId);
+                            
+                            return (
+                              <div 
+                                key={reviewerId} 
+                                className="flex items-center justify-between p-2 bg-muted rounded-md text-sm"
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium truncate">
+                                    {reviewer?.name || reviewerId}
+                                  </div>
+                                  {reviewer?.email && (
+                                    <div className="text-xs text-muted-foreground truncate">
+                                      {reviewer.email}
+                                    </div>
+                                  )}
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleRemoveReviewer(shortlist, reviewerId)}
+                                  disabled={updateShortlistMutation.isPending}
+                                  className="ml-2 h-8 w-8 p-0"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
                   )}
                 </div>
               </CardContent>

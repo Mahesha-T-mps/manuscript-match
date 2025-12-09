@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>ScholarFinder API Documentation</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1000px; margin: 40px auto; padding: 20px; line-height: 1.6; }
+        h1 { color: #667eea; border-bottom: 3px solid #667eea; padding-bottom: 10px; }
+        h2 { color: #764ba2; border-bottom: 2px solid #764ba2; padding-bottom: 8px; margin-top: 40px; }
+        h3 { color: #667eea; margin-top: 30px; }
+        code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: 'Courier New', monospace; }
+        pre { background: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; border-left: 4px solid #667eea; }
+        .endpoint { background: #e3f2fd; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #2196f3; }
+        .method { display: inline-block; padding: 4px 12px; border-radius: 3px; font-weight: bold; margin-right: 10px; }
+        .method.post { background: #4caf50; color: white; }
+        .method.get { background: #2196f3; color: white; }
+        table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background: #667eea; color: white; }
+        .criteria { background: #fff3cd; padding: 15px; margin: 20px 0; border-radius: 5px; border-left: 4px solid #ffc107; }
+    </style>
+</head>
+<body>
+    <h1>📚 ScholarFinder API Documentation</h1>
+    <p><strong>Version:</strong> 1.0 | <strong>Last Updated:</strong> October 15th 2025</p>
+    
+    <h2>📖 Overview</h2>
+    <p>ScholarFinder API helps identify and validate potential peer reviewers for academic manuscripts. The system extracts manuscript metadata, enhances keywords, searches academic databases, and validates reviewers against specific criteria.</p>
+    <p><strong>Base URL:</strong> <code>http://your-api-domain.com/port</code></p>
+
+    <h2>🔄 Workflow Steps (9 Steps)</h2>
+    <ol>
+        <li><strong>Upload & Extract</strong> - Upload manuscript and extract metadata</li>
+        <li><strong>Metadata Extraction</strong> - Extract and process manuscript metadata</li>
+        <li><strong>Keyword Enhancement</strong> - Enhance keywords and generate search terms</li>
+        <li><strong>Database Search</strong> - Search academic databases for potential reviewers</li>
+        <li><strong>Manual Search</strong> - Add reviewers manually if needed</li>
+        <li><strong>Author Validation</strong> - Validate reviewers against conflict rules</li>
+        <li><strong>Recommendations</strong> - Review and filter potential reviewers</li>
+        <li><strong>Shortlist</strong> - Create shortlist of selected reviewers</li>
+        <li><strong>Export</strong> - Export final reviewer recommendations</li>
+    </ol>
+
+    <h2>🔌 API Endpoints</h2>
+
+    <div class="endpoint">
+        <h3>1. Upload & Extract Metadata</h3>
+        <p><span class="method post">POST</span> <code>/upload_extract_metadata</code></p>
+        <p><strong>Description:</strong> Upload a Word document (.doc/.docx) and extract manuscript metadata including title, authors, affiliations, keywords, and abstract.</p>
+        
+        <h4>Request Parameters:</h4>
+        <table>
+            <tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr><td>file</td><td>File</td><td>Yes</td><td>Word document (.doc or .docx)</td></tr>
+        </table>
+
+        <h4>Example Request:</h4>
+        <pre>curl -X POST "http://your-api-domain.com/upload_extract_metadata" \
+  -F "file=@manuscript.docx"</pre>
+
+        <h4>Response Example:</h4>
+        <pre>{
+  "message": "Metadata extracted successfully.",
+  "data": {
+    "job_id": "job_20250115_1430_a1b2c3",
+    "file_name": "manuscript.docx",
+    "timestamp": "2025-01-15 14:30:00",
+    "heading": "Impact of Climate Change on Biodiversity",
+    "authors": ["John Smith", "Jane Doe"],
+    "affiliations": ["Department of Biology, University of Example"],
+    "keywords": "climate change, biodiversity, ecosystem",
+    "abstract": "This study examines...",
+    "author_aff_map": {
+      "John Smith": "Department of Biology, University of Example"
+    }
+  }
+}</pre>
+
+        <h4>Status Codes:</h4>
+        <ul>
+            <li><code>200</code> - Success</li>
+            <li><code>400</code> - Invalid file format</li>
+            <li><code>500</code> - Server error</li>
+        </ul>
+    </div>
+
+    <div class="endpoint">
+        <h3>2. View Current Metadata</h3>
+        <p><span class="method get">GET</span> <code>/metadata_extraction</code></p>
+        <p><strong>Description:</strong> Retrieve the extracted metadata for a specific job.</p>
+        
+        <h4>Query Parameters:</h4>
+        <table>
+            <tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr><td>job_id</td><td>String</td><td>Yes</td><td>Unique job identifier from upload step</td></tr>
+        </table>
+
+        <h4>Example Request:</h4>
+        <pre>curl -X GET "http://your-api-domain.com/metadata_extraction?job_id=job_20250115_1430_a1b2c3"</pre>
+
+        <h4>Status Codes:</h4>
+        <ul>
+            <li><code>200</code> - Success</li>
+            <li><code>404</code> - Job ID not found</li>
+        </ul>
+    </div>
+
+    <div class="endpoint">
+        <h3>3. Keyword Enhancement</h3>
+        <p><span class="method post">POST</span> <code>/keyword_enhancement</code></p>
+        <p><strong>Description:</strong> Enhance keywords using MeSH terms and AI-generated primary/secondary focus keywords.</p>
+        
+        <h4>Query Parameters:</h4>
+        <table>
+            <tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr><td>job_id</td><td>String</td><td>Yes</td><td>Unique job identifier</td></tr>
+        </table>
+
+        <h4>Example Request:</h4>
+        <pre>curl -X POST "http://your-api-domain.com/keyword_enhancement?job_id=job_20250115_1430_a1b2c3"</pre>
+
+        <h4>Response Fields:</h4>
+        <ul>
+            <li><code>mesh_terms</code> - MeSH medical subject headings</li>
+            <li><code>broader_terms</code> - Broader category terms</li>
+            <li><code>primary_focus</code> - Primary keyword groups</li>
+            <li><code>secondary_focus</code> - Secondary keyword groups</li>
+            <li><code>additional_primary_keywords</code> - AI-generated primary keywords</li>
+            <li><code>additional_secondary_keywords</code> - AI-generated secondary keywords</li>
+        </ul>
+    </div>
+
+    <div class="endpoint">
+        <h3>4. Keyword String Generator</h3>
+        <p><span class="method post">POST</span> <code>/keyword_string_generator</code></p>
+        <p><strong>Description:</strong> Generate a formatted keyword search string for database queries.</p>
+        
+        <h4>Parameters:</h4>
+        <table>
+            <tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr><td>job_id</td><td>Query</td><td>Yes</td><td>Unique job identifier</td></tr>
+            <tr><td>primary_keywords_input</td><td>Form</td><td>Yes</td><td>Comma-separated primary keywords</td></tr>
+            <tr><td>secondary_keywords_input</td><td>Form</td><td>Yes</td><td>Comma-separated secondary keywords</td></tr>
+        </table>
+
+        <h4>Example Request:</h4>
+        <pre>curl -X POST "http://your-api-domain.com/keyword_string_generator?job_id=job_20250115_1430_a1b2c3" \
+  -d "primary_keywords_input=climate change, global warming" \
+  -d "secondary_keywords_input=biodiversity, species diversity"</pre>
+
+        <h4>Response Example:</h4>
+        <pre>{
+  "keyword_string": "(climate change OR global warming) AND (biodiversity OR species diversity)"
+}</pre>
+    </div>
+
+    <div class="endpoint">
+        <h3>5. Database Search</h3>
+        <p><span class="method post">POST</span> <code>/database_search</code></p>
+        <p><strong>Description:</strong> Search selected academic databases for potential reviewers using the generated keyword string.</p>
+        
+        <h4>Parameters:</h4>
+        <table>
+            <tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr><td>job_id</td><td>Query</td><td>Yes</td><td>Unique job identifier</td></tr>
+            <tr><td>selected_websites</td><td>Form</td><td>No</td><td>Comma-separated: PubMed,TandFonline,ScienceDirect,WileyLibrary</td></tr>
+        </table>
+
+        <h4>Example Request:</h4>
+        <pre>curl -X POST "http://your-api-domain.com/database_search?job_id=job_20250115_1430_a1b2c3" \
+  -d "selected_websites=PubMed,ScienceDirect"</pre>
+
+        <h4>Response Fields:</h4>
+        <ul>
+            <li><code>reviewers_count</code> - Total reviewers found</li>
+            <li><code>reviewers_raw_data_preview</code> - Sample of found reviewers</li>
+            <li><code>author_email_affiliation_preview</code> - Author details with location</li>
+        </ul>
+    </div>
+
+    <div class="endpoint">
+        <h3>6. Manual Author Addition</h3>
+        <p><span class="method post">POST</span> <code>/manual_authors</code></p>
+        <p><strong>Description:</strong> Manually add an author to the potential reviewers list.</p>
+        
+        <h4>Parameters:</h4>
+        <table>
+            <tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr><td>job_id</td><td>Query</td><td>Yes</td><td>Unique job identifier</td></tr>
+            <tr><td>author_name</td><td>Form</td><td>Yes</td><td>Full name of the author</td></tr>
+        </table>
+
+        <h4>Example Request:</h4>
+        <pre>curl -X POST "http://your-api-domain.com/manual_authors?job_id=job_20250115_1430_a1b2c3" \
+  -d "author_name=Dr. Michael Chen"</pre>
+    </div>
+
+    <div class="endpoint">
+        <h3>7. Validate Authors</h3>
+        <p><span class="method post">POST</span> <code>/validate_authors</code></p>
+        <p><strong>Description:</strong> Validate potential reviewers against conflict of interest rules and publication criteria.</p>
+        
+        <h4>Query Parameters:</h4>
+        <table>
+            <tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr><td>job_id</td><td>String</td><td>Yes</td><td>Unique job identifier</td></tr>
+        </table>
+
+        <h4>Example Request:</h4>
+        <pre>curl -X POST "http://your-api-domain.com/validate_authors?job_id=job_20250115_1430_a1b2c3"</pre>
+
+        <div class="criteria">
+            <h4>⚖️ Validation Criteria (8 Conditions):</h4>
+            <ol>
+                <li><strong>Publications (last 10 years) ≥ 8</strong> - Substantial recent research output</li>
+                <li><strong>Relevant Publications (last 5 years) ≥ 3</strong> - Recent work in the field</li>
+                <li><strong>Publications (last 2 years) ≥ 1</strong> - Currently active researcher</li>
+                <li><strong>English Publications > 50%</strong> - Publishes primarily in English</li>
+                <li><strong>No Coauthorship</strong> - Not coauthored with manuscript authors</li>
+                <li><strong>Different Affiliation</strong> - Not from same institution</li>
+                <li><strong>Same Country</strong> - From same country (geographic diversity)</li>
+                <li><strong>No Retracted Publications</strong> - ≤ 1 retracted publication</li>
+            </ol>
+        </div>
+
+        <h4>Response Fields:</h4>
+        <ul>
+            <li><code>conditions_met</code> - Score from 0 to 8</li>
+            <li><code>conditions_satisfied</code> - Display string (e.g., "8 of 8")</li>
+            <li>Individual condition flags (0 or 1 for each criterion)</li>
+        </ul>
+    </div>
+
+    <div class="endpoint">
+        <h3>8. Get Recommended Reviewers (Steps 7 & 8)</h3>
+        <p><span class="method get">GET</span> <code>/recommended_reviewers</code></p>
+        <p><strong>Description:</strong> Retrieve the complete list of validated and scored reviewers.</p>
+        
+        <h4>Query Parameters:</h4>
+        <table>
+            <tr><th>Parameter</th><th>Type</th><th>Required</th><th>Description</th></tr>
+            <tr><td>job_id</td><td>String</td><td>Yes</td><td>Unique job identifier</td></tr>
+        </table>
+
+        <h4>Example Request:</h4>
+        <pre>curl -X GET "http://your-api-domain.com/recommended_reviewers?job_id=job_20250115_1430_a1b2c3"</pre>
+
+        <h4>UI Implementation:</h4>
+        <ul>
+            <li><strong>Step 7 (Recommendations):</strong> Display all reviewers sorted by conditions_met (descending)</li>
+            <li><strong>Step 8 (Shortlist):</strong> Allow users to select reviewers for final shortlist</li>
+        </ul>
+    </div>
+
+    <h2>📊 Reviewer Data Model</h2>
+    <table>
+        <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+        <tr><td>reviewer</td><td>string</td><td>Author name</td></tr>
+        <tr><td>email</td><td>string</td><td>Email address</td></tr>
+        <tr><td>aff</td><td>string</td><td>Full affiliation</td></tr>
+        <tr><td>city</td><td>string</td><td>Extracted city</td></tr>
+        <tr><td>country</td><td>string</td><td>Extracted country</td></tr>
+        <tr><td>Total_Publications</td><td>integer</td><td>Total publications</td></tr>
+        <tr><td>English_Pubs</td><td>integer</td><td>English language publications</td></tr>
+        <tr><td>Publications (last 10 years)</td><td>integer</td><td>Recent publications</td></tr>
+        <tr><td>Relevant Publications (last 5 years)</td><td>integer</td><td>Field-specific recent work</td></tr>
+        <tr><td>coauthor</td><td>boolean</td><td>Has coauthored with manuscript authors</td></tr>
+        <tr><td>conditions_met</td><td>integer</td><td>Validation score (0-8)</td></tr>
+        <tr><td>conditions_satisfied</td><td>string</td><td>Display string (e.g., "8 of 8")</td></tr>
+    </table>
+
+    <h2>⚠️ Error Responses</h2>
+    <p>All endpoints return consistent error responses:</p>
+    <pre>{
+  "error": "Error message describing what went wrong"
+}</pre>
+
+    <h4>Common Status Codes:</h4>
+    <ul>
+        <li><code>200</code> - Success</li>
+        <li><code>400</code> - Bad Request (invalid parameters)</li>
+        <li><code>404</code> - Not Found (resource doesn't exist)</li>
+        <li><code>500</code> - Internal Server Error</li>
+    </ul>
+
+    <h2>💡 Important Notes</h2>
+    <ol>
+        <li><strong>Job ID Persistence:</strong> The job_id created in Step 1 must be used for all subsequent API calls</li>
+        <li><strong>Processing Time:</strong> Validation can take several minutes as it performs multiple PubMed queries</li>
+        <li><strong>Data Files:</strong> System creates CSV and JSON files in job directory for backup/reference</li>
+        <li><strong>Step 9 (Export):</strong> Handle export in UI by processing JSON response or downloading CSV files</li>
+        <li><strong>Rate Limiting:</strong> Implement client-side rate limiting for validation endpoint</li>
+    </ol>
+
+    <h2>🚀 Complete Workflow Example (JavaScript)</h2>
+    <pre>// Step 1: Upload manuscript
+const formData = new FormData();
+formData.append('file', manuscriptFile);
+const uploadResponse = await fetch('/upload_extract_metadata', {
+  method: 'POST',
+  body: formData
+});
+const { data: { job_id } } = await uploadResponse.json();
+
+// Step 2: View metadata
+await fetch(`/metadata_extraction?job_id=${job_id}`);
+
+// Step 3: Enhance keywords
+await fetch(`/keyword_enhancement?job_id=${job_id}`, { method: 'POST' });
+
+// Step 4: Generate keyword string
+const keywordParams = new URLSearchParams({
+  primary_keywords_input: 'climate change, global warming',
+  secondary_keywords_input: 'biodiversity, species diversity'
+});
+await fetch(`/keyword_string_generator?job_id=${job_id}`, {
+  method: 'POST',
+  body: keywordParams
+});
+
+// Step 5: Search databases
+const searchParams = new URLSearchParams({
+  selected_websites: 'PubMed,ScienceDirect'
+});
+await fetch(`/database_search?job_id=${job_id}`, {
+  method: 'POST',
+  body: searchParams
+});
+
+// Step 6: (Optional) Add manual authors
+const manualParams = new URLSearchParams({
+  author_name: 'Dr. Michael Chen'
+});
+await fetch(`/manual_authors?job_id=${job_id}`, {
+  method: 'POST',
+  body: manualParams
+});
+
+// Step 7: Validate authors
+await fetch(`/validate_authors?job_id=${job_id}`, { method: 'POST' });
+
+// Step 8 & 9: Get recommendations
+const reviewersResponse = await fetch(`/recommended_reviewers?job_id=${job_id}`);
+const { reviewers } = await reviewersResponse.json();</pre>
+
+    <hr style="margin: 40px 0;">
+    <p style="text-align: center; color: #666;">
+        <strong>ScholarFinder API Documentation</strong><br>
+        Version 1.0 | October 15th 2025<br>
+    </p>
+</body>
+</html>

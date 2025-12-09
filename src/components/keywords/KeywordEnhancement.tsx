@@ -3,65 +3,66 @@
  * Handles keyword enhancement, MeSH term generation, and search string creation
  */
 
-import React, { useState, useEffect } from 'react';
-import { Zap, Sparkles, Search, Copy, Check, AlertCircle, Loader2 } from 'lucide-react';
+import React, { useState, useCallback, useMemo } from 'react';
+import { Zap, Sparkles, AlertCircle, Loader2, ArrowDown, ArrowUp, Plus, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { useKeywords, useEnhanceKeywords, useUpdateKeywordSelection } from '@/hooks/useKeywords';
+import { useKeywords, useEnhanceKeywords } from '@/hooks/useKeywords';
 import { useMetadata } from '@/hooks/useFiles';
-import type { KeywordEnhancementRequest, EnhancedKeywords } from '@/types/api';
+import type { EnhancedKeywords } from '@/services/keywordService';
 
 interface KeywordEnhancementProps {
   processId: string;
   onEnhancementComplete?: (keywords: EnhancedKeywords) => void;
+  onKeywordStringChange?: (keywordString: string) => void;
 }
 
 export const KeywordEnhancement: React.FC<KeywordEnhancementProps> = ({
   processId,
   onEnhancementComplete,
+  onKeywordStringChange,
 }) => {
   const { toast } = useToast();
   
+  // Local state
+  const [selectedPrimaryKeywords, setSelectedPrimaryKeywords] = useState<string[]>([]);
+  const [selectedSecondaryKeywords, setSelectedSecondaryKeywords] = useState<string[]>([]);
+  const [primaryKeywords, setPrimaryKeywords] = useState<string[]>([]);
+  const [secondaryKeywords, setSecondaryKeywords] = useState<string[]>([]);
+  const [newPrimaryKeyword, setNewPrimaryKeyword] = useState('');
+  const [newSecondaryKeyword, setNewSecondaryKeyword] = useState('');
+  const [enableKeywordsQuery, setEnableKeywordsQuery] = useState(false);
+  const [copiedKeywordString, setCopiedKeywordString] = useState(false);
+  
   // API hooks
   const { data: metadata } = useMetadata(processId);
-  const { data: enhancedKeywords, isLoading: isLoadingKeywords, error: keywordsError } = useKeywords(processId);
+  const { data: enhancedKeywords, isLoading: isLoadingKeywords, error: keywordsError } = useKeywords(processId, enableKeywordsQuery);
   const enhanceKeywordsMutation = useEnhanceKeywords();
-  const updateSelectionMutation = useUpdateKeywordSelection();
 
-  // Local state
-  const [selectedKeywords, setSelectedKeywords] = useState<string[]>([]);
-  const [copiedSearchString, setCopiedSearchString] = useState<string | null>(null);
-  const [enhancementOptions, setEnhancementOptions] = useState<KeywordEnhancementRequest>({
-    includeOriginal: true,
-    generateMeshTerms: true,
-    generateSearchStrings: true,
-  });
-
-  // Initialize selected keywords when enhanced keywords are loaded
-  useEffect(() => {
-    if (enhancedKeywords && selectedKeywords.length === 0) {
-      // Default to selecting all original and enhanced keywords
-      const defaultSelection = [
-        ...enhancedKeywords.original,
-        ...enhancedKeywords.enhanced,
-      ];
-      setSelectedKeywords(defaultSelection);
+  // Initialize keyword lists when enhanced keywords are loaded
+  React.useEffect(() => {
+    if (enhancedKeywords && primaryKeywords.length === 0 && secondaryKeywords.length === 0) {
+      setPrimaryKeywords(enhancedKeywords.primaryFocus);
+      setSecondaryKeywords(enhancedKeywords.secondaryFocus);
     }
-  }, [enhancedKeywords, selectedKeywords.length]);
+  }, [enhancedKeywords, primaryKeywords.length, secondaryKeywords.length]);
 
-  const handleEnhanceKeywords = async () => {
+  const handleEnhanceKeywords = useCallback(async () => {
     try {
       const result = await enhanceKeywordsMutation.mutateAsync({
         processId,
-        request: enhancementOptions,
       });
+
+      // Enable the keywords query now that enhancement is complete
+      setEnableKeywordsQuery(true);
 
       toast({
         title: 'Keywords Enhanced',
@@ -76,126 +77,248 @@ export const KeywordEnhancement: React.FC<KeywordEnhancementProps> = ({
         variant: 'destructive',
       });
     }
-  };
+  }, [processId, enhanceKeywordsMutation, toast, onEnhancementComplete]);
 
-  const handleKeywordToggle = (keyword: string, checked: boolean) => {
-    setSelectedKeywords(prev => {
+  const handlePrimaryKeywordToggle = useCallback((keyword: string, checked: boolean) => {
+    setSelectedPrimaryKeywords(prev => {
       if (checked) {
         return [...prev, keyword];
       } else {
         return prev.filter(k => k !== keyword);
       }
     });
-  };
+  }, []);
 
-  const handleSaveSelection = async () => {
-    try {
-      await updateSelectionMutation.mutateAsync({
-        processId,
-        selection: selectedKeywords,
-      });
+  const handleSecondaryKeywordToggle = useCallback((keyword: string, checked: boolean) => {
+    setSelectedSecondaryKeywords(prev => {
+      if (checked) {
+        return [...prev, keyword];
+      } else {
+        return prev.filter(k => k !== keyword);
+      }
+    });
+  }, []);
 
+  const movePrimaryToSecondary = useCallback((keyword: string) => {
+    setPrimaryKeywords(prev => prev.filter(k => k !== keyword));
+    setSecondaryKeywords(prev => [...prev, keyword]);
+    setSelectedPrimaryKeywords(prev => prev.filter(k => k !== keyword));
+    
+    toast({
+      title: 'Keyword Moved',
+      description: `"${keyword}" moved to Secondary Keywords`,
+    });
+  }, [toast]);
+
+  const moveSecondaryToPrimary = useCallback((keyword: string) => {
+    setSecondaryKeywords(prev => prev.filter(k => k !== keyword));
+    setPrimaryKeywords(prev => [...prev, keyword]);
+    setSelectedSecondaryKeywords(prev => prev.filter(k => k !== keyword));
+    
+    toast({
+      title: 'Keyword Moved',
+      description: `"${keyword}" moved to Primary Keywords`,
+    });
+  }, [toast]);
+
+  const addPrimaryKeyword = useCallback(() => {
+    const trimmed = newPrimaryKeyword.trim();
+    if (!trimmed) {
       toast({
-        title: 'Selection Saved',
-        description: `${selectedKeywords.length} keywords selected for search.`,
-      });
-    } catch (error: any) {
-      toast({
-        title: 'Save Failed',
-        description: error.message || 'Failed to save keyword selection. Please try again.',
+        title: 'Invalid Keyword',
+        description: 'Please enter a keyword',
         variant: 'destructive',
       });
+      return;
     }
-  };
 
-  const handleCopySearchString = async (database: string, searchString: string) => {
+    if (primaryKeywords.includes(trimmed) || secondaryKeywords.includes(trimmed)) {
+      toast({
+        title: 'Duplicate Keyword',
+        description: 'This keyword already exists',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setPrimaryKeywords(prev => [...prev, trimmed]);
+    setNewPrimaryKeyword('');
+    
+    toast({
+      title: 'Keyword Added',
+      description: `"${trimmed}" added to Primary Keywords`,
+    });
+  }, [newPrimaryKeyword, primaryKeywords, secondaryKeywords, toast]);
+
+  const addSecondaryKeyword = useCallback(() => {
+    const trimmed = newSecondaryKeyword.trim();
+    if (!trimmed) {
+      toast({
+        title: 'Invalid Keyword',
+        description: 'Please enter a keyword',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (primaryKeywords.includes(trimmed) || secondaryKeywords.includes(trimmed)) {
+      toast({
+        title: 'Duplicate Keyword',
+        description: 'This keyword already exists',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setSecondaryKeywords(prev => [...prev, trimmed]);
+    setNewSecondaryKeyword('');
+    
+    toast({
+      title: 'Keyword Added',
+      description: `"${trimmed}" added to Secondary Keywords`,
+    });
+  }, [newSecondaryKeyword, primaryKeywords, secondaryKeywords, toast]);
+
+  const handlePrimaryKeyPress = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addPrimaryKeyword();
+    }
+  }, [addPrimaryKeyword]);
+
+  const handleSecondaryKeyPress = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addSecondaryKeyword();
+    }
+  }, [addSecondaryKeyword]);
+
+  // Generate keyword string
+  const keywordString = useMemo(() => {
+    const parts: string[] = [];
+    
+    if (selectedPrimaryKeywords.length > 0) {
+      const primaryPart = `(${selectedPrimaryKeywords.join(' OR ')})`;
+      parts.push(primaryPart);
+    }
+    
+    if (selectedSecondaryKeywords.length > 0) {
+      const secondaryPart = `(${selectedSecondaryKeywords.join(' OR ')})`;
+      parts.push(secondaryPart);
+    }
+    
+    return parts.join(' AND ');
+  }, [selectedPrimaryKeywords, selectedSecondaryKeywords]);
+
+  // Notify parent when keyword string changes
+  React.useEffect(() => {
+    if (onKeywordStringChange && keywordString) {
+      onKeywordStringChange(keywordString);
+    }
+  }, [keywordString, onKeywordStringChange]);
+
+  const handleCopyKeywordString = useCallback(async () => {
+    if (!keywordString) {
+      toast({
+        title: 'No Keywords Selected',
+        description: 'Please select at least one keyword to generate a keyword string',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
-      await navigator.clipboard.writeText(searchString);
-      setCopiedSearchString(database);
+      await navigator.clipboard.writeText(keywordString);
+      setCopiedKeywordString(true);
       
       toast({
         title: 'Copied to Clipboard',
-        description: `${database.toUpperCase()} search string copied successfully.`,
+        description: 'Keyword string copied successfully',
       });
 
-      // Reset copied state after 2 seconds
-      setTimeout(() => setCopiedSearchString(null), 2000);
+      setTimeout(() => setCopiedKeywordString(false), 2000);
     } catch (error) {
       toast({
         title: 'Copy Failed',
-        description: 'Failed to copy search string to clipboard.',
+        description: 'Failed to copy keyword string to clipboard',
         variant: 'destructive',
       });
     }
-  };
+  }, [keywordString, toast]);
 
-  const renderKeywordSection = (title: string, keywords: string[], color: string) => {
-    if (keywords.length === 0) return null;
-
+  const renderKeywordSection = (
+    title: string, 
+    keywords: string[], 
+    color: string, 
+    selectedKeywords: string[],
+    onToggle: (keyword: string, checked: boolean) => void,
+    onMove?: (keyword: string) => void,
+    moveIcon?: React.ReactNode,
+    moveLabel?: string,
+    addKeywordInput?: {
+      value: string;
+      onChange: (value: string) => void;
+      onAdd: () => void;
+      onKeyPress: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+      placeholder: string;
+    }
+  ) => {
     return (
-      <div className="space-y-3">
+      <div className="space-y-3" role="group" aria-label={title}>
         <Label className="text-sm font-medium">{title}</Label>
-        <div className="flex flex-wrap gap-2">
-          {keywords.map((keyword) => (
-            <div key={keyword} className="flex items-center space-x-2">
-              <Checkbox
-                id={`keyword-${keyword}`}
-                checked={selectedKeywords.includes(keyword)}
-                onCheckedChange={(checked) => handleKeywordToggle(keyword, checked as boolean)}
-              />
-              <Badge variant="outline" className={`${color} cursor-pointer`}>
-                {keyword}
-              </Badge>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
+        
+        {/* Add keyword input */}
+        {addKeywordInput && (
+          <div className="flex gap-2 mb-3">
+            <Input
+              type="text"
+              value={addKeywordInput.value}
+              onChange={(e) => addKeywordInput.onChange(e.target.value)}
+              onKeyPress={addKeywordInput.onKeyPress}
+              placeholder={addKeywordInput.placeholder}
+              className="flex-1"
+            />
+            <Button
+              onClick={addKeywordInput.onAdd}
+              size="sm"
+              variant="outline"
+              disabled={!addKeywordInput.value.trim()}
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Add
+            </Button>
+          </div>
+        )}
 
-  const renderSearchStrings = () => {
-    if (!enhancedKeywords?.searchStrings) return null;
-
-    const databases = [
-      { key: 'pubmed', name: 'PubMed', color: 'bg-blue-50 text-blue-700 border-blue-200' },
-      { key: 'elsevier', name: 'Elsevier', color: 'bg-green-50 text-green-700 border-green-200' },
-      { key: 'wiley', name: 'Wiley', color: 'bg-purple-50 text-purple-700 border-purple-200' },
-      { key: 'taylorFrancis', name: 'Taylor & Francis', color: 'bg-orange-50 text-orange-700 border-orange-200' },
-    ];
-
-    return (
-      <div className="space-y-4">
-        {databases.map(({ key, name, color }) => {
-          const searchString = enhancedKeywords.searchStrings[key as keyof typeof enhancedKeywords.searchStrings];
-          if (!searchString) return null;
-
-          return (
-            <Card key={key} className={color}>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-medium">{name}</CardTitle>
+        {keywords.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {keywords.map((keyword) => (
+              <div key={keyword} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`keyword-${keyword}`}
+                  checked={selectedKeywords.includes(keyword)}
+                  onCheckedChange={(checked) => onToggle(keyword, checked as boolean)}
+                  aria-label={`Select keyword: ${keyword}`}
+                />
+                <Badge variant="outline" className={`${color} cursor-pointer`}>
+                  {keyword}
+                </Badge>
+                {onMove && (
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleCopySearchString(name, searchString)}
-                    className="h-8 w-8 p-0"
+                    onClick={() => onMove(keyword)}
+                    className="h-6 w-6 p-0"
+                    aria-label={moveLabel}
+                    title={moveLabel}
                   >
-                    {copiedSearchString === name ? (
-                      <Check className="h-4 w-4 text-green-600" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
+                    {moveIcon}
                   </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <code className="text-xs bg-white/50 p-2 rounded block overflow-x-auto">
-                  {searchString}
-                </code>
-              </CardContent>
-            </Card>
-          );
-        })}
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -257,51 +380,9 @@ export const KeywordEnhancement: React.FC<KeywordEnhancementProps> = ({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Enhancement Options and Trigger */}
+        {/* Enhancement Trigger */}
         {!enhancedKeywords && (
           <div className="space-y-4">
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">Enhancement Options</Label>
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="include-original"
-                    checked={enhancementOptions.includeOriginal}
-                    onCheckedChange={(checked) =>
-                      setEnhancementOptions(prev => ({ ...prev, includeOriginal: checked as boolean }))
-                    }
-                  />
-                  <Label htmlFor="include-original" className="text-sm">
-                    Include original keywords from manuscript
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="generate-mesh"
-                    checked={enhancementOptions.generateMeshTerms}
-                    onCheckedChange={(checked) =>
-                      setEnhancementOptions(prev => ({ ...prev, generateMeshTerms: checked as boolean }))
-                    }
-                  />
-                  <Label htmlFor="generate-mesh" className="text-sm">
-                    Generate MeSH terms for medical topics
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="generate-search-strings"
-                    checked={enhancementOptions.generateSearchStrings}
-                    onCheckedChange={(checked) =>
-                      setEnhancementOptions(prev => ({ ...prev, generateSearchStrings: checked as boolean }))
-                    }
-                  />
-                  <Label htmlFor="generate-search-strings" className="text-sm">
-                    Generate database-specific search strings
-                  </Label>
-                </div>
-              </div>
-            </div>
-
             {metadata?.keywords && metadata.keywords.length > 0 && (
               <div className="space-y-3">
                 <Label className="text-sm font-medium">Original Keywords from Manuscript</Label>
@@ -337,73 +418,78 @@ export const KeywordEnhancement: React.FC<KeywordEnhancementProps> = ({
 
         {/* Enhanced Keywords Display */}
         {enhancedKeywords && (
-          <Tabs defaultValue="selection" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="selection">Keyword Selection</TabsTrigger>
-              <TabsTrigger value="search-strings">Search Strings</TabsTrigger>
-            </TabsList>
+          <div className="space-y-6">
+            {renderKeywordSection(
+              "Primary Keywords",
+              primaryKeywords,
+              "bg-blue-50 text-blue-700 border-blue-200",
+              selectedPrimaryKeywords,
+              handlePrimaryKeywordToggle,
+              movePrimaryToSecondary,
+              <ArrowDown className="h-4 w-4" />,
+              "Move to Secondary Keywords",
+              {
+                value: newPrimaryKeyword,
+                onChange: setNewPrimaryKeyword,
+                onAdd: addPrimaryKeyword,
+                onKeyPress: handlePrimaryKeyPress,
+                placeholder: "Add a primary keyword..."
+              }
+            )}
 
-            <TabsContent value="selection" className="space-y-6">
-              <div className="space-y-6">
-                {renderKeywordSection(
-                  "Original Keywords",
-                  enhancedKeywords.original,
-                  "bg-blue-50 text-blue-700 border-blue-200"
-                )}
+            {renderKeywordSection(
+              "Secondary Keywords",
+              secondaryKeywords,
+              "bg-green-50 text-green-700 border-green-200",
+              selectedSecondaryKeywords,
+              handleSecondaryKeywordToggle,
+              moveSecondaryToPrimary,
+              <ArrowUp className="h-4 w-4" />,
+              "Move to Primary Keywords",
+              {
+                value: newSecondaryKeyword,
+                onChange: setNewSecondaryKeyword,
+                onAdd: addSecondaryKeyword,
+                onKeyPress: handleSecondaryKeyPress,
+                placeholder: "Add a secondary keyword..."
+              }
+            )}
 
-                {renderKeywordSection(
-                  "Enhanced Keywords",
-                  enhancedKeywords.enhanced,
-                  "bg-green-50 text-green-700 border-green-200"
-                )}
+            <Separator />
 
-                {renderKeywordSection(
-                  "MeSH Terms",
-                  enhancedKeywords.meshTerms,
-                  "bg-purple-50 text-purple-700 border-purple-200"
-                )}
+            <div className="text-sm text-muted-foreground">
+              {selectedPrimaryKeywords.length} primary and {selectedSecondaryKeywords.length} secondary keywords selected
+            </div>
 
-                <Separator />
-
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-muted-foreground">
-                    {selectedKeywords.length} keywords selected for search
+            {/* Keyword String Display */}
+            {keywordString && (
+              <Card className="bg-purple-50 border-purple-200">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm font-medium text-purple-900">Final Keyword String</CardTitle>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleCopyKeywordString}
+                      className="h-8 w-8 p-0"
+                      aria-label={copiedKeywordString ? 'Copied keyword string' : 'Copy keyword string to clipboard'}
+                    >
+                      {copiedKeywordString ? (
+                        <Check className="h-4 w-4 text-green-600" aria-hidden="true" />
+                      ) : (
+                        <Copy className="h-4 w-4" aria-hidden="true" />
+                      )}
+                    </Button>
                   </div>
-                  <Button
-                    onClick={handleSaveSelection}
-                    disabled={updateSelectionMutation.isPending || selectedKeywords.length === 0}
-                    size="sm"
-                  >
-                    {updateSelectionMutation.isPending ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Search className="w-4 h-4 mr-2" />
-                        Save Selection
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="search-strings" className="space-y-4">
-              <div className="space-y-4">
-                <div>
-                  <Label className="text-sm font-medium mb-3 block">
-                    Database-Specific Search Strings
-                  </Label>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Copy these search strings to use in different academic databases
-                  </p>
-                </div>
-                {renderSearchStrings()}
-              </div>
-            </TabsContent>
-          </Tabs>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <code className="text-xs bg-white p-3 rounded block overflow-x-auto text-purple-900">
+                    {keywordString}
+                  </code>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>

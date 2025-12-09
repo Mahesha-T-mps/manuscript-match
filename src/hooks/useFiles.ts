@@ -7,6 +7,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fileService } from '../services/fileService';
 import { queryKeys, cacheUtils } from '../lib/queryClient';
+import { optimizedCacheConfig } from '../lib/performanceOptimization';
 import type { 
   UploadResponse, 
   ExtractedMetadata, 
@@ -26,8 +27,16 @@ export const useFileUpload = () => {
       onProgress?: (progress: number) => void;
     }): Promise<UploadResponse> => 
       fileService.uploadFile(processId, file, onProgress),
-    onSuccess: (_, { processId }) => {
-      // Invalidate metadata cache to fetch new extracted data
+    onSuccess: (uploadResponse, { processId }) => {
+      // Immediately cache the metadata from upload response
+      if (uploadResponse.metadata) {
+        queryClient.setQueryData(
+          queryKeys.metadata.detail(processId),
+          uploadResponse.metadata
+        );
+      }
+      
+      // Invalidate metadata cache to ensure fresh data
       queryClient.invalidateQueries({ queryKey: queryKeys.metadata.all(processId) });
       // Invalidate process cache to update status
       queryClient.invalidateQueries({ queryKey: queryKeys.processes.detail(processId) });
@@ -46,8 +55,8 @@ export const useMetadata = (processId: string) => {
     queryKey: queryKeys.metadata.detail(processId),
     queryFn: (): Promise<ExtractedMetadata> => fileService.getMetadata(processId),
     enabled: !!processId, // Only run query if processId is provided
-    staleTime: 10 * 60 * 1000, // Metadata is stable for 10 minutes
-    gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
+    staleTime: optimizedCacheConfig.metadata.staleTime,
+    gcTime: optimizedCacheConfig.metadata.gcTime,
     retry: (failureCount, error: any) => {
       // Don't retry if no metadata exists yet
       if (error?.response?.status === 404) {
@@ -202,6 +211,8 @@ export const useValidationStatus = (processId: string, enabled: boolean = true) 
     queryKey: ['validation', processId],
     queryFn: () => fileService.getValidationStatus(processId),
     enabled: enabled && !!processId,
+    staleTime: optimizedCacheConfig.validation.staleTime,
+    gcTime: optimizedCacheConfig.validation.gcTime,
     refetchInterval: (query) => {
       // Poll every 5 seconds if validation is in progress
       const data = query.state.data;
@@ -221,7 +232,8 @@ export const useRecommendations = (processId: string, enabled: boolean = true) =
     queryKey: ['recommendations', processId],
     queryFn: () => fileService.getRecommendations(processId),
     enabled: enabled && !!processId,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: optimizedCacheConfig.recommendations.staleTime,
+    gcTime: optimizedCacheConfig.recommendations.gcTime,
   });
 };
 

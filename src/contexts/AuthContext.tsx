@@ -4,6 +4,7 @@
  */
 
 import React, { createContext, useContext, useEffect, useState, ReactNode, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { authService } from '../services/authService';
 import { jwtValidator } from '../utils/jwtValidator';
 import { createTokenRefreshManager, type TokenRefreshManager } from '../utils/tokenRefreshManager';
@@ -63,6 +64,7 @@ export interface AuthProviderProps {
  * Authentication provider component
  */
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -830,7 +832,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const expirationTime = jwtValidator.getTokenExpirationTime(validationResult.payload);
 
       setToken(authResponse.token);
-      setUser(authResponse.user);
       setTokenState({
         token: authResponse.token,
         isValid: true,
@@ -839,26 +840,61 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         validationError: null,
       });
 
+      // Clear React Query cache to prevent showing stale data from previous user
+      console.log('Clearing React Query cache after login');
+      queryClient.clear();
+
+      // Fetch fresh user profile from server to ensure we have the latest data
+      try {
+        const freshProfile = await authService.getProfile();
+        setUser(freshProfile);
+        
+        console.log('Login successful with fresh profile', {
+          userId: freshProfile.id,
+          expiresAt: expirationTime ? new Date(expirationTime).toISOString() : 'no expiration',
+          timestamp: new Date().toISOString(),
+        });
+
+        authLogger.logAuthEvent('LOGIN', true, {
+          duration: Date.now() - loginStartTime,
+          metadata: {
+            userId: freshProfile.id,
+            tokenExpiresAt: expirationTime ? new Date(expirationTime).toISOString() : null,
+            profileRefreshed: true,
+            cacheCleared: true,
+          },
+        }, {
+          userId: freshProfile.id,
+        });
+      } catch (profileError) {
+        // Fallback to login response user if profile fetch fails
+        console.warn('Failed to fetch fresh profile after login, using login response:', profileError);
+        setUser(authResponse.user);
+        
+        console.log('Login successful with login response user', {
+          userId: authResponse.user.id,
+          expiresAt: expirationTime ? new Date(expirationTime).toISOString() : 'no expiration',
+          timestamp: new Date().toISOString(),
+        });
+
+        authLogger.logAuthEvent('LOGIN', true, {
+          duration: Date.now() - loginStartTime,
+          metadata: {
+            userId: authResponse.user.id,
+            tokenExpiresAt: expirationTime ? new Date(expirationTime).toISOString() : null,
+            profileRefreshed: false,
+            cacheCleared: true,
+            profileError: profileError instanceof Error ? profileError.message : 'Unknown error',
+          },
+        }, {
+          userId: authResponse.user.id,
+        });
+      }
+
       // Schedule token check with refresh manager
       if (tokenRefreshManagerRef.current) {
         tokenRefreshManagerRef.current.scheduleTokenCheck(authResponse.token);
       }
-
-      console.log('Login successful with valid token', {
-        userId: authResponse.user.id,
-        expiresAt: expirationTime ? new Date(expirationTime).toISOString() : 'no expiration',
-        timestamp: new Date().toISOString(),
-      });
-
-      authLogger.logAuthEvent('LOGIN', true, {
-        duration: Date.now() - loginStartTime,
-        metadata: {
-          userId: authResponse.user.id,
-          tokenExpiresAt: expirationTime ? new Date(expirationTime).toISOString() : null,
-        },
-      }, {
-        userId: authResponse.user.id,
-      });
 
     } catch (error: any) {
       console.error('Login failed:', error);

@@ -2,15 +2,13 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
-import { Search, Plus, X, Database, AlertCircle, Loader2, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Search, Database, AlertCircle, Loader2, CheckCircle, XCircle, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useKeywords } from "@/hooks/useKeywords";
-import { useInitiateSearch, useSearchProgress, useSearchByName, useSearchByEmail } from "@/hooks/useSearch";
+import { useInitiateSearch, useSearchProgress } from "@/hooks/useSearch";
 
 interface SearchDatabase {
   id: string;
@@ -21,32 +19,27 @@ interface SearchDatabase {
 
 interface ReviewerSearchProps {
   processId: string;
-  primaryKeywords: string[];
-  secondaryKeywords: string[];
-  onKeywordsChange: (primary: string[], secondary: string[]) => void;
+  keywordString?: string; // Keyword string from KeywordEnhancement
   onSearchComplete?: () => void;
+}
+
+interface SearchResult {
+  author: string;
+  email: string;
+  aff: string;
+  city?: string;
+  country?: string;
 }
 
 export const ReviewerSearch = ({ 
   processId,
-  primaryKeywords, 
-  secondaryKeywords, 
-  onKeywordsChange, 
+  keywordString,
   onSearchComplete 
 }: ReviewerSearchProps) => {
-  const [newKeyword, setNewKeyword] = useState("");
-  const [keywordType, setKeywordType] = useState<"primary" | "secondary">("primary");
-  const [manualSearchName, setManualSearchName] = useState("");
-  const [manualSearchEmail, setManualSearchEmail] = useState("");
   const { toast } = useToast();
-  
-  // Fetch enhanced keywords from backend
-  const { data: enhancedKeywords, isLoading: isLoadingKeywords, error: keywordsError } = useKeywords(processId);
   
   // Search mutations and status
   const initiateSearchMutation = useInitiateSearch();
-  const searchByNameMutation = useSearchByName();
-  const searchByEmailMutation = useSearchByEmail();
   const { 
     status: searchStatus, 
     progress, 
@@ -61,70 +54,32 @@ export const ReviewerSearch = ({
 
   const [databases, setDatabases] = useState<SearchDatabase[]>([
     {
-      id: "pubmed",
+      id: "PubMed",
       name: "PubMed",
       description: "Medical and biomedical literature",
       enabled: true,
     },
     {
-      id: "elsevier",
-      name: "Elsevier/ScienceDirect",
+      id: "TandFonline",
+      name: "Taylor & Francis Online",
+      description: "Academic journals and books",
+      enabled: true,
+    },
+    {
+      id: "ScienceDirect",
+      name: "ScienceDirect",
       description: "Scientific and academic research",
       enabled: true,
     },
     {
-      id: "taylorFrancis",
-      name: "Taylor & Francis",
-      description: "Academic journals and books",
-      enabled: false,
-    },
-    {
-      id: "wiley",
+      id: "WileyLibrary",
       name: "Wiley Online Library",
       description: "Scientific research and journals",
-      enabled: false,
+      enabled: true,
     },
   ]);
 
-  // Update keywords when enhanced keywords are loaded
-  useEffect(() => {
-    if (enhancedKeywords && primaryKeywords.length === 0 && secondaryKeywords.length === 0) {
-      // Set primary keywords to original + enhanced, secondary to MeSH terms
-      const newPrimary = [...enhancedKeywords.original, ...enhancedKeywords.enhanced];
-      const newSecondary = enhancedKeywords.meshTerms;
-      onKeywordsChange(newPrimary, newSecondary);
-    }
-  }, [enhancedKeywords, primaryKeywords.length, secondaryKeywords.length, onKeywordsChange]);
-
-  const addKeyword = () => {
-    if (!newKeyword.trim()) return;
-
-    const keyword = newKeyword.trim();
-    if (keywordType === "primary") {
-      if (!primaryKeywords.includes(keyword)) {
-        onKeywordsChange([...primaryKeywords, keyword], secondaryKeywords);
-      }
-    } else {
-      if (!secondaryKeywords.includes(keyword)) {
-        onKeywordsChange(primaryKeywords, [...secondaryKeywords, keyword]);
-      }
-    }
-    setNewKeyword("");
-  };
-
-  const removeKeyword = (keyword: string, type: "primary" | "secondary") => {
-    if (type === "primary") {
-      onKeywordsChange(
-        primaryKeywords.filter(k => k !== keyword), 
-        secondaryKeywords
-      );
-    } else {
-      onKeywordsChange(
-        primaryKeywords, 
-        secondaryKeywords.filter(k => k !== keyword)
-      );
-    }
-  };
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 
   const toggleDatabase = (databaseId: string) => {
     setDatabases(prev => 
@@ -138,16 +93,6 @@ export const ReviewerSearch = ({
 
   const handleSearch = async () => {
     const enabledDatabases = databases.filter(db => db.enabled).map(db => db.id);
-    const allKeywords = [...primaryKeywords, ...secondaryKeywords];
-
-    if (allKeywords.length === 0) {
-      toast({
-        title: "No keywords selected",
-        description: "Please add at least one keyword to search for reviewers.",
-        variant: "destructive",
-      });
-      return;
-    }
 
     if (enabledDatabases.length === 0) {
       toast({
@@ -158,27 +103,74 @@ export const ReviewerSearch = ({
       return;
     }
 
+    if (!keywordString) {
+      toast({
+        title: "No keyword string",
+        description: "Please generate a keyword string in the previous step before searching.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
-      await initiateSearchMutation.mutateAsync({
+      // First, save the keyword string to the API
+      // Parse the keyword string to extract primary and secondary keywords
+      const { fileService } = await import('@/services/fileService');
+      
+      // Extract keywords from the generated string
+      // Format: (keyword1 OR keyword2) AND (keyword3 OR keyword4)
+      const primaryMatch = keywordString.match(/^\(([^)]+)\)/);
+      const secondaryMatch = keywordString.match(/AND \(([^)]+)\)$/);
+      
+      const primaryKeywordsStr = primaryMatch ? primaryMatch[1].replace(/ OR /g, ', ') : '';
+      const secondaryKeywordsStr = secondaryMatch ? secondaryMatch[1].replace(/ OR /g, ', ') : '';
+      
+      console.log('[ReviewerSearch] Keyword string:', keywordString);
+      console.log('[ReviewerSearch] Parsed primary keywords:', primaryKeywordsStr);
+      console.log('[ReviewerSearch] Parsed secondary keywords:', secondaryKeywordsStr);
+      
+      // Validate that we have at least some keywords
+      if (!primaryKeywordsStr && !secondaryKeywordsStr) {
+        toast({
+          title: "Invalid keyword string",
+          description: "Could not parse keywords from the search string. Please regenerate the keyword string.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      // Save keyword string to API first
+      await fileService.generateKeywordString(processId, {
+        primary_keywords_input: primaryKeywordsStr,
+        secondary_keywords_input: secondaryKeywordsStr
+      });
+      
+      // Then initiate the database search
+      const searchResponse = await initiateSearchMutation.mutateAsync({
         processId,
         request: {
-          keywords: allKeywords,
-          databases: enabledDatabases,
-          searchOptions: {
-            maxResults: 1000,
-            dateRange: {
-              from: new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000).toISOString(), // 5 years ago
-              to: new Date().toISOString()
-            }
-          }
+          selected_websites: enabledDatabases
         }
       });
       
+      console.log('[ReviewerSearch] Search response:', searchResponse);
+      console.log('[ReviewerSearch] Response keys:', Object.keys(searchResponse || {}));
+      console.log('[ReviewerSearch] author_email_affiliation_preview:', searchResponse?.author_email_affiliation_preview);
+      
+      // Save the search results to display in the table
+      if (searchResponse?.author_email_affiliation_preview && Array.isArray(searchResponse.author_email_affiliation_preview)) {
+        console.log('[ReviewerSearch] Setting search results, count:', searchResponse.author_email_affiliation_preview.length);
+        setSearchResults(searchResponse.author_email_affiliation_preview);
+      } else {
+        console.log('[ReviewerSearch] No author_email_affiliation_preview found in response');
+      }
+      
       toast({
-        title: "Search initiated",
-        description: `Started searching ${enabledDatabases.length} databases for potential reviewers.`,
+        title: "Search completed",
+        description: `Found ${searchResponse?.reviewers_count || searchResponse?.total_reviewers || 0} potential reviewers from ${enabledDatabases.length} databases.`,
       });
     } catch (error: any) {
+      console.error('[ReviewerSearch] Search error:', error);
       toast({
         title: "Search failed",
         description: error.message || "There was an error initiating the search. Please try again.",
@@ -187,67 +179,7 @@ export const ReviewerSearch = ({
     }
   };
 
-  const handleManualSearchByName = async () => {
-    if (!manualSearchName.trim()) {
-      toast({
-        title: "Name required",
-        description: "Please enter a name to search for.",
-        variant: "destructive",
-      });
-      return;
-    }
 
-    try {
-      const results = await searchByNameMutation.mutateAsync({
-        processId,
-        name: manualSearchName.trim()
-      });
-      
-      toast({
-        title: "Manual search completed",
-        description: `Found ${results.length} potential reviewers matching "${manualSearchName}".`,
-      });
-      
-      setManualSearchName("");
-    } catch (error: any) {
-      toast({
-        title: "Manual search failed",
-        description: error.message || "There was an error searching by name. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleManualSearchByEmail = async () => {
-    if (!manualSearchEmail.trim()) {
-      toast({
-        title: "Email required",
-        description: "Please enter an email to search for.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      const results = await searchByEmailMutation.mutateAsync({
-        processId,
-        email: manualSearchEmail.trim()
-      });
-      
-      toast({
-        title: "Manual search completed",
-        description: `Found ${results.length} potential reviewers matching "${manualSearchEmail}".`,
-      });
-      
-      setManualSearchEmail("");
-    } catch (error: any) {
-      toast({
-        title: "Manual search failed",
-        description: error.message || "There was an error searching by email. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
 
   // Handle search completion
   useEffect(() => {
@@ -256,226 +188,23 @@ export const ReviewerSearch = ({
     }
   }, [isCompleted, onSearchComplete]);
 
-  // Show loading state
-  if (isLoadingKeywords) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Search className="w-5 h-5 text-primary" />
-            <span>Database Search</span>
-          </CardTitle>
-          <CardDescription>
-            Search academic databases for potential reviewers
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin mr-2" />
-            <span>Loading enhanced keywords...</span>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  // Show error state if keywords couldn't be loaded
-  if (keywordsError) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Search className="w-5 h-5 text-primary" />
-            <span>Database Search</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              Failed to load enhanced keywords. Please go back and enhance keywords first.
-            </AlertDescription>
-          </Alert>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      {/* Enhanced Keywords Summary */}
-      {enhancedKeywords && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Search className="w-5 h-5 text-primary" />
-              <span>Enhanced Keywords Summary</span>
-            </CardTitle>
-            <CardDescription>
-              Keywords generated from your manuscript for database searches
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid md:grid-cols-3 gap-4">
-              <div>
-                <Label className="text-sm font-medium mb-2 block">Original Keywords</Label>
-                <div className="flex flex-wrap gap-1">
-                  {enhancedKeywords.original.map((keyword) => (
-                    <Badge key={keyword} variant="outline" className="text-xs">
-                      {keyword}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <Label className="text-sm font-medium mb-2 block">Enhanced Keywords</Label>
-                <div className="flex flex-wrap gap-1">
-                  {enhancedKeywords.enhanced.map((keyword) => (
-                    <Badge key={keyword} variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-                      {keyword}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <Label className="text-sm font-medium mb-2 block">MeSH Terms</Label>
-                <div className="flex flex-wrap gap-1">
-                  {enhancedKeywords.meshTerms.map((keyword) => (
-                    <Badge key={keyword} variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
-                      {keyword}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <Search className="w-5 h-5 text-primary" />
-            <span>Keyword Management</span>
+            <span>Search Query</span>
           </CardTitle>
           <CardDescription>
-            Manage primary and secondary keywords for reviewer search
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid md:grid-cols-2 gap-6">
-            <div>
-              <Label className="text-sm font-medium mb-3 block">Primary Keywords</Label>
-              <div className="space-y-2">
-                <div className="flex flex-wrap gap-2 min-h-[2rem]">
-                  {primaryKeywords.map((keyword) => (
-                    <Badge key={keyword} variant="default" className="gap-1">
-                      {keyword}
-                      <button
-                        onClick={() => removeKeyword(keyword, "primary")}
-                        className="ml-1 hover:bg-white/20 rounded-full p-0.5"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <Label className="text-sm font-medium mb-3 block">Secondary Keywords</Label>
-              <div className="space-y-2">
-                <div className="flex flex-wrap gap-2 min-h-[2rem]">
-                  {secondaryKeywords.map((keyword) => (
-                    <Badge key={keyword} variant="secondary" className="gap-1">
-                      {keyword}
-                      <button
-                        onClick={() => removeKeyword(keyword, "secondary")}
-                        className="ml-1 hover:bg-white/20 rounded-full p-0.5"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <Input
-                placeholder="Add new keyword..."
-                value={newKeyword}
-                onChange={(e) => setNewKeyword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addKeyword()}
-              />
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="primary"
-                checked={keywordType === "primary"}
-                onCheckedChange={(checked) => 
-                  setKeywordType(checked ? "primary" : "secondary")
-                }
-              />
-              <Label htmlFor="primary" className="text-sm">Primary</Label>
-            </div>
-            <Button onClick={addKeyword} size="sm">
-              <Plus className="w-4 h-4" />
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Search className="w-5 h-5 text-primary" />
-            <span>Keyword String</span>
-          </CardTitle>
-          <CardDescription>
-            Combined search string for database queries
+            Keyword string generated from your selected keywords
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            <div className="p-4 bg-muted/30 rounded-lg border-l-4 border-primary/30">
-              <div className="flex items-center justify-between">
-                <code className="text-sm text-foreground/90 font-mono break-all">
-                  {(() => {
-                    const primaryStr = primaryKeywords.length > 0 ? `(${primaryKeywords.join(' OR ')})` : '';
-                    const secondaryStr = secondaryKeywords.length > 0 ? `(${secondaryKeywords.join(' OR ')})` : '';
-                    
-                    if (primaryStr && secondaryStr) {
-                      return `${primaryStr} AND ${secondaryStr}`;
-                    }
-                    return primaryStr || secondaryStr || 'No keywords selected';
-                  })()}
-                </code>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    const primaryStr = primaryKeywords.length > 0 ? `(${primaryKeywords.join(' OR ')})` : '';
-                    const secondaryStr = secondaryKeywords.length > 0 ? `(${secondaryKeywords.join(' OR ')})` : '';
-                    const keywordString = primaryStr && secondaryStr ? `${primaryStr} AND ${secondaryStr}` : (primaryStr || secondaryStr);
-                    
-                    if (keywordString && keywordString !== 'No keywords selected') {
-                      navigator.clipboard.writeText(keywordString);
-                      toast({
-                        title: "Copied to clipboard",
-                        description: "Keyword string has been copied to your clipboard.",
-                      });
-                    }
-                  }}
-                  className="ml-2 flex-shrink-0"
-                >
-                  Copy
-                </Button>
-              </div>
-            </div>
+          <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+            <code className="text-sm text-purple-900 font-mono break-all">
+              {keywordString || 'No keyword string provided'}
+            </code>
           </div>
         </CardContent>
       </Card>
@@ -483,7 +212,7 @@ export const ReviewerSearch = ({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
-            <Database className="w-5 h-5 text-primary" />
+            <Database className="w-5 h-5 text-primary" aria-hidden="true" />
             <span>Search Databases</span>
           </CardTitle>
           <CardDescription>
@@ -491,7 +220,7 @@ export const ReviewerSearch = ({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid md:grid-cols-2 gap-4 mb-6">
+          <div className="grid md:grid-cols-2 gap-4 mb-6" role="group" aria-label="Database selection">
             {databases.map((db) => (
               <div key={db.id} className="flex items-start space-x-3 p-3 border rounded-lg">
                 <Checkbox 
@@ -499,12 +228,13 @@ export const ReviewerSearch = ({
                   checked={db.enabled}
                   onCheckedChange={() => toggleDatabase(db.id)}
                   className="mt-0.5"
+                  aria-describedby={`${db.id}-description`}
                 />
                 <div className="flex-1">
                   <Label htmlFor={db.id} className="font-medium cursor-pointer">
                     {db.name}
                   </Label>
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p id={`${db.id}-description`} className="text-xs text-muted-foreground mt-1">
                     {db.description}
                   </p>
                 </div>
@@ -533,158 +263,45 @@ export const ReviewerSearch = ({
         </CardContent>
       </Card>
 
-      {/* Search Progress Tracking */}
-      {(isSearching || isCompleted || isFailed) && (
+
+
+      {/* Search Results Table */}
+      {searchResults.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
-              {isSearching && <Clock className="w-5 h-5 text-blue-500" />}
-              {isCompleted && <CheckCircle className="w-5 h-5 text-green-500" />}
-              {isFailed && <XCircle className="w-5 h-5 text-red-500" />}
-              <span>Search Progress</span>
+              <CheckCircle className="w-5 h-5 text-green-500" />
+              <span>Potential Reviewers</span>
             </CardTitle>
-            <CardDescription>
-              {isSearching && "Searching databases for potential reviewers..."}
-              {isCompleted && `Search completed! Found ${totalFound} potential reviewers.`}
-              {isFailed && "Search failed. Please try again or contact support."}
-            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Overall Progress */}
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Overall Progress</span>
-                <span>{Math.round(progressPercentage)}%</span>
-              </div>
-              <Progress value={progressPercentage} className="w-full" />
-            </div>
-
-            {/* Database-specific Progress */}
-            {progress && Object.keys(progress).length > 0 && (
-              <div className="space-y-3">
-                <Label className="text-sm font-medium">Database Progress</Label>
-                <div className="grid gap-3">
-                  {Object.entries(progress).map(([database, info]) => (
-                    <div key={database} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex items-center space-x-3">
-                        {info.status === 'COMPLETED' && <CheckCircle className="w-4 h-4 text-green-500" />}
-                        {info.status === 'IN_PROGRESS' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
-                        {info.status === 'FAILED' && <XCircle className="w-4 h-4 text-red-500" />}
-                        {info.status === 'PENDING' && <Clock className="w-4 h-4 text-gray-400" />}
-                        <div>
-                          <div className="font-medium capitalize">
-                            {database === 'taylorFrancis' ? 'Taylor & Francis' : database}
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {info.status === 'COMPLETED' && `Found ${info.count} reviewers`}
-                            {info.status === 'IN_PROGRESS' && 'Searching...'}
-                            {info.status === 'FAILED' && 'Search failed'}
-                            {info.status === 'PENDING' && 'Waiting to start'}
-                          </div>
-                        </div>
-                      </div>
-                      <Badge 
-                        variant={
-                          info.status === 'COMPLETED' ? 'default' :
-                          info.status === 'IN_PROGRESS' ? 'secondary' :
-                          info.status === 'FAILED' ? 'destructive' : 'outline'
-                        }
-                      >
-                        {info.count || 0}
-                      </Badge>
-                    </div>
+          <CardContent>
+            <div className="overflow-auto max-h-[600px]">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="p-3 text-left font-semibold">Author</th>
+                    <th className="p-3 text-left font-semibold">Email</th>
+                    <th className="p-3 text-left font-semibold">Affiliation</th>
+                    <th className="p-3 text-left font-semibold">City</th>
+                    <th className="p-3 text-left font-semibold">Country</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {searchResults.map((result, index) => (
+                    <tr key={index} className="border-b hover:bg-muted/30 transition-colors">
+                      <td className="p-3">{result.author}</td>
+                      <td className="p-3 text-sm text-muted-foreground">{result.email}</td>
+                      <td className="p-3 text-sm">{result.aff}</td>
+                      <td className="p-3 text-sm">{result.city || '-'}</td>
+                      <td className="p-3 text-sm">{result.country || '-'}</td>
+                    </tr>
                   ))}
-                </div>
-              </div>
-            )}
-
-            {/* Error Information */}
-            {isFailed && searchError && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  {searchError.message || "An error occurred during the search. Please try again."}
-                </AlertDescription>
-              </Alert>
-            )}
+                </tbody>
+              </table>
+            </div>
           </CardContent>
         </Card>
       )}
-
-      {/* Manual Reviewer Search */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Search className="w-5 h-5 text-primary" />
-            <span>Manual Reviewer Search</span>
-          </CardTitle>
-          <CardDescription>
-            Search for specific reviewers by name or email address
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Search by Name */}
-          <div className="space-y-3">
-            <Label className="text-sm font-medium">Search by Name</Label>
-            <div className="flex gap-3">
-              <Input
-                placeholder="Enter reviewer name..."
-                value={manualSearchName}
-                onChange={(e) => setManualSearchName(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleManualSearchByName()}
-                className="flex-1"
-              />
-              <Button 
-                onClick={handleManualSearchByName}
-                disabled={searchByNameMutation.isPending || !manualSearchName.trim()}
-                size="default"
-              >
-                {searchByNameMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Search className="w-4 h-4" />
-                )}
-              </Button>
-            </div>
-          </div>
-
-          {/* Search by Email */}
-          <div className="space-y-3">
-            <Label className="text-sm font-medium">Search by Email</Label>
-            <div className="flex gap-3">
-              <Input
-                placeholder="Enter reviewer email..."
-                value={manualSearchEmail}
-                onChange={(e) => setManualSearchEmail(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleManualSearchByEmail()}
-                className="flex-1"
-                type="email"
-              />
-              <Button 
-                onClick={handleManualSearchByEmail}
-                disabled={searchByEmailMutation.isPending || !manualSearchEmail.trim()}
-                size="default"
-              >
-                {searchByEmailMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Search className="w-4 h-4" />
-                )}
-              </Button>
-            </div>
-          </div>
-
-          {/* Manual Search Results Info */}
-          {(searchByNameMutation.data || searchByEmailMutation.data) && (
-            <Alert>
-              <CheckCircle className="h-4 w-4" />
-              <AlertDescription>
-                Manual search completed. Results have been added to your reviewer pool and will appear in the recommendations step.
-              </AlertDescription>
-            </Alert>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 };

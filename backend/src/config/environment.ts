@@ -19,9 +19,9 @@ const envSchema = Joi.object({
   JWT_EXPIRES_IN: Joi.string().default('24h'),
   
   // File Upload
-  MAX_FILE_SIZE: Joi.number().positive().default(10485760), // 10MB
+  MAX_FILE_SIZE: Joi.number().positive().default(52428800), // 50MB
   ALLOWED_FILE_TYPES: Joi.string().default(
-    'application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword'
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword'
   ),
   
   // External APIs

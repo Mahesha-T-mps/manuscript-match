@@ -130,9 +130,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ className }) => 
 
   // Mutations
   const updateRoleMutation = useUpdateUserRole();
-  const updateStatusMutation = useUpdateUserStatus();
+  const updateStatusMutation = useUpdateUserStatus() as any;
   const deleteUserMutation = useDeleteUser();
-  const inviteUserMutation = useInviteUser();
+  const inviteUserMutation = useInviteUser() as any;
 
   // Mock users data when API fails - using actual UUIDs from database
   const mockUsers: AdminUserDetails[] = [
@@ -283,11 +283,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ className }) => 
   };
 
   const handleBlockUser = async (userId: string, block: boolean) => {
-    const statusData: { userId: string; status: 'active' | 'suspended' } = {
+    updateStatusMutation.mutate({
       userId: userId,
       status: block ? 'suspended' : 'active'
-    };
-    updateStatusMutation.mutate(statusData, {
+    } as { userId: string; status: 'active' | 'suspended' }, {
       onSuccess: () => {
         refetchUsers();
       }
@@ -335,7 +334,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ className }) => 
     inviteUserMutation.mutate({
       email: inviteData.email,
       role: inviteData.role as 'USER' | 'ADMIN'
-    }, {
+    } as { email: string; role: 'USER' | 'ADMIN' }, {
       onSuccess: () => {
         // Reset form and close modal on success
         setInviteData({ email: "", role: "USER" });
@@ -434,11 +433,10 @@ export const UserManagement: React.FC<UserManagementProps> = ({ className }) => 
         }
         
         for (const userId of usersToBlock) {
-          const statusData: { userId: string; status: 'active' | 'suspended' } = {
+          updateStatusMutation.mutate({
             userId: userId,
             status: 'suspended'
-          };
-          updateStatusMutation.mutate(statusData);
+          } as { userId: string; status: 'active' | 'suspended' });
         }
         setSelectedUsers([]);
         refetchUsers();
@@ -773,10 +771,17 @@ export const UserManagement: React.FC<UserManagementProps> = ({ className }) => 
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={getStatusBadgeVariant("active")} className="text-green-600">
-                          <CheckCircle className="h-3 w-3 mr-1" />
-                          Active
-                        </Badge>
+                        {(user as any).status === 'BLOCKED' || (user as any).status === 'suspended' ? (
+                          <Badge variant="destructive">
+                            <XCircle className="h-3 w-3 mr-1" />
+                            Blocked
+                          </Badge>
+                        ) : (
+                          <Badge variant={getStatusBadgeVariant("active")} className="text-green-600">
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Active
+                          </Badge>
+                        )}
                       </TableCell>
 
                       <TableCell className="text-sm text-gray-500">
@@ -869,6 +874,16 @@ export const UserManagement: React.FC<UserManagementProps> = ({ className }) => 
                                 >
                                   <UserX className="h-4 w-4 mr-2" />
                                   Cannot Block Admin
+                                </Button>
+                              ) : (user as any).status === 'BLOCKED' || (user as any).status === 'suspended' ? (
+                                <Button
+                                  variant="outline"
+                                  className="w-full justify-start text-green-600"
+                                  onClick={() => handleBlockUser(user.id, false)}
+                                  disabled={updateStatusMutation.isPending}
+                                >
+                                  <CheckCircle className="h-4 w-4 mr-2" />
+                                  {updateStatusMutation.isPending ? 'Unblocking...' : 'Unblock User'}
                                 </Button>
                               ) : (
                                 <Button
@@ -1162,10 +1177,17 @@ export const UserManagement: React.FC<UserManagementProps> = ({ className }) => 
                 </div>
                 <div>
                   <Label className="text-sm font-medium text-gray-500">Status</Label>
-                  <Badge variant={getStatusBadgeVariant("active")} className="mt-1">
-                    <CheckCircle className="h-3 w-3 mr-1" />
-                    Active
-                  </Badge>
+                  {(detailsUser as any).status === 'BLOCKED' || (detailsUser as any).status === 'suspended' ? (
+                    <Badge variant="destructive" className="mt-1">
+                      <XCircle className="h-3 w-3 mr-1" />
+                      Blocked
+                    </Badge>
+                  ) : (
+                    <Badge variant={getStatusBadgeVariant("active")} className="mt-1">
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      Active
+                    </Badge>
+                  )}
                 </div>
                 <div>
                   <Label className="text-sm font-medium text-gray-500">User ID</Label>

@@ -7,6 +7,7 @@ import { QueryClient, DefaultOptions } from '@tanstack/react-query';
 import { ErrorHandler } from '../services/apiService';
 import { EnhancedErrorHandler, type EnhancedError } from './errorHandler';
 import type { UserFriendlyError } from '../types/api';
+import { optimizedCacheConfig } from './performanceOptimization';
 
 /**
  * Default query options with appropriate caching and retry strategies
@@ -128,6 +129,7 @@ export const queryKeys = {
     all: (processId: string) => ['keywords', processId] as const,
     enhanced: (processId: string) => [...queryKeys.keywords.all(processId), 'enhanced'] as const,
     selection: (processId: string) => [...queryKeys.keywords.all(processId), 'selection'] as const,
+    searchString: (processId: string) => [...queryKeys.keywords.all(processId), 'searchString'] as const,
   },
   
   // Search

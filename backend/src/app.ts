@@ -54,8 +54,14 @@ app.use(cors({
         'http://127.0.0.1:3000',
         'http://127.0.0.1:8080',
         'http://127.0.0.1:8081',
-        'http://127.0.0.1:8082'
-      ], // Allow common development ports
+        'http://127.0.0.1:8082',
+        'http://192.168.3.187:3000',
+        'http://192.168.3.187:8080',
+        'http://192.168.3.187:8081',
+        'http://192.168.3.187:8082',
+        // Allow any origin from local network for development
+        /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}:\d+$/
+      ], // Allow common development ports and local network
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-Requested-With'],

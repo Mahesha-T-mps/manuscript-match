@@ -94,16 +94,25 @@ export const SearchStep: React.FC<SearchStepProps> = ({
 
   const loadExistingData = () => {
     try {
+      console.log('[SearchStep] Loading existing data...');
+      console.log('[SearchStep] Process:', process);
+      console.log('[SearchStep] JobId:', jobId);
+      
       // Load from process step data if available
       const existingData = process?.stepData?.search as SearchStepData;
+      console.log('[SearchStep] Existing data from process:', existingData);
+      
       if (existingData) {
         if (existingData.selectedDatabases) {
+          console.log('[SearchStep] Restoring selected databases:', existingData.selectedDatabases);
           setSelectedDatabases(existingData.selectedDatabases);
         }
         if (existingData.searchResults) {
+          console.log('[SearchStep] Restoring search results:', existingData.searchResults);
           setSearchResults(existingData.searchResults);
         }
         if (existingData.searchStatus) {
+          console.log('[SearchStep] Restoring search status:', existingData.searchStatus);
           setSearchStatus(existingData.searchStatus);
         }
         if (existingData.searchErrors) {
@@ -112,9 +121,22 @@ export const SearchStep: React.FC<SearchStepProps> = ({
         if (existingData.lastSearched) {
           setLastSearched(existingData.lastSearched);
         }
+      } else {
+        console.log('[SearchStep] No existing data in process, trying localStorage...');
+        
+        // Fallback: Try to load from localStorage
+        if (jobId && typeof window !== 'undefined') {
+          const storedData = localStorage.getItem(`search_results_${jobId}`);
+          if (storedData) {
+            const parsedData = JSON.parse(storedData);
+            console.log('[SearchStep] Found data in localStorage:', parsedData);
+            setSearchResults(parsedData);
+            setSearchStatus('completed');
+          }
+        }
       }
     } catch (error) {
-      console.error('Failed to load existing search data:', error);
+      console.error('[SearchStep] Failed to load existing search data:', error);
     }
   };
 
@@ -143,8 +165,17 @@ export const SearchStep: React.FC<SearchStepProps> = ({
     }
 
     try {
+      // Clear previous results when starting a new search
+      console.log('[SearchStep] Starting new search - clearing previous results');
+      setSearchResults(null);
       setSearchStatus('searching');
       setSearchErrors({});
+      
+      // Clear localStorage for this jobId
+      if (typeof window !== 'undefined' && jobId) {
+        localStorage.removeItem(`search_results_${jobId}`);
+        console.log('[SearchStep] Cleared previous results from localStorage');
+      }
 
       const databaseSelection: DatabaseSelection = {
         selected_websites: selectedDatabases
@@ -154,6 +185,16 @@ export const SearchStep: React.FC<SearchStepProps> = ({
       
       setSearchResults(response.data);
       setLastSearched(new Date());
+      
+      // Store search results in localStorage for ValidationStep to access
+      if (typeof window !== 'undefined' && jobId) {
+        try {
+          localStorage.setItem(`search_results_${jobId}`, JSON.stringify(response.data));
+          console.log('[SearchStep] Saved search results to localStorage for jobId:', jobId);
+        } catch (error) {
+          console.error('[SearchStep] Failed to save to localStorage:', error);
+        }
+      }
       
       // Determine final status based on search results
       const hasFailures = Object.values(response.data.search_status).some(status => status === 'failed');

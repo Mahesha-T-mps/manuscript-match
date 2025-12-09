@@ -49,33 +49,65 @@ class FileService {
    * Upload a file for a specific process - uses ScholarFinder API
    */
   async uploadFile(processId: string, file: File, onProgress?: (progress: number) => void): Promise<UploadResponse> {
-    // Use ScholarFinder API with processId
-    const response = await scholarFinderApiService.uploadManuscript(file, processId);
+    // Use ScholarFinder API with processId and pass progress callback
+    const response = await scholarFinderApiService.uploadManuscript(file, processId, onProgress);
+    
+    // Handle response structure - backend returns {message, data}
+    const rawData: any = response.data || response;
     
     // Store the job_id for this process
-    this.setJobId(processId, response.data.job_id);
+    this.setJobId(processId, rawData.job_id);
     
-    // Transform response to match UploadResponse format
-    return {
-      fileId: response.data.job_id,
-      fileName: response.data.file_name,
+    // Transform response to match UploadResponse format with safe defaults
+    // Backend returns keywords as a string, convert to array
+    const keywordsArray = rawData.keywords 
+      ? (typeof rawData.keywords === 'string' 
+          ? rawData.keywords.split(',').map((k: string) => k.trim()).filter((k: string) => k.length > 0)
+          : rawData.keywords)
+      : [];
+    
+    const uploadResponse: UploadResponse = {
+      fileId: rawData.job_id,
+      fileName: rawData.file_name,
       fileSize: file.size,
-      uploadedAt: response.data.timestamp,
+      uploadedAt: rawData.timestamp,
       metadata: {
-        title: response.data.heading,
-        authors: response.data.authors,
-        affiliations: response.data.affiliations,
-        keywords: response.data.keywords,
-        abstract: response.data.abstract,
-        authorAffiliationMap: response.data.author_aff_map
+        title: rawData.heading || '',
+        authors: rawData.authors || [],
+        affiliations: rawData.affiliations || [],
+        keywords: keywordsArray,
+        abstract: rawData.abstract || '',
+        authorAffiliationMap: rawData.author_aff_map || {}
       }
-    } as UploadResponse;
+    };
+    
+    // Cache the metadata immediately for later retrieval
+    const key = `process_${processId}_metadata`;
+    localStorage.setItem(key, JSON.stringify(uploadResponse.metadata));
+    
+    return uploadResponse;
   }
 
   /**
    * Get extracted metadata for a process - uses ScholarFinder API
    */
   async getMetadata(processId: string): Promise<ExtractedMetadata> {
+    // First check if we have cached metadata from upload
+    const cachedKey = `process_${processId}_metadata`;
+    const cachedMetadata = localStorage.getItem(cachedKey);
+    
+    if (cachedMetadata) {
+      try {
+        const parsed = JSON.parse(cachedMetadata);
+        // If cached metadata has the expected structure, return it
+        if (parsed && parsed.title !== undefined && parsed.keywords !== undefined) {
+          return parsed as ExtractedMetadata;
+        }
+      } catch (e) {
+        console.warn('Failed to parse cached metadata, fetching from API');
+      }
+    }
+    
     const jobId = this.getJobId(processId);
     if (!jobId) {
       throw new Error('No job ID found for this process. Please upload a file first.');
@@ -110,13 +142,18 @@ class FileService {
       type: 'university'
     }));
     
-    return {
+    const metadata = {
       title: response.data.heading,
       authors: authorsArray,
       affiliations: affiliationsArray,
       keywords: keywordsArray,
       abstract: response.data.abstract
     };
+    
+    // Cache the metadata for future use
+    localStorage.setItem(cachedKey, JSON.stringify(metadata));
+    
+    return metadata;
   }
 
   /**
@@ -130,6 +167,31 @@ class FileService {
     
     // Return the updated metadata
     return metadata as ExtractedMetadata;
+  }
+
+  /**
+   * Enhance keywords using AI - uses ScholarFinder API
+   */
+  async enhanceKeywords(processId: string): Promise<any> {
+    const jobId = this.getJobId(processId);
+    if (!jobId) {
+      throw new Error('No job ID found for this process. Please upload a file first.');
+    }
+
+    console.log('[fileService] Calling enhanceKeywords with jobId:', jobId);
+    const response = await scholarFinderApiService.enhanceKeywords(jobId);
+    console.log('[fileService] Full API response:', response);
+    
+    // The API returns data directly in the response object, not nested in response.data
+    // Check if response.data exists, otherwise use response directly
+    const data = response.data || response;
+    console.log('[fileService] Extracted data:', data);
+    
+    // Cache the enhanced keywords for later retrieval
+    const key = `process_${processId}_keywords`;
+    localStorage.setItem(key, JSON.stringify(data));
+    
+    return data;
   }
 
   /**
@@ -159,14 +221,18 @@ class FileService {
    */
   async searchDatabases(processId: string, databases: {
     selected_websites: string[];
-  }): Promise<{ total_reviewers: number; databases_searched: string[]; search_status: Record<string, string> }> {
+  }): Promise<any> {
     const jobId = this.getJobId(processId);
     if (!jobId) {
       throw new Error('No job ID found for this process. Please upload a file first.');
     }
 
     const response = await scholarFinderApiService.searchDatabases(jobId, databases);
-    return response.data;
+    
+    // Cache the search results for status tracking
+    localStorage.setItem(`process_${processId}_searchResults`, JSON.stringify(response));
+    
+    return response;
   }
 
   /**
@@ -180,6 +246,26 @@ class FileService {
 
     const response = await scholarFinderApiService.addManualAuthor(jobId, authorName);
     return response.data;
+  }
+
+  /**
+   * Search for manual author by name - uses ScholarFinder API
+   * Returns author data with name, email, affiliation, city, country
+   */
+  async searchManualAuthor(processId: string, authorName: string): Promise<any> {
+    console.log('[fileService] searchManualAuthor called:', { processId, authorName });
+    
+    const jobId = this.getJobId(processId);
+    console.log('[fileService] Retrieved jobId:', jobId);
+    
+    if (!jobId) {
+      throw new Error('No job ID found for this process. Please upload a file first.');
+    }
+
+    const response = await scholarFinderApiService.searchManualAuthor(jobId, authorName);
+    console.log('[fileService] searchManualAuthor response:', response);
+    
+    return response.author_data;
   }
 
   /**

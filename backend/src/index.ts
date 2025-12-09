@@ -8,11 +8,12 @@ async function startServer(): Promise<void> {
     // Connect to database
     await connectDatabase();
     
-    // Start HTTP server
-    const server = app.listen(config.port, () => {
+    // Start HTTP server - bind to 0.0.0.0 to allow network access
+    const server = app.listen(config.port, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${config.port}`);
       console.log(`📊 Environment: ${config.env}`);
       console.log(`🔗 Health check: http://localhost:${config.port}/health`);
+      console.log(`🌐 Network access: http://0.0.0.0:${config.port}/health`);
     });
 
     // Graceful shutdown handling

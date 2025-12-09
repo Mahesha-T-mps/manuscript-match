@@ -4,13 +4,8 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { keywordService } from '../services/keywordService';
+import { keywordService, type EnhancedKeywords } from '../services/keywordService';
 import { queryKeys } from '../lib/queryClient';
-import type { 
-  KeywordEnhancementRequest, 
-  EnhancedKeywords, 
-  KeywordSelectionRequest 
-} from '../types/api';
 
 /**
  * Hook for enhancing keywords
@@ -19,11 +14,10 @@ export const useEnhanceKeywords = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: ({ processId, request }: { 
-      processId: string; 
-      request: KeywordEnhancementRequest;
+    mutationFn: ({ processId }: { 
+      processId: string;
     }): Promise<EnhancedKeywords> => 
-      keywordService.enhanceKeywords(processId, request),
+      keywordService.enhanceKeywords(processId),
     onSuccess: (enhancedKeywords, { processId }) => {
       // Cache the enhanced keywords
       queryClient.setQueryData(
@@ -43,15 +37,18 @@ export const useEnhanceKeywords = () => {
 /**
  * Hook for fetching enhanced keywords
  */
-export const useKeywords = (processId: string) => {
+export const useKeywords = (processId: string, enabled: boolean = true) => {
   return useQuery({
     queryKey: queryKeys.keywords.enhanced(processId),
     queryFn: (): Promise<EnhancedKeywords> => keywordService.getKeywords(processId),
-    enabled: !!processId, // Only run query if processId is provided
+    enabled: !!processId && enabled, // Only run query if processId is provided and explicitly enabled
     staleTime: 15 * 60 * 1000, // Keywords are stable for 15 minutes
     gcTime: 30 * 60 * 1000, // Keep in cache for 30 minutes
     retry: (failureCount, error: any) => {
       // Don't retry if keywords haven't been enhanced yet
+      if (error?.message?.includes('Keywords have not been enhanced yet')) {
+        return false;
+      }
       if (error?.response?.status === 404) {
         return false;
       }
@@ -84,6 +81,43 @@ export const useUpdateKeywordSelection = () => {
     },
     onError: (error) => {
       console.error('Failed to update keyword selection:', error);
+    },
+  });
+};
+
+/**
+ * Hook for generating keyword search string
+ */
+export const useGenerateKeywordString = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: ({ 
+      processId, 
+      primaryKeywords, 
+      secondaryKeywords 
+    }: { 
+      processId: string; 
+      primaryKeywords: string[];
+      secondaryKeywords: string[];
+    }): Promise<{
+      search_string: string;
+      primary_keywords_used: string[];
+      secondary_keywords_used: string[];
+    }> => 
+      keywordService.generateSearchString(processId, primaryKeywords, secondaryKeywords),
+    onSuccess: (data, { processId }) => {
+      // Cache the generated search string
+      queryClient.setQueryData(
+        queryKeys.keywords.searchString(processId),
+        data
+      );
+      
+      // Invalidate process cache to update status
+      queryClient.invalidateQueries({ queryKey: queryKeys.processes.detail(processId) });
+    },
+    onError: (error) => {
+      console.error('Keyword string generation failed:', error);
     },
   });
 };

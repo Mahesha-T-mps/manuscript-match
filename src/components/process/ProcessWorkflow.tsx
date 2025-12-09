@@ -3,7 +3,7 @@
  * Main workflow component that manages the entire manuscript analysis process
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { ArrowLeft, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +12,8 @@ import { useProcess, useUpdateProcessStep } from '@/hooks/useProcesses';
 import { useSearch } from '@/hooks/useSearch';
 import { useRecommendations } from '@/hooks/useRecommendations';
 import { useShortlists } from '@/hooks/useShortlists';
+import { useMetadata } from '@/hooks/useFiles';
+import { useEnhanceKeywords } from '@/hooks/useKeywords';
 import { ProcessStepTracker } from './ProcessStepTracker';
 import { FileUpload } from '@/components/upload/FileUpload';
 import { DataExtraction } from '@/components/extraction/DataExtraction';
@@ -42,6 +44,12 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   const searchHook = useSearch(processId, shouldPollSearch);
   const { data: recommendations, isLoading: recommendationsLoading } = useRecommendations(processId);
   const shortlistsHook = useShortlists(processId);
+  
+  // Hook to check if metadata is loaded for the METADATA_EXTRACTION step
+  const { data: metadata, isLoading: metadataLoading } = useMetadata(processId);
+  
+  // Hook for enhancing keywords
+  const enhanceKeywordsMutation = useEnhanceKeywords();
 
   // Local state for workflow data
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -49,9 +57,14 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   const [enhancedKeywords, setEnhancedKeywords] = useState<EnhancedKeywords | null>(null);
   const [primaryKeywords, setPrimaryKeywords] = useState<string[]>([]);
   const [secondaryKeywords, setSecondaryKeywords] = useState<string[]>([]);
+  const [keywordString, setKeywordString] = useState<string>('');
   const [searchCompleted, setSearchCompleted] = useState(false);
+  
+  // Track if keyword enhancement has been triggered for this process
+  const keywordEnhancementTriggered = useRef(false);
 
-  const handleStepChange = async (newStep: string) => {
+  // Memoize callbacks to prevent unnecessary re-renders
+  const handleStepChange = useCallback(async (newStep: string) => {
     if (!process) return;
 
     try {
@@ -66,38 +79,81 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         variant: 'destructive',
       });
     }
-  };
+  }, [process, updateStepMutation, toast]);
 
-  const handleFileUpload = async (uploadResponse: any) => {
+  const handleFileUpload = useCallback(async (uploadResponse: any) => {
+    // Handle file removal (when uploadResponse is null)
+    if (!uploadResponse) {
+      setUploadResponse(null);
+      setUploadedFile(null);
+      // Reset to upload step when file is removed
+      await handleStepChange('UPLOAD');
+      return;
+    }
+    
+    // Handle successful file upload
     setUploadResponse(uploadResponse);
     setUploadedFile({ name: uploadResponse.fileName, size: uploadResponse.fileSize } as File);
     
-    // Move to next step after successful upload
-    await handleStepChange('METADATA_EXTRACTION');
-  };
+    // Don't automatically move to next step - wait for user to click Next
+    // await handleStepChange('METADATA_EXTRACTION');
+  }, [handleStepChange]);
 
-  const handleKeywordEnhancement = async (keywords: EnhancedKeywords) => {
+  const handleKeywordEnhancement = useCallback(async (keywords: EnhancedKeywords) => {
     setEnhancedKeywords(keywords);
-    
-    // Set default keyword selections for the search component
-    setPrimaryKeywords([...keywords.original, ...keywords.enhanced]);
-    setSecondaryKeywords(keywords.meshTerms);
-    
-    // Move to next step after successful enhancement
-    await handleStepChange('KEYWORD_ENHANCEMENT');
-  };
+    // Don't set keywords here - let KeywordEnhancement component manage selections
+  }, []);
 
-  const handleKeywordsChange = (primary: string[], secondary: string[]) => {
+  const handleKeywordStringChange = useCallback((newKeywordString: string) => {
+    setKeywordString(newKeywordString);
+  }, []);
+  
+  // Auto-trigger keyword enhancement when entering KEYWORD_ENHANCEMENT step
+  useEffect(() => {
+    if (process?.currentStep === 'KEYWORD_ENHANCEMENT' && !keywordEnhancementTriggered.current) {
+      keywordEnhancementTriggered.current = true;
+      
+      console.log('[ProcessWorkflow] Triggering keyword enhancement for processId:', processId);
+      
+      // Trigger keyword enhancement API call
+      enhanceKeywordsMutation.mutateAsync({ processId })
+        .then((result) => {
+          console.log('[ProcessWorkflow] Keyword enhancement successful:', result);
+          handleKeywordEnhancement(result);
+          toast({
+            title: 'Keywords Enhanced',
+            description: `Generated ${result.enhanced.length} enhanced keywords and ${result.meshTerms.length} MeSH terms.`,
+          });
+        })
+        .catch((error) => {
+          console.error('[ProcessWorkflow] Keyword enhancement failed:', error);
+          toast({
+            title: 'Enhancement Failed',
+            description: error.message || 'Failed to enhance keywords. Please try again.',
+            variant: 'destructive',
+          });
+          keywordEnhancementTriggered.current = false; // Allow retry
+        });
+    }
+    
+    // Reset the trigger when leaving the KEYWORD_ENHANCEMENT step
+    if (process?.currentStep !== 'KEYWORD_ENHANCEMENT') {
+      keywordEnhancementTriggered.current = false;
+    }
+  }, [process?.currentStep, processId, enhanceKeywordsMutation, handleKeywordEnhancement, toast]);
+
+  const handleKeywordsChange = useCallback((primary: string[], secondary: string[]) => {
     setPrimaryKeywords(primary);
     setSecondaryKeywords(secondary);
-  };
+  }, []);
 
-  const handleSearch = async (keywords: string[], databases: string[]) => {
+  const handleSearch = useCallback(async (keywords: string[], databases: string[]) => {
     try {
       // Note: useSearch hook doesn't have mutateAsync, it's a query hook
       // This would need to be implemented differently based on the actual hook API
       setSearchCompleted(true);
-      await handleStepChange('DATABASE_SEARCH');
+      // Don't automatically move to next step - wait for user to click Next
+      // await handleStepChange('DATABASE_SEARCH');
       
       toast({
         title: 'Search completed',
@@ -110,9 +166,9 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         variant: 'destructive',
       });
     }
-  };
+  }, [handleStepChange, toast]);
 
-  const handleExport = async (selectedReviewers: Reviewer[]) => {
+  const handleExport = useCallback(async (selectedReviewers: Reviewer[]) => {
     try {
       // Note: This would need to be implemented based on the actual shortlists hook API
       toast({
@@ -126,7 +182,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         variant: 'destructive',
       });
     }
-  };
+  }, [toast]);
 
   const renderCurrentStep = () => {
     if (!process) return null;
@@ -134,35 +190,88 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     switch (process.currentStep) {
       case "UPLOAD":
         return (
-          <FileUpload 
-            processId={processId}
-            onFileUpload={handleFileUpload}
-            uploadedFile={uploadedFile}
-          />
+          <div className="space-y-4">
+            <FileUpload 
+              processId={processId}
+              onFileUpload={handleFileUpload}
+              uploadedFile={uploadedFile}
+            />
+            {uploadedFile && uploadResponse && (
+              <div className="flex justify-end">
+                <Button 
+                  onClick={() => handleStepChange('METADATA_EXTRACTION')}
+                  size="lg"
+                >
+                  Next: Review Metadata
+                </Button>
+              </div>
+            )}
+          </div>
         );
 
       case "METADATA_EXTRACTION":
         return (
-          <div className="space-y-8">
+          <div className="space-y-4">
             <DataExtraction 
               processId={processId}
               fileName={uploadedFile?.name}
             />
-            <KeywordEnhancement
-              processId={processId}
-              onEnhancementComplete={handleKeywordEnhancement}
-            />
+            {metadata && !metadataLoading && (
+              <div className="flex justify-end">
+                <Button 
+                  onClick={() => handleStepChange('KEYWORD_ENHANCEMENT')}
+                  size="lg"
+                >
+                  Next: Enhance Keywords
+                </Button>
+              </div>
+            )}
           </div>
         );
 
       case "KEYWORD_ENHANCEMENT":
         return (
-          <ReviewerSearch
-            processId={processId}
-            primaryKeywords={primaryKeywords}
-            secondaryKeywords={secondaryKeywords}
-            onKeywordsChange={handleKeywordsChange}
-          />
+          <div className="space-y-8">
+            <KeywordEnhancement
+              processId={processId}
+              onEnhancementComplete={handleKeywordEnhancement}
+              onKeywordStringChange={handleKeywordStringChange}
+            />
+            {enhancedKeywords && (
+              <div className="flex justify-end">
+                <Button 
+                  onClick={() => handleStepChange('DATABASE_SEARCH')}
+                  size="lg"
+                >
+                  Next: Search Databases
+                </Button>
+              </div>
+            )}
+          </div>
+        );
+      
+      case "DATABASE_SEARCH":
+        return (
+          <div className="space-y-4">
+            <ReviewerSearch
+              processId={processId}
+              keywordString={keywordString}
+              onSearchComplete={() => {
+                console.log('[ProcessWorkflow] Search completed, setting searchCompleted to true');
+                setSearchCompleted(true);
+              }}
+            />
+            {searchCompleted && (
+              <div className="flex justify-end">
+                <Button 
+                  onClick={() => handleStepChange('MANUAL_SEARCH')}
+                  size="lg"
+                >
+                  Next Step
+                </Button>
+              </div>
+            )}
+          </div>
         );
 
       case "RECOMMENDATIONS":

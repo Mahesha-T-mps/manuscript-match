@@ -37,10 +37,10 @@ export const AuthorSearch: React.FC<AuthorSearchProps> = ({
     }
   };
 
-  const handleHistorySearch = (term: string) => {
+  const handleHistorySearch = async (term: string) => {
     setSearchTerm(term);
     setShowHistory(false);
-    onSearch(term);
+    await onSearch(term);
   };
 
   const clearSearchTerm = () => {

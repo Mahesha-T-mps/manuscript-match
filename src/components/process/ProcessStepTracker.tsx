@@ -332,12 +332,6 @@ export const ProcessStepTracker: React.FC<ProcessStepTrackerProps> = ({
               disabled={(() => {
                 const currentOrder = getCurrentStepOrder();
                 const isDisabled = currentOrder >= PROCESS_STEPS.length || updateStepMutation.isPending;
-                console.log('Next Step button disabled check:', {
-                  currentOrder,
-                  stepsLength: PROCESS_STEPS.length,
-                  isPending: updateStepMutation.isPending,
-                  isDisabled
-                });
                 return isDisabled;
               })()}
               onClick={(e) => {

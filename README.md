@@ -1,8 +1,79 @@
-# Welcome to your Lovable project
+# ScholarFinder - Manuscript Reviewer Recommendation System
+
+A comprehensive web application for finding and recommending suitable peer reviewers for academic manuscripts using AI-powered keyword enhancement and multi-database search.
 
 ## Project info
 
 **URL**: https://lovable.dev/projects/2a2efe7b-8df1-475e-9985-c0401aea2044
+
+## Features
+
+- **Automated Metadata Extraction**: Upload Word documents and automatically extract title, authors, affiliations, keywords, and abstract
+- **AI-Powered Keyword Enhancement**: Generate MeSH terms, broader terms, and focused keywords using external AI services
+- **Multi-Database Search**: Search across PubMed, TandFonline, ScienceDirect, and WileyLibrary for potential reviewers
+- **Automated Validation**: Validate reviewers against 8 conflict of interest criteria
+- **Smart Recommendations**: Get reviewers sorted by validation score (0-8 conditions met)
+- **Flexible Export**: Export recommendations in CSV or JSON format
+
+## Quick Start
+
+### Prerequisites
+
+- Node.js 16+ and npm
+- Access to ScholarFinder API (https://192.168.61.60:8000)
+
+### Installation
+
+```sh
+# Clone the repository
+git clone <YOUR_GIT_URL>
+
+# Navigate to the project directory
+cd <YOUR_PROJECT_NAME>
+
+# Install dependencies
+npm install
+
+# Start the development server
+npm run dev
+```
+
+### Configuration
+
+Create a `.env` file in the root directory:
+
+```env
+# ScholarFinder API Configuration
+VITE_SCHOLARFINDER_API_URL=https://192.168.61.60:8000
+VITE_SCHOLARFINDER_API_TIMEOUT=120000
+
+# File Upload Configuration
+VITE_MAX_FILE_SIZE=104857600  # 100MB
+VITE_SUPPORTED_FILE_TYPES=doc,docx
+
+# Debug Configuration
+VITE_ENABLE_DEBUG_LOGGING=false
+```
+
+## Documentation
+
+### Workflow Documentation
+
+- **[Complete Workflow Guide](docs/SCHOLARFINDER_WORKFLOW.md)** - Comprehensive overview of the 9-step workflow
+- **[Integration Tests Guide](src/test/integration/README-SCHOLARFINDER-INTEGRATION-TESTS.md)** - Testing documentation
+
+### Component Documentation
+
+- **[FileUpload Component](src/components/upload/README.md)** - File upload and metadata extraction
+- **[DataExtraction Component](src/components/extraction/README.md)** - Metadata review and editing
+- **[KeywordEnhancement Component](src/components/keywords/README.md)** - AI-powered keyword enhancement
+- **[ReviewerSearch Component](src/components/search/README.md)** - Multi-database search
+- **[AuthorValidation Component](src/components/validation/README.md)** - Manual addition and validation
+- **[ReviewerResults Component](src/components/results/README.md)** - Recommendations display and export
+
+### API Documentation
+
+- **[ScholarFinder API Service](src/features/scholarfinder/services/ScholarFinderApiService.ts)** - Complete API integration with JSDoc comments
 
 ## How can I edit this code?
 

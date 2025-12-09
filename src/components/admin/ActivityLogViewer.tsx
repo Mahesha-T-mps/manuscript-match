@@ -526,6 +526,8 @@ export const ActivityLogViewer: React.FC<ActivityLogViewerProps> = ({ className 
         }
     }, [streamingEnabled, isStreaming, startStreaming, stopStreaming]);
 
+
+
     const getActionIcon = (action: string) => {
         if (action.includes('LOGIN') || action.includes('LOGOUT')) {
             return <Users className="h-4 w-4" />;
@@ -586,6 +588,17 @@ export const ActivityLogViewer: React.FC<ActivityLogViewerProps> = ({ className 
 
     return (
         <div className={cn("space-y-6", className)}>
+            <style>{`
+                .hide-scrollbar::-webkit-scrollbar {
+                    display: none !important;
+                    width: 0 !important;
+                    height: 0 !important;
+                }
+                .hide-scrollbar {
+                    -ms-overflow-style: none !important;
+                    scrollbar-width: none !important;
+                }
+            `}</style>
             {/* Header */}
             <Card>
                 <CardHeader>
@@ -860,88 +873,99 @@ export const ActivityLogViewer: React.FC<ActivityLogViewerProps> = ({ className 
                             ))}
                         </div>
                     ) : logs.length > 0 ? (
-                        <ScrollArea className="h-[600px]">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Timestamp</TableHead>
-                                        <TableHead>Action</TableHead>
-                                        <TableHead>User</TableHead>
-                                        <TableHead>Resource</TableHead>
-                                        <TableHead>Details</TableHead>
-                                        <TableHead className="w-12">Actions</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {logs.map((log) => (
-                                        <TableRow key={log.id}>
-                                            <TableCell className="text-sm text-gray-500">
-                                                <div>
-                                                    <div>{format(new Date(log.timestamp), 'MMM dd, HH:mm:ss')}</div>
-                                                    <div className="text-xs text-gray-400">
-                                                        {format(new Date(log.timestamp), 'yyyy')}
-                                                    </div>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center gap-2">
-                                                    <div className={cn("p-1 rounded", getActionColor(log.action))}>
-                                                        {getActionIcon(log.action)}
-                                                    </div>
-                                                    <Badge className={cn("text-xs", getActionColor(log.action))}>
-                                                        {log.action.replace(/_/g, ' ')}
-                                                    </Badge>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="text-sm">
-                                                    <div className="font-mono">{log.userId.slice(0, 8)}...</div>
-                                                    <div className="text-xs text-gray-500">User ID</div>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="text-sm">
-                                                    {log.processId ? (
-                                                        <div>
-                                                            <div className="font-mono">{log.processId.slice(0, 8)}...</div>
-                                                            <div className="text-xs text-gray-500">Process</div>
-                                                        </div>
-                                                    ) : (
-                                                        <span className="text-gray-400">-</span>
-                                                    )}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="text-sm text-gray-600 max-w-xs truncate">
-                                                    {formatLogDetails(log.details).slice(0, 100)}
-                                                    {formatLogDetails(log.details).length > 100 && '...'}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center gap-1">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => handleViewDetails(log)}
-                                                        title="View details"
-                                                    >
-                                                        <Eye className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => handleCopyLogDetails(log)}
-                                                        title="Copy log details"
-                                                    >
-                                                        <Copy className="h-4 w-4" />
-                                                    </Button>
-                                                </div>
-                                            </TableCell>
+                        <div className="relative">
+                            <div className="border rounded-lg" style={{ position: 'relative' }}>
+                                {/* Main scroll container */}
+                                <div 
+                                    className="overflow-y-auto max-h-[600px]"
+                                    style={{ 
+                                        overflowX: 'hidden'
+                                    }}
+                                >
+                                    <Table className="w-full">
+                                        <TableHeader className="sticky top-0 bg-white z-10">
+                                            <TableRow>
+                                                <TableHead className="w-40">Timestamp</TableHead>
+                                                <TableHead className="w-48">Action</TableHead>
+                                                <TableHead className="w-36">User</TableHead>
+                                                <TableHead className="w-36">Resource</TableHead>
+                                                <TableHead className="w-64">Details</TableHead>
+                                                <TableHead className="w-32">Actions</TableHead>
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </ScrollArea>
+                                    </TableHeader>
+                                        <TableBody>
+                                            {logs.map((log) => (
+                                                <TableRow key={log.id}>
+                                                    <TableCell className="text-sm text-gray-500">
+                                                        <div>
+                                                            <div>{format(new Date(log.timestamp), 'MMM dd, HH:mm:ss')}</div>
+                                                            <div className="text-xs text-gray-400">
+                                                                {format(new Date(log.timestamp), 'yyyy')}
+                                                            </div>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className={cn("p-1 rounded", getActionColor(log.action))}>
+                                                                {getActionIcon(log.action)}
+                                                            </div>
+                                                            <Badge className={cn("text-xs", getActionColor(log.action))}>
+                                                                {log.action.replace(/_/g, ' ')}
+                                                            </Badge>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="text-sm">
+                                                            <div className="font-mono">{log.userId.slice(0, 8)}...</div>
+                                                            <div className="text-xs text-gray-500">User ID</div>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="text-sm">
+                                                            {log.processId ? (
+                                                                <div>
+                                                                    <div className="font-mono">{log.processId.slice(0, 8)}...</div>
+                                                                    <div className="text-xs text-gray-500">Process</div>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-gray-400">-</span>
+                                                            )}
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="w-64">
+                                                        <div className="border rounded p-2 bg-gray-50 max-h-20 overflow-x-scroll overflow-y-hidden" style={{ minWidth: '256px', maxWidth: '256px' }}>
+                                                            <pre className="text-xs text-gray-700 whitespace-nowrap font-mono" style={{ minWidth: 'max-content' }}>
+                                                                {formatLogDetails(log.details)}
+                                                            </pre>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="flex items-center gap-1">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => handleViewDetails(log)}
+                                                                title="View details"
+                                                            >
+                                                                <Eye className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                onClick={() => handleCopyLogDetails(log)}
+                                                                title="Copy log details"
+                                                            >
+                                                                <Copy className="h-4 w-4" />
+                                                            </Button>
+                                                        </div>
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </div>
+                        </div>
                     ) : (
                         <div className="p-8 text-center">
                             <Activity className="h-12 w-12 text-gray-400 mx-auto mb-4" />

@@ -146,6 +146,7 @@ export interface UploadResponse {
   fileName: string;
   fileSize: number;
   uploadedAt: string;
+  metadata?: ExtractedMetadata;
 }
 
 export interface ExtractedMetadata {
@@ -154,6 +155,7 @@ export interface ExtractedMetadata {
   keywords: string[];
   authors: Author[];
   affiliations: Affiliation[];
+  authorAffiliationMap?: Record<string, string>;
 }
 
 export interface UpdateMetadataRequest {
@@ -388,6 +390,7 @@ export interface RequestConfig {
   params?: Record<string, any>;
   headers?: Record<string, string>;
   timeout?: number;
+  retries?: number; // Number of retry attempts (default: 3, set to 0 to disable retries)
 }
 
 // User-Friendly Error Types

@@ -48,6 +48,7 @@ export const FileUpload = ({ processId, onFileUpload, uploadedFile }: FileUpload
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing' | 'completed' | 'error'>('idle');
   const [currentFileName, setCurrentFileName] = useState<string>('');
+  const [uploadResponseData, setUploadResponseData] = useState<UploadResponse | null>(null);
   const { toast } = useToast();
   const uploadMutation = useFileUpload();
 
@@ -136,22 +137,35 @@ export const FileUpload = ({ processId, onFileUpload, uploadedFile }: FileUpload
       });
 
       setUploadStatus('completed');
+      setUploadResponseData(uploadResponse);
       onFileUpload(uploadResponse);
 
+      // Success toast notification with metadata information
+      const metadataInfo = uploadResponse?.metadata?.title
+        ? `Metadata extracted successfully: ${uploadResponse.metadata.title}`
+        : 'File uploaded successfully';
+      
       toast({
         title: "File uploaded successfully",
-        description: `${file.name} (${formatFileSize(file.size)}) has been uploaded and is being processed for metadata extraction.`,
+        description: `${file.name} (${formatFileSize(file.size)}) - ${metadataInfo}`,
       });
     } catch (error: any) {
       setUploadStatus('error');
       console.error('File upload error:', error);
 
+      // Map error types to specific user-friendly messages
       let errorMessage = "There was an error uploading your file. Please try again.";
 
-      if (error.type === 'VALIDATION_ERROR') {
-        errorMessage = error.message;
+      if (error.type === 'FILE_FORMAT_ERROR') {
+        errorMessage = "Please upload a Word document (.doc, .docx)";
       } else if (error.type === 'NETWORK_ERROR') {
         errorMessage = "Network error. Please check your connection and try again.";
+      } else if (error.type === 'TIMEOUT_ERROR') {
+        errorMessage = "The upload operation timed out. This may be due to large file processing or high server load. Please try again.";
+      } else if (error.type === 'EXTERNAL_API_ERROR') {
+        errorMessage = "ScholarFinder API is temporarily unavailable. Please try again in a few minutes.";
+      } else if (error.type === 'VALIDATION_ERROR') {
+        errorMessage = error.message;
       } else if (error.type === 'SERVER_ERROR') {
         errorMessage = "Server error. Please try again later.";
       } else if (error.message) {
@@ -163,12 +177,12 @@ export const FileUpload = ({ processId, onFileUpload, uploadedFile }: FileUpload
         description: errorMessage,
         variant: "destructive",
       });
-    } finally {
-      setTimeout(() => {
-        setUploadProgress(0);
-        setUploadStatus('idle');
-        setCurrentFileName('');
-      }, 2000);
+
+      // Reset error state to allow user to retry immediately
+      // Clear progress indicator and reset to idle state
+      setUploadProgress(0);
+      setUploadStatus('idle');
+      setCurrentFileName('');
     }
   }, [processId, onFileUpload, toast, uploadMutation]);
 
@@ -190,11 +204,15 @@ export const FileUpload = ({ processId, onFileUpload, uploadedFile }: FileUpload
   };
 
   const removeFile = () => {
-    // Reset upload state - parent component should handle clearing the uploaded file
+    // Reset upload state
     setUploadProgress(0);
     setUploadStatus('idle');
     setCurrentFileName('');
-    // Note: We don't call onFileUpload(null) as the parent should manage this state
+    setUploadResponseData(null);
+    
+    // Notify parent component to clear the uploaded file
+    // Pass null or undefined to indicate file removal
+    onFileUpload(null as any);
   };
 
   const handleCancelUpload = () => {
@@ -213,7 +231,7 @@ export const FileUpload = ({ processId, onFileUpload, uploadedFile }: FileUpload
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="flex items-center justify-center w-10 h-10 bg-accent/10 rounded-lg">
+              <div className="flex items-center justify-center w-10 h-10 bg-accent/10 rounded-lg" aria-hidden="true">
                 <CheckCircle className="w-5 h-5 text-accent" />
               </div>
               <div>
@@ -221,12 +239,12 @@ export const FileUpload = ({ processId, onFileUpload, uploadedFile }: FileUpload
                 <CardDescription>Manuscript uploaded successfully</CardDescription>
               </div>
             </div>
-            <Button variant="ghost" size="sm" onClick={removeFile}>
-              <X className="w-4 h-4" />
+            <Button variant="ghost" size="sm" onClick={removeFile} aria-label="Remove uploaded file">
+              <X className="w-4 h-4" aria-hidden="true" />
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div className="flex items-center space-x-3 p-3 bg-background/50 rounded-lg">
             <FileText className="w-5 h-5 text-primary" />
             <div className="flex-1 min-w-0">
@@ -241,24 +259,11 @@ export const FileUpload = ({ processId, onFileUpload, uploadedFile }: FileUpload
     );
   }
 
-  // Show progress indicator during upload
-  if (uploadStatus !== 'idle' && currentFileName) {
-    return (
-      <FileUploadProgress
-        fileName={currentFileName}
-        progress={uploadProgress}
-        status={uploadStatus}
-        error={hasError ? 'Upload failed. Please try again.' : undefined}
-        onCancel={handleCancelUpload}
-      />
-    );
-  }
-
   return (
     <Card className="border-dashed border-2">
       <CardHeader>
         <CardTitle className="flex items-center space-x-2">
-          <Upload className="w-5 h-5" />
+          <Upload className="w-5 h-5" aria-hidden="true" />
           <span>Upload Manuscript</span>
         </CardTitle>
         <CardDescription>
@@ -279,6 +284,8 @@ export const FileUpload = ({ processId, onFileUpload, uploadedFile }: FileUpload
             setIsDragOver(true);
           }}
           onDragLeave={() => setIsDragOver(false)}
+          role="region"
+          aria-label="File upload area"
         >
           <div className="flex flex-col items-center space-y-4">
             <div className={cn(
@@ -323,6 +330,8 @@ export const FileUpload = ({ processId, onFileUpload, uploadedFile }: FileUpload
                   onChange={handleFileInput}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                   disabled={isUploading}
+                  aria-label="Choose manuscript file to upload"
+                  aria-describedby="file-requirements"
                 />
 
                 <Button variant="secondary" disabled={isUploading}>
@@ -332,7 +341,7 @@ export const FileUpload = ({ processId, onFileUpload, uploadedFile }: FileUpload
             )}
           </div>
 
-          <div className="mt-6 text-xs text-muted-foreground">
+          <div id="file-requirements" className="mt-6 text-xs text-muted-foreground">
             <p>Supported formats: {config.supportedFileTypes.join(', ')}</p>
             <p>Maximum file size: {Math.round(config.maxFileSize / (1024 * 1024))}MB</p>
           </div>

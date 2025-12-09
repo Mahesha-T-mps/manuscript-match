@@ -13,6 +13,7 @@ import type {
   KeywordStringResponse,
   DatabaseSearchResponse,
   ManualAuthorResponse,
+  ManualAuthorSearchResponse,
   ValidationResponse,
   RecommendationsResponse,
   KeywordSelection,
@@ -205,7 +206,7 @@ export class ScholarFinderApiService {
   constructor(apiConfig?: Partial<ScholarFinderApiConfig>) {
     // Use external API configuration pointing to the ScholarFinder Lambda API
     const defaultConfig: ScholarFinderApiConfig = {
-      baseURL: 'http://192.168.61.60:8000', // External ScholarFinder API URL
+      baseURL: config.scholarFinderApiUrl, // Use configured URL from environment
       timeout: 120000, // 2 minutes for external API calls
       retries: 3,
       retryDelay: 2000
@@ -406,7 +407,7 @@ export class ScholarFinderApiService {
   /**
    * Step 1: Upload manuscript and extract metadata
    */
-  async uploadManuscript(file: File, processId?: string): Promise<UploadResponse> {
+  async uploadManuscript(file: File, processId?: string, onProgress?: (progress: number) => void): Promise<UploadResponse> {
     if (!file) {
       throw {
         type: ScholarFinderErrorType.FILE_FORMAT_ERROR,
@@ -451,10 +452,11 @@ export class ScholarFinderApiService {
         url += `?process_id=${encodeURIComponent(processId)}`;
       }
 
-      // Use uploadFile method for proper file upload handling
+      // Use uploadFile method for proper file upload handling with progress tracking
       const response = await this.apiService.uploadFile<UploadResponse>(
         url,
-        file
+        file,
+        onProgress // Pass the progress callback through
       );
 
       return (response.data || response) as UploadResponse;
@@ -489,6 +491,7 @@ export class ScholarFinderApiService {
 
   /**
    * Step 3: Enhance keywords using AI
+   * Calls the /keyword_enhancement endpoint with job_id as query parameter
    */
   async enhanceKeywords(jobId: string): Promise<KeywordEnhancementResponse> {
     if (!jobId) {
@@ -501,8 +504,8 @@ export class ScholarFinderApiService {
 
     const response = await this.makeRequest<KeywordEnhancementResponse>(
       'POST',
-      '/keyword_enhancement',
-      { job_id: jobId },
+      `/keyword_enhancement?job_id=${encodeURIComponent(jobId)}`,
+      undefined,
       undefined,
       'keyword enhancement'
     );
@@ -530,18 +533,28 @@ export class ScholarFinderApiService {
       } as ScholarFinderError;
     }
 
-    const response = await this.makeRequest<KeywordStringResponse>(
-      'POST',
-      '/keyword_string_generator',
-      {
-        job_id: jobId,
-        ...keywords
-      },
-      undefined,
-      'keyword string generation'
-    );
-    
-    return response;
+    // The API expects application/x-www-form-urlencoded format
+    // Use URLSearchParams for proper form encoding
+    const formData = new URLSearchParams();
+    formData.append('primary_keywords_input', keywords.primary_keywords_input || '');
+    formData.append('secondary_keywords_input', keywords.secondary_keywords_input || '');
+
+    try {
+      // Use request method directly to pass custom headers
+      const response = await this.apiService.request<KeywordStringResponse>({
+        method: 'POST',
+        url: `/keyword_string_generator?job_id=${encodeURIComponent(jobId)}`,
+        data: formData.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      });
+      
+      return (response.data || response) as KeywordStringResponse;
+    } catch (error) {
+      const scholarFinderError = this.handleApiError(error, 'keyword string generation');
+      throw scholarFinderError;
+    }
   }
 
   /**
@@ -564,18 +577,40 @@ export class ScholarFinderApiService {
       } as ScholarFinderError;
     }
 
-    const response = await this.makeRequest<DatabaseSearchResponse>(
-      'POST',
-      '/database_search',
-      {
-        job_id: jobId,
-        ...databases
-      },
-      undefined,
-      'database search'
-    );
-    
-    return response;
+    // The API expects application/x-www-form-urlencoded format
+    // job_id as query parameter, selected_websites as form data (comma-separated)
+    const formData = new URLSearchParams();
+    const websitesString = databases.selected_websites.join(',');
+    formData.append('selected_websites', websitesString);
+
+    console.log('[ScholarFinderAPI] Database search request:', {
+      jobId,
+      websites: databases.selected_websites,
+      websitesString,
+      formData: formData.toString()
+    });
+
+    try {
+      // Use request method directly with extended timeout for long-running search
+      // Database search can take several minutes, so use a 10-minute timeout
+      const response = await this.apiService.request<DatabaseSearchResponse>({
+        method: 'POST',
+        url: `/database_search?job_id=${encodeURIComponent(jobId)}`,
+        data: formData.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        timeout: 600000 // 10 minutes for database search
+      });
+      
+      console.log('[ScholarFinderAPI] Database search response:', response);
+      // The database_search endpoint returns data directly, not wrapped in a data field
+      return response as any;
+    } catch (error) {
+      console.error('[ScholarFinderAPI] Database search error:', error);
+      const scholarFinderError = this.handleApiError(error, 'database search');
+      throw scholarFinderError;
+    }
   }
 
   /**
@@ -598,18 +633,116 @@ export class ScholarFinderApiService {
       } as ScholarFinderError;
     }
 
-    const response = await this.makeRequest<ManualAuthorResponse>(
-      'POST',
-      '/manual_authors',
-      {
-        job_id: jobId,
-        author_name: authorName.trim()
-      },
-      undefined,
-      'manual author search'
-    );
-    
-    return response;
+    // The API expects application/x-www-form-urlencoded format
+    const formData = new URLSearchParams();
+    formData.append('author_name', authorName.trim());
+
+    try {
+      const response = await this.apiService.request<ManualAuthorResponse>({
+        method: 'POST',
+        url: `/manual_authors?job_id=${encodeURIComponent(jobId)}`,
+        data: formData.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      });
+      
+      return response as any;
+    } catch (error) {
+      const scholarFinderError = this.handleApiError(error, 'manual author search');
+      throw scholarFinderError;
+    }
+  }
+
+  /**
+   * Step 5b: Search for manual author by name (new correct endpoint)
+   * This method uses the actual /manual_authors endpoint that returns author_data
+   * with name, email, aff, city, country fields
+   */
+  async searchManualAuthor(jobId: string, authorName: string): Promise<ManualAuthorSearchResponse> {
+    if (!jobId) {
+      const err = new Error('Job ID is required for manual author search');
+      (err as any).type = ScholarFinderErrorType.SEARCH_ERROR;
+      (err as any).retryable = false;
+      throw err;
+    }
+
+    if (!authorName || authorName.trim().length < 2) {
+      const err = new Error('Author name must be at least 2 characters long');
+      (err as any).type = ScholarFinderErrorType.SEARCH_ERROR;
+      (err as any).retryable = false;
+      throw err;
+    }
+
+    // The API expects application/x-www-form-urlencoded format
+    // job_id as query parameter, author_name as form data
+    const formData = new URLSearchParams();
+    formData.append('author_name', authorName.trim());
+
+    console.log('[ScholarFinderAPI] Manual author search request:', {
+      jobId,
+      authorName: authorName.trim(),
+      url: `/manual_authors?job_id=${encodeURIComponent(jobId)}`,
+      formData: formData.toString(),
+      retries: 0  // ← Verify this is being set
+    });
+
+    try {
+      // Use extended timeout for PubMed search (60 seconds as per requirements)
+      // IMPORTANT: Manual author search should NEVER retry automatically
+      // Set retries: 0 to disable automatic retries at the HTTP level
+      const requestConfig = {
+        method: 'POST' as const,
+        url: `/manual_authors?job_id=${encodeURIComponent(jobId)}`,
+        data: formData.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        timeout: 60000, // 60 seconds for PubMed search
+        retries: 0 // Disable retries - manual search should only be attempted once
+      };
+      
+      console.log('[ScholarFinderAPI] Request config retries:', requestConfig.retries);
+      
+      const response = await this.apiService.request<ManualAuthorSearchResponse>(requestConfig);
+      
+      console.log('[ScholarFinderAPI] Manual author search raw response:', response);
+      console.log('[ScholarFinderAPI] Response type:', typeof response);
+      console.log('[ScholarFinderAPI] Response keys:', Object.keys(response || {}));
+      
+      // The apiService.request returns response.data, which is the actual API response
+      // So response should already be { message, job_id, author_data }
+      return response as any;
+    } catch (error) {
+      console.error('[ScholarFinderAPI] Manual author search error:', error);
+      
+      // Handle 404 specifically for author not found
+      if (error.response?.status === 404) {
+        const errorMessage = error.response?.data?.error || `Author '${authorName}' not found. Please try a different name or check the spelling.`;
+        
+        // Create a proper Error instance with message property
+        const err = new Error(errorMessage);
+        // Preserve error type and details as additional properties
+        (err as any).type = ScholarFinderErrorType.SEARCH_ERROR;
+        (err as any).details = error.response?.data;
+        (err as any).retryable = false;
+        
+        throw err;
+      }
+      
+      const scholarFinderError = this.handleApiError(error, 'manual author search');
+      
+      // Convert ScholarFinderError to proper Error instance
+      const err = new Error(scholarFinderError.message);
+      (err as any).type = scholarFinderError.type;
+      (err as any).details = scholarFinderError.details;
+      (err as any).retryable = scholarFinderError.retryable;
+      if (scholarFinderError.retryAfter) {
+        (err as any).retryAfter = scholarFinderError.retryAfter;
+      }
+      
+      throw err;
+    }
   }
 
   /**
@@ -660,6 +793,8 @@ export class ScholarFinderApiService {
 
   /**
    * Step 7: Get reviewer recommendations
+   * Sorts reviewers by conditions_met score in descending order (highest first)
+   * to satisfy Requirement 14.2
    */
   async getRecommendations(jobId: string): Promise<RecommendationsResponse> {
     if (!jobId) {
@@ -672,11 +807,17 @@ export class ScholarFinderApiService {
 
     const response = await this.makeRequest<RecommendationsResponse>(
       'GET',
-      `/recommendations/${jobId}`,
+      `/recommended_reviewers?job_id=${jobId}`,
       undefined,
       undefined,
       'recommendations retrieval'
     );
+    
+    // Sort reviewers by conditions_met in descending order (highest scores first)
+    // This ensures Requirement 14.2 is satisfied: reviewers SHALL be sorted by score
+    if (response.data && response.data.reviewers && Array.isArray(response.data.reviewers)) {
+      response.data.reviewers.sort((a, b) => b.conditions_met - a.conditions_met);
+    }
     
     return response;
   }

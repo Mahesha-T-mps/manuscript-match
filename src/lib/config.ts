@@ -6,6 +6,7 @@
 export interface AppConfig {
     // API Configuration
     apiBaseUrl: string;
+    scholarFinderApiUrl: string;
     apiTimeout: number;
     apiRetryAttempts: number;
     apiRetryDelay: number;
@@ -150,12 +151,13 @@ const loadConfig = (): AppConfig => {
         
         // Load configuration values
         const apiBaseUrl = getEnvVar('VITE_API_BASE_URL', 'http://localhost:3002');
+        const scholarFinderApiUrl = getEnvVar('VITE_SCHOLARFINDER_API_URL', 'http://192.168.61.60:8000');
         const apiTimeout = getEnvNumber('VITE_API_TIMEOUT', 60000); // Increased to 60 seconds
         const apiRetryAttempts = getEnvNumber('VITE_API_RETRY_ATTEMPTS', 3);
         const apiRetryDelay = getEnvNumber('VITE_API_RETRY_DELAY', 1000);
         
-        const maxFileSize = getEnvNumber('VITE_MAX_FILE_SIZE', 104857600); // Increased to 100MB
-        const supportedFileTypes = getEnvVar('VITE_SUPPORTED_FILE_TYPES', 'pdf,docx,doc').split(',').map(type => type.trim());
+        const maxFileSize = getEnvNumber('VITE_MAX_FILE_SIZE', 52428800); // 50MB
+        const supportedFileTypes = getEnvVar('VITE_SUPPORTED_FILE_TYPES', 'docx,doc').split(',').map(type => type.trim());
         const uploadChunkSize = getEnvNumber('VITE_UPLOAD_CHUNK_SIZE', 1048576); // 1MB
         
         const jwtStorageKey = getEnvVar('VITE_JWT_STORAGE_KEY', 'scholarfinder_token');
@@ -179,6 +181,7 @@ const loadConfig = (): AppConfig => {
         const config: AppConfig = {
             // API Configuration
             apiBaseUrl,
+            scholarFinderApiUrl,
             apiTimeout,
             apiRetryAttempts,
             apiRetryDelay,
@@ -218,6 +221,7 @@ const loadConfig = (): AppConfig => {
 
         // Validate configuration
         validateUrl(config.apiBaseUrl, 'VITE_API_BASE_URL');
+        validateUrl(config.scholarFinderApiUrl, 'VITE_SCHOLARFINDER_API_URL');
         validatePositiveNumber(config.apiTimeout, 'VITE_API_TIMEOUT');
         validatePositiveNumber(config.apiRetryAttempts, 'VITE_API_RETRY_ATTEMPTS');
         validateNonNegativeNumber(config.apiRetryDelay, 'VITE_API_RETRY_DELAY');
@@ -275,11 +279,12 @@ try {
   // Fallback configuration
   config = {
     apiBaseUrl: 'http://localhost:3002',
+    scholarFinderApiUrl: 'http://192.168.61.60:8000',
     apiTimeout: 60000,
     apiRetryAttempts: 3,
     apiRetryDelay: 1000,
-    maxFileSize: 104857600,
-    supportedFileTypes: ['pdf', 'docx', 'doc'],
+    maxFileSize: 52428800,
+    supportedFileTypes: ['docx', 'doc'],
     uploadChunkSize: 1048576,
     jwtStorageKey: 'scholarfinder_token',
     tokenRefreshThreshold: 300000,
@@ -303,6 +308,7 @@ export { config };
 // Export individual config values for convenience
 export const {
     apiBaseUrl,
+    scholarFinderApiUrl,
     apiTimeout,
     apiRetryAttempts,
     apiRetryDelay,

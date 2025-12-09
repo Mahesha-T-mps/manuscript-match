@@ -39,6 +39,9 @@ export const ManualStep: React.FC<ManualStepProps> = ({
   isLoading: externalLoading = false,
   stepData
 }) => {
+  console.log('[ManualStep] Component render');
+  console.log('[ManualStep] Props:', { processId, jobId, stepData });
+  
   const { toast } = useToast();
   const { addManualAuthor } = useScholarFinderApi();
   const { data: process } = useProcess(processId);
@@ -55,17 +58,15 @@ export const ManualStep: React.FC<ManualStepProps> = ({
   }>>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [lastSearched, setLastSearched] = useState<Date | null>(null);
+  const [potentialReviewers, setPotentialReviewers] = useState<any[]>([]);
+
+  console.log('[ManualStep] Potential reviewers state:', potentialReviewers);
 
   // Loading states
   const isSearching = addManualAuthor.isPending;
   const isLoading = externalLoading || isSearching;
 
-  // Load existing data on mount
-  useEffect(() => {
-    loadExistingData();
-  }, [process, stepData]);
-
-  const loadExistingData = () => {
+  const loadExistingData = React.useCallback(() => {
     try {
       // Load from process step data if available
       const existingData = process?.stepData?.manual as ManualStepData;
@@ -86,9 +87,54 @@ export const ManualStep: React.FC<ManualStepProps> = ({
     } catch (error) {
       console.error('Failed to load existing manual data:', error);
     }
+  }, [process, stepData]);
+
+  const loadPotentialReviewers = () => {
+    try {
+      console.log('[ManualStep] Loading potential reviewers from database search...');
+      
+      let reviewers: any[] = [];
+      
+      // Try to load from stepData prop (passed from previous step)
+      if (stepData?.searchResults?.author_email_affiliation_preview) {
+        console.log('[ManualStep] Found in stepData');
+        reviewers = stepData.searchResults.author_email_affiliation_preview;
+      }
+      // Try to load from process step data
+      else if (process?.stepData?.search?.searchResults?.author_email_affiliation_preview) {
+        console.log('[ManualStep] Found in process.stepData.search');
+        reviewers = process.stepData.search.searchResults.author_email_affiliation_preview;
+      }
+      // Try localStorage as fallback
+      else if (jobId && typeof window !== 'undefined') {
+        const storedData = localStorage.getItem(`search_results_${jobId}`);
+        if (storedData) {
+          const parsedData = JSON.parse(storedData);
+          if (parsedData.author_email_affiliation_preview) {
+            console.log('[ManualStep] Found in localStorage');
+            reviewers = parsedData.author_email_affiliation_preview;
+          }
+        }
+      }
+      
+      console.log('[ManualStep] Total potential reviewers loaded:', reviewers.length);
+      setPotentialReviewers(reviewers);
+    } catch (error) {
+      console.error('[ManualStep] Error loading potential reviewers:', error);
+    }
   };
 
-  const handleSearch = async (authorName: string) => {
+  // Load existing data on mount
+  useEffect(() => {
+    loadExistingData();
+  }, [loadExistingData]);
+
+  // Load potential reviewers separately
+  useEffect(() => {
+    loadPotentialReviewers();
+  }, [process, stepData, jobId]);
+
+  const handleSearch = React.useCallback(async (authorName: string) => {
     if (!jobId) {
       toast({
         title: 'Error',
@@ -147,7 +193,7 @@ export const ManualStep: React.FC<ManualStepProps> = ({
         variant: 'destructive'
       });
     }
-  };
+  }, [jobId, addManualAuthor, toast]);
 
   const handleAddAuthor = (author: ManualAuthor) => {
     // Check if author is already added
@@ -277,19 +323,77 @@ export const ManualStep: React.FC<ManualStepProps> = ({
       {/* Step Header */}
       <Card>
         <CardHeader>
-          <div className="flex items-center space-x-3">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <UserPlus className="h-5 w-5 text-primary" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <UserPlus className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <CardTitle>Add Reviewers Manually</CardTitle>
+                <CardDescription>
+                  Search for and add specific reviewers by name to supplement your database search results
+                </CardDescription>
+              </div>
             </div>
-            <div>
-              <CardTitle>Add Reviewers Manually</CardTitle>
-              <CardDescription>
-                Search for and add specific reviewers by name to supplement your database search results
-              </CardDescription>
-            </div>
+            <Button
+              onClick={handleNext}
+              disabled={isLoading}
+              variant="outline"
+              className="ml-4"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  Skip to Validation
+                  <Users className="h-4 w-4 ml-2" />
+                </>
+              )}
+            </Button>
           </div>
         </CardHeader>
       </Card>
+
+      {/* Potential Reviewers from Database Search */}
+      {potentialReviewers.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Users className="h-5 w-5 text-blue-600" />
+              <span>Potential Reviewers from Database Search</span>
+            </CardTitle>
+            <CardDescription>
+              {potentialReviewers.length} reviewer{potentialReviewers.length !== 1 ? 's' : ''} found from database search
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
+              {potentialReviewers.map((reviewer, index) => (
+                <div
+                  key={index}
+                  className="flex items-start justify-between p-3 border rounded-lg bg-blue-50 border-blue-200"
+                >
+                  <div className="flex-1 space-y-1">
+                    <div className="font-medium text-blue-900">{reviewer.author}</div>
+                    {reviewer.email && (
+                      <div className="text-sm text-blue-700">{reviewer.email}</div>
+                    )}
+                    {reviewer.aff && (
+                      <div className="text-xs text-blue-600">{reviewer.aff}</div>
+                    )}
+                    {reviewer.country && (
+                      <div className="text-xs text-blue-600">{reviewer.country}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Save Status */}
       {(hasUnsavedChanges || lastSearched) && (
@@ -381,6 +485,30 @@ export const ManualStep: React.FC<ManualStepProps> = ({
                 </div>
               ))}
             </div>
+            
+            {/* Next Button after Added Authors */}
+            <div className="mt-6 pt-4 border-t flex justify-end">
+              <Button
+                onClick={handleNext}
+                disabled={isLoading}
+                className="min-w-[200px]"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <Users className="h-4 w-4 mr-2" />
+                    Next: Author Validation
+                    <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-800 text-xs rounded-full">
+                      +{addedAuthors.length}
+                    </span>
+                  </>
+                )}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -406,18 +534,20 @@ export const ManualStep: React.FC<ManualStepProps> = ({
         </Button>
 
         <div className="flex items-center space-x-3">
-          <Button
-            variant="outline"
-            onClick={() => handleSave(true)}
-            disabled={isLoading || !hasUnsavedChanges}
-          >
-            Save Progress
-          </Button>
+          {hasUnsavedChanges && (
+            <Button
+              variant="outline"
+              onClick={() => handleSave(true)}
+              disabled={isLoading}
+            >
+              Save Progress
+            </Button>
+          )}
 
           <Button
             onClick={handleNext}
             disabled={isLoading}
-            className="min-w-[140px]"
+            className="min-w-[180px]"
           >
             {isLoading ? (
               <>
@@ -427,9 +557,9 @@ export const ManualStep: React.FC<ManualStepProps> = ({
             ) : (
               <>
                 <Users className="h-4 w-4 mr-2" />
-                Continue to Validation
+                {addedAuthors.length > 0 ? 'Next: Author Validation' : 'Skip to Author Validation'}
                 {addedAuthors.length > 0 && (
-                  <span className="ml-1 px-2 py-0.5 bg-green-100 text-green-800 text-xs rounded-full">
+                  <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-800 text-xs rounded-full">
                     +{addedAuthors.length}
                   </span>
                 )}

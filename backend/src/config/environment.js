@@ -20,8 +20,8 @@ const envSchema = joi_1.default.object({
     JWT_SECRET: joi_1.default.string().min(32).required(),
     JWT_EXPIRES_IN: joi_1.default.string().default('24h'),
     // File Upload
-    MAX_FILE_SIZE: joi_1.default.number().positive().default(10485760), // 10MB
-    ALLOWED_FILE_TYPES: joi_1.default.string().default('application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword'),
+    MAX_FILE_SIZE: joi_1.default.number().positive().default(52428800), // 50MB
+    ALLOWED_FILE_TYPES: joi_1.default.string().default('application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword'),
     // External APIs
     PUBMED_API_URL: joi_1.default.string().uri().default('https://eutils.ncbi.nlm.nih.gov/entrez/eutils'),
     ELSEVIER_API_URL: joi_1.default.string().uri().default('https://api.elsevier.com'),

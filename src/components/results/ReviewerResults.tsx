@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,8 +8,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
-import { ReviewerResultsSkeleton, ReviewerCardSkeleton } from "@/components/ui/skeleton-components";
-import { VirtualReviewerList } from "@/components/ui/virtual-scroll";
+import { ReviewerResultsSkeleton } from "@/components/ui/skeleton-components";
+import { 
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { 
   Users, 
   Download, 
@@ -17,203 +24,278 @@ import {
   Mail, 
   Building, 
   BookOpen, 
-  ExternalLink, 
-  ChevronLeft, 
-  ChevronRight,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  ListPlus
 } from "lucide-react";
-import { usePaginatedRecommendations, useFilteredRecommendations, useRecommendationFilters } from "@/hooks/useRecommendations";
-import { useDebounce, useRenderPerformance } from "@/hooks/usePerformance";
+import { useRecommendations } from "@/hooks/useFiles";
+import { useCreateShortlist } from "@/hooks/useShortlists";
 import { ActivityLogger } from "@/services/activityLogger";
 import { toast } from "sonner";
-import type { Reviewer, RecommendationFilters, RecommendationSort } from "@/types/api";
+import { ExportReviewersDialog } from "./ExportReviewersDialog";
+import { exportReviewersAsCSV, exportReviewersAsJSON } from "@/utils/exportUtils";
+import type { Reviewer } from "@/features/scholarfinder/types/api";
 
 interface ReviewerResultsProps {
   processId: string;
-  onExport?: (selectedReviewers: Reviewer[]) => void;
 }
 
-export const ReviewerResults = ({ processId, onExport }: ReviewerResultsProps) => {
-  // Performance monitoring
-  useRenderPerformance('ReviewerResults');
-
-  // State for pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
-  
-  // State for filtering
-  const [filters, setFilters] = useState<RecommendationFilters>({});
+export const ReviewerResults = ({ processId }: ReviewerResultsProps) => {
+  // State for filtering and search
   const [searchTerm, setSearchTerm] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [useVirtualScrolling, setUseVirtualScrolling] = useState(false);
-  
-  // State for sorting
-  const [sort, setSort] = useState<RecommendationSort>({
-    field: 'matchScore',
-    direction: 'desc'
-  });
+  const [minConditionsMet, setMinConditionsMet] = useState(0);
+  const [selectedCountry, setSelectedCountry] = useState<string>("all");
   
   // State for selection
   const [selectedReviewerIds, setSelectedReviewerIds] = useState<Set<string>>(new Set());
-
-  // Debounced search term for better performance
-  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   
-  // Get filter options from backend
-  const { data: filterOptions } = useRecommendationFilters(processId);
+  // State for shortlist dialog
+  const [showShortlistDialog, setShowShortlistDialog] = useState(false);
+  const [shortlistName, setShortlistName] = useState("");
+  
+  // State for export dialog
+  const [showExportDialog, setShowExportDialog] = useState(false);
 
-  // Fetch recommendations with current filters, sort, and pagination
+  // Fetch recommendations from ScholarFinder API
   const { 
-    data: currentData, 
-    isLoading: currentLoading, 
-    error: currentError,
+    data: apiResponse, 
+    isLoading, 
+    error,
     refetch
-  } = usePaginatedRecommendations(
-    processId,
-    currentPage,
-    pageSize,
-    filters,
-    sort
-  );
+  } = useRecommendations(processId, true);
+  
+  // Shortlist creation mutation
+  const createShortlistMutation = useCreateShortlist();
 
-  const reviewers = currentData?.data || [];
-  const pagination = currentData?.pagination;
+  // Extract reviewers from API response
+  // API returns: { reviewers: Reviewer[], total_count: number, validation_summary: {...} }
+  const allReviewers = apiResponse?.reviewers || [];
+  const totalCount = apiResponse?.total_count || 0;
+  const validationSummary = apiResponse?.validation_summary;
 
-  // Reset page when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [filters, sort]);
+  // Client-side filtering and sorting
+  // Reviewers are already sorted by conditions_met (descending) from the API
+  const filteredReviewers = useMemo(() => {
+    let filtered = [...allReviewers];
 
-  // Refetch when search term changes (debounced)
-  useEffect(() => {
-    if (debouncedSearchTerm !== searchTerm) {
-      // Add search term to filters if it exists
-      const searchFilters = debouncedSearchTerm 
-        ? { ...filters, search: debouncedSearchTerm }
-        : filters;
-      
-      // Update filters to trigger refetch
-      setFilters(searchFilters);
+    // Filter by minimum conditions_met score
+    if (minConditionsMet > 0) {
+      filtered = filtered.filter(r => r.conditions_met >= minConditionsMet);
     }
-  }, [debouncedSearchTerm]);
 
-  // Use backend filter options or fallback to client-side calculation
-  const clientFilterOptions = useMemo(() => {
-    if (filterOptions) return filterOptions;
-    
-    // Fallback: calculate from current reviewers
-    const countries = [...new Set(reviewers.map(r => r.country))].sort();
-    const databases = [...new Set(reviewers.map(r => r.database))].sort();
-    const expertise = [...new Set(reviewers.flatMap(r => r.expertise))].sort();
-    
-    return { 
-      countries, 
-      databases, 
-      expertise, 
-      affiliationTypes: [],
-      publicationRange: { min: 0, max: 100 }
-    };
-  }, [reviewers, filterOptions]);
+    // Filter by country
+    if (selectedCountry && selectedCountry !== "all") {
+      filtered = filtered.filter(r => r.country === selectedCountry);
+    }
 
-  const getMatchScoreColor = (score: number) => {
-    if (score >= 85) return "bg-accent text-accent-foreground";
-    if (score >= 70) return "bg-primary text-primary-foreground";
-    if (score >= 50) return "bg-secondary text-secondary-foreground";
-    return "bg-muted text-muted-foreground";
+    // Filter by search term (name, affiliation, country)
+    if (searchTerm.trim()) {
+      const search = searchTerm.toLowerCase();
+      filtered = filtered.filter(r => 
+        r.reviewer.toLowerCase().includes(search) ||
+        r.aff.toLowerCase().includes(search) ||
+        r.country.toLowerCase().includes(search)
+      );
+    }
+
+    return filtered;
+  }, [allReviewers, minConditionsMet, selectedCountry, searchTerm]);
+
+  // Get unique countries for filter dropdown
+  const availableCountries = useMemo(() => {
+    const countries = [...new Set(allReviewers.map(r => r.country))];
+    return countries.sort();
+  }, [allReviewers]);
+
+  // Get color for conditions_met score badge
+  const getConditionsMetColor = (score: number) => {
+    if (score >= 7) return "bg-green-500 text-white";
+    if (score >= 5) return "bg-blue-500 text-white";
+    if (score >= 3) return "bg-yellow-500 text-white";
+    return "bg-gray-500 text-white";
   };
 
-  const handleSelectReviewer = (reviewerId: string, checked: boolean) => {
+  // Get validation criteria icon
+  const getValidationIcon = (satisfied: boolean) => {
+    return satisfied ? (
+      <CheckCircle2 className="w-4 h-4 text-green-500" />
+    ) : (
+      <XCircle className="w-4 h-4 text-gray-400" />
+    );
+  };
+
+  const handleSelectReviewer = useCallback((reviewerEmail: string, checked: boolean) => {
     const newSelectedIds = new Set(selectedReviewerIds);
     if (checked) {
-      newSelectedIds.add(reviewerId);
+      newSelectedIds.add(reviewerEmail);
     } else {
-      newSelectedIds.delete(reviewerId);
+      newSelectedIds.delete(reviewerEmail);
     }
     setSelectedReviewerIds(newSelectedIds);
-  };
+  }, [selectedReviewerIds]);
 
-  const handleSelectAll = (checked: boolean) => {
+  const handleSelectAll = useCallback((checked: boolean) => {
     if (checked) {
-      setSelectedReviewerIds(new Set(reviewers.map(r => r.id)));
+      setSelectedReviewerIds(new Set(filteredReviewers.map(r => r.email)));
     } else {
       setSelectedReviewerIds(new Set());
     }
-  };
+  }, [filteredReviewers]);
 
-  const handleSort = (field: RecommendationSort['field']) => {
-    setSort(prev => ({
-      field,
-      direction: prev.field === field && prev.direction === 'desc' ? 'asc' : 'desc'
-    }));
-  };
-
-  const handleFilterChange = (key: keyof RecommendationFilters, value: any) => {
-    setFilters(prev => ({
-      ...prev,
-      [key]: value
-    }));
-  };
-
-  const handleExport = async () => {
-    if (!onExport) {
-      toast.error("Export functionality not available");
-      return;
-    }
-
-    const selectedReviewers = reviewers.filter(r => selectedReviewerIds.has(r.id));
+  const handleOpenExportDialog = () => {
+    const selectedReviewers = filteredReviewers.filter(r => selectedReviewerIds.has(r.email));
     
     if (selectedReviewers.length === 0) {
       toast.error("Please select at least one reviewer to export");
       return;
     }
 
+    setShowExportDialog(true);
+  };
+
+  const handleExport = async (format: 'csv' | 'json') => {
+    const selectedReviewers = filteredReviewers.filter(r => selectedReviewerIds.has(r.email));
+    
+    if (selectedReviewers.length === 0) {
+      throw new Error("No reviewers selected");
+    }
+
     try {
+      // Export based on format
+      if (format === 'csv') {
+        exportReviewersAsCSV(selectedReviewers);
+      } else {
+        exportReviewersAsJSON(selectedReviewers);
+      }
+
       // Log the export activity
       const logger = ActivityLogger.getInstance();
       await logger.logActivity(
         'EXPORT',
-        `Exported ${selectedReviewers.length} reviewers`,
+        `Exported ${selectedReviewers.length} reviewers as ${format.toUpperCase()}`,
         JSON.stringify({
           processId,
+          format,
           reviewerCount: selectedReviewers.length,
-          reviewerNames: selectedReviewers.map(r => r.name),
-          databases: [...new Set(selectedReviewers.map(r => r.database))]
+          reviewerNames: selectedReviewers.map(r => r.reviewer),
+          averageConditionsMet: selectedReviewers.reduce((sum, r) => sum + r.conditions_met, 0) / selectedReviewers.length
         })
       );
-
-      onExport(selectedReviewers);
-      toast.success(`Exported ${selectedReviewers.length} reviewers successfully`);
     } catch (error) {
       console.error('Export error:', error);
-      toast.error("Failed to export reviewers. Please try again.");
+      throw error;
     }
   };
 
-  const getSortIcon = (field: RecommendationSort['field']) => {
-    if (sort.field !== field) return <ArrowUpDown className="w-4 h-4" />;
-    return sort.direction === 'desc' ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />;
+  const handleAddToShortlist = () => {
+    const selectedReviewers = filteredReviewers.filter(r => selectedReviewerIds.has(r.email));
+    
+    if (selectedReviewers.length === 0) {
+      toast.error("Please select at least one reviewer to add to shortlist");
+      return;
+    }
+
+    // Open the shortlist dialog
+    setShowShortlistDialog(true);
+  };
+
+  const handleCreateShortlist = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!shortlistName.trim()) {
+      toast.error("Please enter a shortlist name");
+      return;
+    }
+
+    const selectedReviewers = filteredReviewers.filter(r => selectedReviewerIds.has(r.email));
+    
+    if (selectedReviewers.length === 0) {
+      toast.error("Please select at least one reviewer");
+      return;
+    }
+
+    try {
+      // Create shortlist with reviewer emails as IDs
+      await createShortlistMutation.mutateAsync({
+        processId,
+        data: {
+          name: shortlistName,
+          selectedReviewers: selectedReviewers.map(r => r.email)
+        }
+      });
+
+      // Log the activity
+      const logger = ActivityLogger.getInstance();
+      await logger.logActivity(
+        'SHORTLIST_CREATED',
+        `Created shortlist "${shortlistName}" with ${selectedReviewers.length} reviewers`,
+        JSON.stringify({
+          processId,
+          shortlistName,
+          reviewerCount: selectedReviewers.length,
+          reviewerNames: selectedReviewers.map(r => r.reviewer),
+          averageConditionsMet: selectedReviewers.reduce((sum, r) => sum + r.conditions_met, 0) / selectedReviewers.length
+        })
+      );
+
+      toast.success(`Shortlist "${shortlistName}" created with ${selectedReviewers.length} reviewers`);
+      
+      // Reset state
+      setShowShortlistDialog(false);
+      setShortlistName("");
+      setSelectedReviewerIds(new Set());
+    } catch (error) {
+      console.error('Shortlist creation error:', error);
+      toast.error("Failed to create shortlist. Please try again.");
+    }
+  };
+
+  const handleCloseShortlistDialog = () => {
+    setShowShortlistDialog(false);
+    setShortlistName("");
   };
 
   // Handle loading state
-  if (currentLoading && !reviewers.length) {
+  if (isLoading) {
     return <ReviewerResultsSkeleton />;
   }
 
   // Handle error state
-  if (currentError) {
+  if (error) {
     return (
       <Card>
         <CardContent className="py-12">
           <div className="text-center">
-            <p className="text-destructive mb-4">Failed to load recommendations</p>
+            <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
+            <p className="text-destructive mb-2 font-semibold">Failed to load recommendations</p>
+            <p className="text-sm text-muted-foreground mb-4">
+              {error instanceof Error ? error.message : "An error occurred while fetching reviewer recommendations"}
+            </p>
             <Button 
               variant="outline" 
-              onClick={() => window.location.reload()}
+              onClick={() => refetch()}
             >
               Retry
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Handle no data state
+  if (!allReviewers || allReviewers.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-12">
+          <div className="text-center">
+            <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground mb-2">No reviewer recommendations available</p>
+            <p className="text-sm text-muted-foreground">
+              Please complete the validation step first to generate recommendations.
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -231,10 +313,11 @@ export const ReviewerResults = ({ processId, onExport }: ReviewerResultsProps) =
                 <span>Reviewer Recommendations</span>
               </CardTitle>
               <CardDescription>
-                {pagination ? (
-                  `Showing ${((currentPage - 1) * pageSize) + 1}-${Math.min(currentPage * pageSize, pagination.total)} of ${pagination.total} reviewers`
-                ) : (
-                  `Found ${reviewers.length} potential reviewers`
+                Showing {filteredReviewers.length} of {totalCount} validated reviewers
+                {validationSummary && (
+                  <span className="ml-2">
+                    • Average score: {validationSummary.average_conditions_met.toFixed(1)}/8
+                  </span>
                 )}
               </CardDescription>
             </div>
@@ -248,7 +331,15 @@ export const ReviewerResults = ({ processId, onExport }: ReviewerResultsProps) =
                 Filters
               </Button>
               <Button 
-                onClick={handleExport} 
+                onClick={handleAddToShortlist} 
+                variant="default"
+                disabled={selectedReviewerIds.size === 0}
+              >
+                <ListPlus className="w-4 h-4 mr-2" />
+                Add to Shortlist ({selectedReviewerIds.size})
+              </Button>
+              <Button 
+                onClick={handleOpenExportDialog} 
                 variant="outline"
                 disabled={selectedReviewerIds.size === 0}
               >
@@ -263,36 +354,24 @@ export const ReviewerResults = ({ processId, onExport }: ReviewerResultsProps) =
           <div className="flex flex-col sm:flex-row gap-4 mb-6">
             <div className="flex-1">
               <Input
-                placeholder="Search reviewers by name, affiliation, or expertise..."
+                placeholder="Search reviewers by name, affiliation, or country..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full"
               />
             </div>
             <div className="flex items-center space-x-2">
-              <Checkbox
-                id="virtual-scroll"
-                checked={useVirtualScrolling}
-                onCheckedChange={(checked) => setUseVirtualScrolling(checked === true)}
-              />
-              <label htmlFor="virtual-scroll" className="text-sm">
-                Virtual Scrolling
-              </label>
-            </div>
-            <div className="flex items-center space-x-2">
               <Select
-                value={filters.databases?.[0] || "all"}
-                onValueChange={(value) => 
-                  handleFilterChange('databases', value === 'all' ? undefined : [value])
-                }
+                value={selectedCountry}
+                onValueChange={setSelectedCountry}
               >
                 <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Database" />
+                  <SelectValue placeholder="Country" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Databases</SelectItem>
-                  {clientFilterOptions.databases.map(db => (
-                    <SelectItem key={db} value={db}>{db}</SelectItem>
+                  <SelectItem value="all">All Countries</SelectItem>
+                  {availableCountries.map((country: string) => (
+                    <SelectItem key={country} value={country}>{country}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -306,76 +385,49 @@ export const ReviewerResults = ({ processId, onExport }: ReviewerResultsProps) =
                 <CardTitle className="text-lg">Advanced Filters</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {/* Publication Count Range */}
+                <div className="space-y-4">
+                  {/* Minimum Conditions Met Filter */}
                   <div className="space-y-2">
-                    <Label>Publication Count</Label>
+                    <Label>Minimum Validation Score: {minConditionsMet}/8</Label>
                     <div className="px-3">
                       <Slider
-                        value={[filters.minPublications || 0, filters.maxPublications || 100]}
-                        onValueChange={([min, max]) => {
-                          handleFilterChange('minPublications', min);
-                          handleFilterChange('maxPublications', max);
-                        }}
-                        max={100}
+                        value={[minConditionsMet]}
+                        onValueChange={([value]) => setMinConditionsMet(value)}
+                        max={8}
                         step={1}
                         className="w-full"
                       />
                       <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                        <span>{filters.minPublications || 0}</span>
-                        <span>{filters.maxPublications || 100}+</span>
+                        <span>0 (All)</span>
+                        <span>8 (Perfect)</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Country Filter */}
-                  <div className="space-y-2">
-                    <Label>Country</Label>
-                    <Select
-                      value={filters.countries?.[0] || "all"}
-                      onValueChange={(value) => 
-                        handleFilterChange('countries', value === 'all' ? undefined : [value])
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select country" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Countries</SelectItem>
-                        {clientFilterOptions.countries.map(country => (
-                          <SelectItem key={country} value={country}>{country}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Expertise Filter */}
-                  <div className="space-y-2">
-                    <Label>Expertise Area</Label>
-                    <Select
-                      value={filters.expertise?.[0] || "all"}
-                      onValueChange={(value) => 
-                        handleFilterChange('expertise', value === 'all' ? undefined : [value])
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select expertise" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Expertise</SelectItem>
-                        {clientFilterOptions.expertise.slice(0, 20).map(exp => (
-                          <SelectItem key={exp} value={exp}>{exp}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {/* Validation Summary */}
+                  {validationSummary && (
+                    <div className="p-4 bg-muted rounded-lg">
+                      <h4 className="text-sm font-medium mb-2">Validation Summary</h4>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div>Total Authors: {validationSummary.total_authors}</div>
+                        <div>Validated: {validationSummary.authors_validated}</div>
+                        <div className="col-span-2">
+                          Average Score: {validationSummary.average_conditions_met.toFixed(2)}/8
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex justify-end space-x-2">
                   <Button 
                     variant="outline" 
                     size="sm"
-                    onClick={() => setFilters({})}
+                    onClick={() => {
+                      setMinConditionsMet(0);
+                      setSelectedCountry("all");
+                      setSearchTerm("");
+                    }}
                   >
                     Clear Filters
                   </Button>
@@ -384,47 +436,24 @@ export const ReviewerResults = ({ processId, onExport }: ReviewerResultsProps) =
             </Card>
           )}
 
-          {/* Sort Controls */}
+          {/* Selection Controls */}
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-muted-foreground">Sort by:</span>
-              <div className="flex items-center space-x-2">
-                <Button
-                  variant={sort.field === 'matchScore' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => handleSort('matchScore')}
-                >
-                  Match Score {sort.field === 'matchScore' && getSortIcon('matchScore')}
-                </Button>
-                <Button
-                  variant={sort.field === 'publicationCount' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => handleSort('publicationCount')}
-                >
-                  Publications {sort.field === 'publicationCount' && getSortIcon('publicationCount')}
-                </Button>
-                <Button
-                  variant={sort.field === 'name' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => handleSort('name')}
-                >
-                  Name {sort.field === 'name' && getSortIcon('name')}
-                </Button>
-              </div>
+            <div className="text-sm text-muted-foreground">
+              Sorted by validation score (highest first)
             </div>
             
-            {reviewers.length > 0 && (
+            {filteredReviewers.length > 0 && (
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="select-all"
-                  checked={reviewers.every(r => selectedReviewerIds.has(r.id))}
+                  checked={filteredReviewers.every(r => selectedReviewerIds.has(r.email))}
                   onCheckedChange={handleSelectAll}
                 />
                 <label
                   htmlFor="select-all"
                   className="text-sm font-medium cursor-pointer"
                 >
-                  Select All
+                  Select All ({filteredReviewers.length})
                 </label>
               </div>
             )}
@@ -432,168 +461,210 @@ export const ReviewerResults = ({ processId, onExport }: ReviewerResultsProps) =
 
           {/* Reviewers List */}
           <div className="space-y-4">
-            {currentLoading && reviewers.length === 0 ? (
-              <div className="space-y-4">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <ReviewerCardSkeleton key={i} />
-                ))}
-              </div>
-            ) : useVirtualScrolling && reviewers.length > 20 ? (
-              <VirtualReviewerList
-                reviewers={reviewers}
-                onSelectReviewer={handleSelectReviewer}
-                selectedReviewerIds={selectedReviewerIds}
-                containerHeight={600}
-                loading={currentLoading}
-              />
-            ) : (
-              reviewers.map((reviewer) => (
-                <Card key={reviewer.id} className="border-l-4 border-l-primary/30">
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-start space-x-3 flex-1">
-                        <Checkbox
-                          id={`reviewer-${reviewer.id}`}
-                          checked={selectedReviewerIds.has(reviewer.id)}
-                          onCheckedChange={(checked) => handleSelectReviewer(reviewer.id, checked as boolean)}
-                        />
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-3 mb-2">
-                            <h3 className="font-semibold text-lg">{reviewer.name}</h3>
-                            <Badge className={getMatchScoreColor(reviewer.matchScore)}>
-                              {reviewer.matchScore}% match
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">
-                              {reviewer.database}
-                            </Badge>
+            {filteredReviewers.map((reviewer) => (
+              <Card key={reviewer.email} className="border-l-4 border-l-primary/30" role="article" aria-label={`Reviewer: ${reviewer.reviewer}`}>
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-start space-x-3 flex-1">
+                      <Checkbox
+                        id={`reviewer-${reviewer.email}`}
+                        checked={selectedReviewerIds.has(reviewer.email)}
+                        onCheckedChange={(checked) => handleSelectReviewer(reviewer.email, checked as boolean)}
+                        aria-label={`Select reviewer ${reviewer.reviewer}`}
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-3 mb-2">
+                          <h3 className="font-semibold text-lg">{reviewer.reviewer}</h3>
+                          <Badge className={getConditionsMetColor(reviewer.conditions_met)} aria-label={`Validation score: ${reviewer.conditions_met} out of 8 criteria met`}>
+                            {reviewer.conditions_met}/8 criteria met
+                          </Badge>
+                        </div>
+                        
+                        <div className="space-y-1 text-sm text-muted-foreground">
+                          <div className="flex items-center">
+                            <Building className="w-4 h-4 mr-2" aria-hidden="true" />
+                            <span aria-label="Affiliation">{reviewer.aff}</span>
                           </div>
-                          
-                          <div className="space-y-1 text-sm text-muted-foreground">
-                            <div className="flex items-center">
-                              <Building className="w-4 h-4 mr-2" />
-                              {reviewer.affiliation}, {reviewer.country}
-                            </div>
-                            {reviewer.email && (
-                              <div className="flex items-center">
-                                <Mail className="w-4 h-4 mr-2" />
-                                {reviewer.email}
-                              </div>
-                            )}
-                            <div className="flex items-center">
-                              <BookOpen className="w-4 h-4 mr-2" />
-                              {reviewer.publicationCount} publications (last 10 years)
-                            </div>
+                          <div className="flex items-center">
+                            <Mail className="w-4 h-4 mr-2" aria-hidden="true" />
+                            <span aria-label="Email">{reviewer.email}</span>
+                          </div>
+                          <div className="flex items-center">
+                            <BookOpen className="w-4 h-4 mr-2" aria-hidden="true" />
+                            <span aria-label="Location">{reviewer.city}, {reviewer.country}</span>
                           </div>
                         </div>
                       </div>
-                      
-                      <Button variant="outline" size="sm">
-                        <ExternalLink className="w-4 h-4 mr-1" />
-                        View Profile
-                      </Button>
                     </div>
+                  </div>
 
-                    <Separator className="my-4" />
+                  <Separator className="my-4" />
 
-                    <div className="space-y-4">
-                      <div>
-                        <h4 className="text-sm font-medium mb-2">Expertise Areas</h4>
-                        <div className="flex flex-wrap gap-2">
-                          {reviewer.expertise.map((area, index) => (
-                            <Badge key={index} variant="secondary" className="text-xs">
-                              {area}
-                            </Badge>
-                          ))}
+                  <div className="space-y-4">
+                    {/* Publication Metrics */}
+                    <div role="region" aria-label="Publication metrics">
+                      <h4 className="text-sm font-medium mb-2">Publication Metrics</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                        <div className="p-2 bg-muted rounded">
+                          <div className="text-xs text-muted-foreground">Total</div>
+                          <div className="font-semibold">{reviewer.Total_Publications}</div>
+                        </div>
+                        <div className="p-2 bg-muted rounded">
+                          <div className="text-xs text-muted-foreground">Last 10 years</div>
+                          <div className="font-semibold">{reviewer['Publications (last 10 years)']}</div>
+                        </div>
+                        <div className="p-2 bg-muted rounded">
+                          <div className="text-xs text-muted-foreground">Last 5 years</div>
+                          <div className="font-semibold">{reviewer['Relevant Publications (last 5 years)']}</div>
+                        </div>
+                        <div className="p-2 bg-muted rounded">
+                          <div className="text-xs text-muted-foreground">Last 2 years</div>
+                          <div className="font-semibold">{reviewer['Publications (last 2 years)']}</div>
+                        </div>
+                        <div className="p-2 bg-muted rounded">
+                          <div className="text-xs text-muted-foreground">English</div>
+                          <div className="font-semibold">{reviewer.English_Pubs}</div>
+                        </div>
+                        <div className="p-2 bg-muted rounded">
+                          <div className="text-xs text-muted-foreground">Retractions</div>
+                          <div className="font-semibold">{reviewer.Retracted_Pubs_no}</div>
                         </div>
                       </div>
-
-                      {reviewer.recentPublications.length > 0 && (
-                        <div>
-                          <h4 className="text-sm font-medium mb-2">Recent Publications</h4>
-                          <div className="space-y-1">
-                            {reviewer.recentPublications.slice(0, 3).map((pub, index) => (
-                              <p key={index} className="text-xs text-muted-foreground leading-relaxed">
-                                • {pub}
-                              </p>
-                            ))}
-                            {reviewer.recentPublications.length > 3 && (
-                              <p className="text-xs text-primary">
-                                +{reviewer.recentPublications.length - 3} more publications
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      )}
                     </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
+
+                    {/* Validation Criteria */}
+                    <div role="region" aria-label="Validation criteria">
+                      <h4 className="text-sm font-medium mb-2">
+                        Validation Criteria ({reviewer.conditions_satisfied})
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm" role="list">
+                        <div className="flex items-center space-x-2">
+                          {getValidationIcon(reviewer['Publications (last 10 years)'] >= 8)}
+                          <span>Publications (last 10 years) ≥ 8</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {getValidationIcon(reviewer['Relevant Publications (last 5 years)'] >= 3)}
+                          <span>Relevant Publications (last 5 years) ≥ 3</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {getValidationIcon(reviewer['Publications (last 2 years)'] >= 1)}
+                          <span>Publications (last 2 years) ≥ 1</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {getValidationIcon(reviewer.English_Pubs > reviewer.Total_Publications / 2)}
+                          <span>English Publications &gt; 50%</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {getValidationIcon(!reviewer.coauthor)}
+                          <span>No Coauthorship</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {getValidationIcon(reviewer.aff_match === 'no')}
+                          <span>Different Affiliation</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {getValidationIcon(reviewer.country_match === 'yes')}
+                          <span>Same Country</span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {getValidationIcon(reviewer.Retracted_Pubs_no <= 1)}
+                          <span>No Retracted Publications</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
 
           {/* Empty State */}
-          {!currentLoading && reviewers.length === 0 && (
+          {filteredReviewers.length === 0 && (
             <div className="text-center py-12">
               <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground mb-2">No reviewers found matching your criteria.</p>
               <Button 
                 variant="outline" 
                 size="sm"
-                onClick={() => setFilters({})}
+                onClick={() => {
+                  setMinConditionsMet(0);
+                  setSelectedCountry("all");
+                  setSearchTerm("");
+                }}
               >
                 Clear Filters
               </Button>
             </div>
           )}
-
-          {/* Pagination */}
-          {pagination && pagination.totalPages > 1 && (
-            <div className="flex items-center justify-between mt-6">
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-muted-foreground">
-                  Page {currentPage} of {pagination.totalPages}
-                </span>
-                <Select
-                  value={pageSize.toString()}
-                  onValueChange={(value) => setPageSize(parseInt(value))}
-                >
-                  <SelectTrigger className="w-20">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10</SelectItem>
-                    <SelectItem value="20">20</SelectItem>
-                    <SelectItem value="50">50</SelectItem>
-                    <SelectItem value="100">100</SelectItem>
-                  </SelectContent>
-                </Select>
-                <span className="text-sm text-muted-foreground">per page</span>
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={!pagination.hasPreviousPage || currentLoading}
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage(prev => prev + 1)}
-                  disabled={!pagination.hasNextPage || currentLoading}
-                >
-                  Next
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          )}
         </CardContent>
       </Card>
+
+      {/* Shortlist Creation Dialog */}
+      <Dialog open={showShortlistDialog} onOpenChange={handleCloseShortlistDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Shortlist</DialogTitle>
+            <DialogDescription>
+              Create a new shortlist with {selectedReviewerIds.size} selected reviewer{selectedReviewerIds.size !== 1 ? 's' : ''}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleCreateShortlist} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="shortlist-name">Shortlist Name</Label>
+              <Input
+                id="shortlist-name"
+                placeholder="e.g., Primary Reviewers, Top Candidates"
+                value={shortlistName}
+                onChange={(e) => setShortlistName(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Selected Reviewers</Label>
+              <div className="max-h-48 overflow-y-auto border rounded-md p-3 space-y-2">
+                {filteredReviewers
+                  .filter(r => selectedReviewerIds.has(r.email))
+                  .map(reviewer => (
+                    <div key={reviewer.email} className="text-sm">
+                      <div className="font-medium">{reviewer.reviewer}</div>
+                      <div className="text-xs text-muted-foreground">{reviewer.email}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Score: {reviewer.conditions_met}/8 • {reviewer.aff}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCloseShortlistDialog}
+                disabled={createShortlistMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={createShortlistMutation.isPending || !shortlistName.trim()}
+              >
+                {createShortlistMutation.isPending ? 'Creating...' : 'Create Shortlist'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Export Reviewers Dialog */}
+      <ExportReviewersDialog
+        open={showExportDialog}
+        onOpenChange={setShowExportDialog}
+        reviewers={filteredReviewers.filter(r => selectedReviewerIds.has(r.email))}
+        onExport={handleExport}
+      />
     </div>
   );
 };

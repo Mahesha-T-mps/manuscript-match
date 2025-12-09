@@ -19,7 +19,6 @@ export interface FileValidationResult {
 export class ManuscriptProcessingService {
   private readonly MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
   private readonly SUPPORTED_MIME_TYPES = [
-    'application/pdf',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/msword'
   ];

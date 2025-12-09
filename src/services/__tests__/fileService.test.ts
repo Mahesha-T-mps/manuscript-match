@@ -4,18 +4,51 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fileService } from '../fileService';
-import { apiService } from '../apiService';
 import type { UploadResponse, ExtractedMetadata, UpdateMetadataRequest } from '../../types/api';
 
-// Mock the API service
+// Mock dependencies before importing fileService
 vi.mock('../apiService', () => ({
   apiService: {
     uploadFile: vi.fn(),
     get: vi.fn(),
     put: vi.fn(),
+    post: vi.fn(),
+    delete: vi.fn(),
+  },
+  ApiService: vi.fn().mockImplementation(() => ({
+    get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn(),
+    uploadFile: vi.fn(),
+  })),
+}));
+
+vi.mock('../../lib/config', () => ({
+  config: {
+    apiBaseUrl: 'http://localhost:3000',
+    apiTimeout: 30000,
+    enableDebugLogging: false,
   },
 }));
+
+vi.mock('../../features/scholarfinder/services/ScholarFinderApiService', () => ({
+  scholarFinderApiService: {
+    uploadManuscript: vi.fn(),
+    getMetadata: vi.fn(),
+    enhanceKeywords: vi.fn(),
+    generateKeywordString: vi.fn(),
+    searchDatabases: vi.fn(),
+    addManualAuthor: vi.fn(),
+    validateAuthors: vi.fn(),
+    getValidationStatus: vi.fn(),
+    getRecommendations: vi.fn(),
+  },
+  ScholarFinderApiService: vi.fn(),
+}));
+
+import { fileService } from '../fileService';
+import { apiService } from '../apiService';
 
 describe('FileService', () => {
   beforeEach(() => {
