@@ -239,13 +239,25 @@ class FileService {
    * Add manual author - uses ScholarFinder API
    */
   async addManualAuthor(processId: string, authorName: string): Promise<any> {
+    console.log('[fileService.addManualAuthor] 🔍 Called with:', { processId, authorName });
+    console.log('[fileService.addManualAuthor] ⏰ Timestamp:', new Date().toISOString());
+    
     const jobId = this.getJobId(processId);
+    console.log('[fileService.addManualAuthor] 📋 Retrieved jobId:', jobId);
+    
     if (!jobId) {
+      console.error('[fileService.addManualAuthor] ❌ No job ID found for process:', processId);
       throw new Error('No job ID found for this process. Please upload a file first.');
     }
 
+    console.log('[fileService.addManualAuthor] 🚀 Calling scholarFinderApiService.addManualAuthor');
     const response = await scholarFinderApiService.addManualAuthor(jobId, authorName);
-    return response.data;
+    console.log('[fileService.addManualAuthor] ✅ Response received:', response);
+    console.log('[fileService.addManualAuthor] 📊 Response type:', typeof response);
+    console.log('[fileService.addManualAuthor] 📊 Response keys:', response ? Object.keys(response) : 'response is null/undefined');
+    
+    // The API returns the data directly, not wrapped in a .data property
+    return response;
   }
 
   /**

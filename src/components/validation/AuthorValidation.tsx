@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Shield, AlertTriangle, CheckCircle, Search, UserPlus, Info } from 'lucide-react';
+import { Loader2, AlertTriangle, Search, UserPlus, Info } from 'lucide-react';
 import { useValidation, useAddManualAuthor } from '@/hooks/useValidation';
 
 interface ManualAuthor {
@@ -46,7 +46,7 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
   const [authorNameError, setAuthorNameError] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<ManualAuthor[] | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [selectedAuthors, setSelectedAuthors] = useState<ManualAuthor[]>([]);
+  const [lastSearchWarning, setLastSearchWarning] = useState<string | null>(null);
 
   const handleValidate = async () => {
     try {
@@ -94,25 +94,41 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
     
     try {
       const result = await addManualAuthorMutation.mutateAsync(authorName.trim());
-      setSearchResults(result.found_authors);
-      setSearchTerm(result.search_term);
+      console.log('[AuthorValidation] Search result:', result);
+      
+      // Handle the actual API response structure - just display results
+      if (result.author_data) {
+        // Convert the single author_data to the expected array format
+        const author: ManualAuthor = {
+          name: result.author_data.author || authorName.trim(),
+          email: result.author_data.email || undefined,
+          affiliation: result.author_data.aff || 'Unknown affiliation',
+          country: result.author_data.country || undefined,
+          publications: undefined // Not provided by this API
+        };
+        
+        // Just display the search results (no automatic addition)
+        setSearchResults([author]);
+        setSearchTerm(authorName.trim());
+        setLastSearchWarning(result.warning || null);
+        
+        // Clear the search input after successful search
+        setAuthorName('');
+      } else {
+        // No author data found
+        setSearchResults([]);
+        setSearchTerm(authorName.trim());
+        setLastSearchWarning(null);
+      }
     } catch (error) {
       // Error is handled by the mutation's onError
       setSearchResults(null);
+      setSearchTerm('');
+      setLastSearchWarning(null);
     }
   };
 
-  const handleSelectAuthor = (author: ManualAuthor) => {
-    // Add author to selected list
-    setSelectedAuthors(prev => [...prev, author]);
-    
-    // Remove from search results
-    setSearchResults(prev => prev ? prev.filter(a => a.name !== author.name) : null);
-    
-    // Show confirmation message
-    // Toast is already shown by the mutation, but we can add a specific selection message
-    console.log('Author selected:', author);
-  };
+
 
   return (
     <div className="space-y-6">
@@ -121,10 +137,10 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <UserPlus className="h-5 w-5" aria-hidden="true" />
-            Add Manual Author
+            Add Manual Authors
           </CardTitle>
           <CardDescription>
-            Search for and add specific authors as potential reviewers who may not appear in database searches.
+            Search for specific authors to view their information from PubMed database.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -168,48 +184,71 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
             </div>
           )}
 
-          {/* Search results */}
+          {/* Search results - display only */}
           {searchResults && searchResults.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Info className="h-4 w-4" />
                 <span>Found {searchResults.length} author(s) matching "{searchTerm}"</span>
               </div>
+              {lastSearchWarning && (
+                <Alert className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20">
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-amber-800 dark:text-amber-200">
+                    {lastSearchWarning}
+                  </AlertDescription>
+                </Alert>
+              )}
               <div className="space-y-2">
                 {searchResults.map((author, index) => (
                   <div
                     key={index}
-                    className="p-3 border rounded-lg hover:bg-accent/50 transition-colors"
+                    className="p-3 border rounded-lg bg-muted/30"
                   >
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <h4 className="font-medium">{author.name}</h4>
-                        <p className="text-sm text-muted-foreground">{author.affiliation}</p>
-                        {author.country && (
-                          <p className="text-sm text-muted-foreground">{author.country}</p>
+                    <div className="space-y-2">
+                      <h4 className="font-medium">{author.name}</h4>
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground">
+                          <span className="font-medium">Affiliation:</span> {author.affiliation}
+                        </p>
+                        {author.email ? (
+                          <p className="text-sm text-muted-foreground">
+                            <span className="font-medium">Email:</span> {author.email}
+                          </p>
+                        ) : (
+                          <p className="text-sm text-amber-600">
+                            <span className="font-medium">Email:</span> Not available
+                          </p>
                         )}
-                        {author.email && (
-                          <p className="text-sm text-muted-foreground">{author.email}</p>
+                        {author.country ? (
+                          <p className="text-sm text-muted-foreground">
+                            <span className="font-medium">Country:</span> {author.country}
+                          </p>
+                        ) : (
+                          <p className="text-sm text-amber-600">
+                            <span className="font-medium">Country:</span> Not available
+                          </p>
                         )}
                         {author.publications !== undefined && (
                           <p className="text-sm text-muted-foreground">
-                            Publications: {author.publications}
+                            <span className="font-medium">Publications:</span> {author.publications}
                           </p>
                         )}
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleSelectAuthor(author)}
-                      >
-                        Select
-                      </Button>
+                      {(!author.email || !author.country || author.affiliation === 'Unknown affiliation') && (
+                        <div className="mt-2 flex items-center gap-1 text-xs text-amber-600">
+                          <AlertTriangle className="h-3 w-3" />
+                          <span>Limited information available</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
+
+
 
           {/* No results */}
           {searchResults && searchResults.length === 0 && (
@@ -230,59 +269,11 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
             </Alert>
           )}
 
-          {/* Selected authors */}
-          {selectedAuthors.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <h4 className="font-medium">
-                  Selected Authors ({selectedAuthors.length})
-                </h4>
-              </div>
-              <div className="space-y-2">
-                {selectedAuthors.map((author, index) => (
-                  <div
-                    key={index}
-                    className="p-3 border rounded-lg bg-green-50 dark:bg-green-950/20"
-                  >
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <h4 className="font-medium text-green-900 dark:text-green-100">
-                          {author.name}
-                        </h4>
-                        <p className="text-sm text-green-700 dark:text-green-300">
-                          {author.affiliation}
-                        </p>
-                        {author.country && (
-                          <p className="text-sm text-green-700 dark:text-green-300">
-                            {author.country}
-                          </p>
-                        )}
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                          setSelectedAuthors(prev => prev.filter((_, i) => i !== index));
-                        }}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <Alert>
-                <CheckCircle className="h-4 w-4" />
-                <AlertDescription>
-                  {selectedAuthors.length} author(s) added to potential reviewers list. 
-                  These authors will be included in the validation process.
-                </AlertDescription>
-              </Alert>
-            </div>
-          )}
+
         </CardContent>
       </Card>
+
+
 
 
     </div>

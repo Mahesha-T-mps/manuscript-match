@@ -697,8 +697,15 @@ def manual_authors(
         logger.info("No existing author_email_df found, created empty DataFrame")
 
     # Search PubMed for author details
-    author_email, author_affiliation = search_pubmed_author(author_name)
-    logger.info(f"PubMed search result - email: {author_email}, affiliation: {author_affiliation}")
+    try:
+        author_email, author_affiliation = search_pubmed_author(author_name)
+        logger.info(f"PubMed search result - email: {author_email}, affiliation: {author_affiliation}")
+    except Exception as e:
+        logger.error(f"Error searching PubMed for author '{author_name}': {str(e)}")
+        return JSONResponse(
+            content={"error": f"Failed to search for author '{author_name}'. Please try again."},
+            status_code=500
+        )
 
     if not author_name.strip() or not author_email or not author_affiliation:
         # print(f"Author '{author_name}' not found or missing email/affiliation.")
@@ -709,19 +716,24 @@ def manual_authors(
         )
 
     # Extract city and country, ensuring they are strings
-    city = extract_city(author_affiliation.strip())
-    country = extract_country(author_affiliation.strip())
-    
-    # Convert to string if they are sets or other non-string types
-    if isinstance(city, set):
-        city = ', '.join(city) if city else ""
-    elif not isinstance(city, str):
-        city = str(city) if city else ""
-    
-    if isinstance(country, set):
-        country = ', '.join(country) if country else ""
-    elif not isinstance(country, str):
-        country = str(country) if country else ""
+    try:
+        city = extract_city(author_affiliation.strip())
+        country = extract_country(author_affiliation.strip())
+        
+        # Convert to string if they are sets or other non-string types
+        if isinstance(city, set):
+            city = ', '.join(city) if city else ""
+        elif not isinstance(city, str):
+            city = str(city) if city else ""
+        
+        if isinstance(country, set):
+            country = ', '.join(country) if country else ""
+        elif not isinstance(country, str):
+            country = str(country) if country else ""
+    except Exception as e:
+        logger.error(f"Error extracting city/country from affiliation: {str(e)}")
+        city = ""
+        country = ""
     
     new_author = {
         "author": author_name.strip(),

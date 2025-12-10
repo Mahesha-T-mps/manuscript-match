@@ -617,7 +617,12 @@ export class ScholarFinderApiService {
    * Step 5: Add manual author by name search
    */
   async addManualAuthor(jobId: string, authorName: string): Promise<ManualAuthorResponse> {
+    console.log('[ScholarFinderApiService.addManualAuthor] 🔍 Called with:', { jobId, authorName });
+    console.log('[ScholarFinderApiService.addManualAuthor] ⏰ Timestamp:', new Date().toISOString());
+    console.log('[ScholarFinderApiService.addManualAuthor] 📊 Call stack:', new Error().stack);
+    
     if (!jobId) {
+      console.error('[ScholarFinderApiService.addManualAuthor] ❌ No job ID provided');
       throw {
         type: ScholarFinderErrorType.SEARCH_ERROR,
         message: 'Job ID is required for manual author addition',
@@ -626,6 +631,7 @@ export class ScholarFinderApiService {
     }
 
     if (!authorName || authorName.trim().length < 2) {
+      console.error('[ScholarFinderApiService.addManualAuthor] ❌ Invalid author name:', authorName);
       throw {
         type: ScholarFinderErrorType.SEARCH_ERROR,
         message: 'Author name must be at least 2 characters long',
@@ -637,6 +643,9 @@ export class ScholarFinderApiService {
     const formData = new URLSearchParams();
     formData.append('author_name', authorName.trim());
 
+    console.log('[ScholarFinderApiService.addManualAuthor] 📤 Making API request to /manual_authors');
+    console.log('[ScholarFinderApiService.addManualAuthor] 🔗 URL:', `/manual_authors?job_id=${encodeURIComponent(jobId)}`);
+    
     try {
       const response = await this.apiService.request<ManualAuthorResponse>({
         method: 'POST',
@@ -647,9 +656,12 @@ export class ScholarFinderApiService {
         }
       });
       
+      console.log('[ScholarFinderApiService.addManualAuthor] ✅ API request successful:', response);
       return response as any;
     } catch (error) {
+      console.error('[ScholarFinderApiService.addManualAuthor] ❌ API request failed:', error);
       const scholarFinderError = this.handleApiError(error, 'manual author search');
+      console.error('[ScholarFinderApiService.addManualAuthor] 🔥 Throwing error:', scholarFinderError);
       throw scholarFinderError;
     }
   }
