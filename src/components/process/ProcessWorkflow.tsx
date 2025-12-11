@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { useProcess, useUpdateProcessStep } from '@/hooks/useProcesses';
 import { useSearch } from '@/hooks/useSearch';
-import { useRecommendations } from '@/hooks/useRecommendations';
+import { useRecommendations } from '@/hooks/useFiles';
 import { useShortlists } from '@/hooks/useShortlists';
 import { useMetadata } from '@/hooks/useFiles';
 import { useEnhanceKeywords } from '@/hooks/useKeywords';
@@ -45,7 +45,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                           process?.currentStep === 'RECOMMENDATIONS' ||
                           process?.currentStep === 'MANUAL_SEARCH';
   const searchHook = useSearch(processId, shouldPollSearch);
-  const { data: recommendations, isLoading: recommendationsLoading } = useRecommendations(processId);
+  const { data: recommendations, isLoading: recommendationsLoading, refetch: refetchRecommendations } = useRecommendations(processId);
   const shortlistsHook = useShortlists(processId);
   
   // Hook to check if metadata is loaded for the METADATA_EXTRACTION step
@@ -148,6 +148,20 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       keywordEnhancementTriggered.current = false;
     }
   }, [process?.currentStep, processId, enhanceKeywordsMutation, handleKeywordEnhancement, toast]);
+
+  // Auto-fetch recommendations when entering RECOMMENDATIONS step
+  useEffect(() => {
+    if (process?.currentStep === 'RECOMMENDATIONS') {
+      console.log('[ProcessWorkflow] Entered RECOMMENDATIONS step, processId:', processId);
+      console.log('[ProcessWorkflow] Recommendations data:', recommendations);
+      console.log('[ProcessWorkflow] Recommendations loading:', recommendationsLoading);
+      
+      if (refetchRecommendations) {
+        console.log('[ProcessWorkflow] Refetching recommendations...');
+        refetchRecommendations();
+      }
+    }
+  }, [process?.currentStep, processId, refetchRecommendations, recommendations, recommendationsLoading]);
 
   const handleKeywordsChange = useCallback((primary: string[], secondary: string[]) => {
     setPrimaryKeywords(primary);
@@ -303,67 +317,45 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         );
 
       case "RECOMMENDATIONS":
-        // Check search status to determine what to show
-        const { isSearching, isCompleted, isFailed, isNotStarted } = searchHook;
-        
-        if (recommendationsLoading || isSearching) {
+        // Show loading state while fetching recommendations
+        if (recommendationsLoading) {
           return (
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center justify-center space-x-2">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-                  <p className="text-muted-foreground">
-                    {isSearching ? 'Searching databases...' : 'Loading recommendations...'}
-                  </p>
+                  <p className="text-muted-foreground">Loading recommendations...</p>
                 </div>
               </CardContent>
             </Card>
           );
         }
         
-        if (isFailed) {
+        // Show recommendations if available
+        if (recommendations && recommendations.reviewers && recommendations.reviewers.length > 0) {
           return (
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-center text-muted-foreground">
-                  Search failed. Please try again or contact support.
-                </p>
-              </CardContent>
-            </Card>
+            <ReviewerResults 
+              processId={processId}
+              onShortlistCreated={() => handleStepChange('SHORTLIST')}
+            />
           );
         }
         
-        if (isNotStarted) {
-          return (
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-center text-muted-foreground">
-                  Please perform a search first to see reviewer recommendations.
+        // Show empty state or error
+        return (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center space-y-4">
+                <p className="text-muted-foreground">
+                  No reviewer recommendations found.
                 </p>
-              </CardContent>
-            </Card>
-          );
-        }
-        
-        return recommendations && recommendations.data && recommendations.data.length > 0 ? (
-          <ReviewerResults 
-            processId={processId}
-            onShortlistCreated={() => handleStepChange('SHORTLIST')}
-          />
-        ) : isCompleted ? (
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-center text-muted-foreground">
-                No reviewers found for your search criteria. Try adjusting your keywords or search parameters.
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-center text-muted-foreground">
-                Please perform a search first to see reviewer recommendations.
-              </p>
+                <Button 
+                  onClick={() => refetchRecommendations?.()}
+                  variant="outline"
+                >
+                  Retry Loading Recommendations
+                </Button>
+              </div>
             </CardContent>
           </Card>
         );

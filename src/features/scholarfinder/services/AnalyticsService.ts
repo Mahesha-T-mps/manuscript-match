@@ -292,7 +292,6 @@ class AnalyticsService {
       ProcessStep.VALIDATION,
       ProcessStep.RECOMMENDATIONS,
       ProcessStep.SHORTLIST,
-      ProcessStep.EXPORT,
     ];
     return stepOrder.indexOf(step);
   }
@@ -301,7 +300,7 @@ class AnalyticsService {
     if (!this.currentSession) return;
 
     const stepIndex = this.getStepIndex(step);
-    const totalSteps = 9; // Total workflow steps
+    const totalSteps = 8; // Total workflow steps
     const completionPercentage = ((stepIndex + 1) / totalSteps) * 100;
 
     monitoringService.trackAnalytics({
@@ -327,7 +326,7 @@ class AnalyticsService {
 
   private calculateCompletionRate(): number {
     if (!this.currentSession) return 0;
-    return (this.currentSession.completedSteps.length / 9) * 100;
+    return (this.currentSession.completedSteps.length / 8) * 100;
   }
 
   // Session management

@@ -275,7 +275,6 @@ const getStepIndex = (step: ProcessStep): number => {
     ProcessStep.VALIDATION,
     ProcessStep.RECOMMENDATIONS,
     ProcessStep.SHORTLIST,
-    ProcessStep.EXPORT,
   ];
   return stepOrder.indexOf(step);
 };

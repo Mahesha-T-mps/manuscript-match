@@ -226,14 +226,13 @@ export const ProcessDashboard: React.FC<ProcessDashboardProps> = ({ onSelectProc
       'VALIDATION': 6,
       'RECOMMENDATIONS': 7,
       'SHORTLIST': 8,
-      'EXPORT': 9,
     };
     return stepMap[stepId] || 1;
   };
 
   const getStepProgress = (currentStep: string) => {
     const stepOrder = getStepOrder(currentStep);
-    return Math.min((stepOrder / 9) * 100, 100); // 9 total steps
+    return Math.min((stepOrder / 8) * 100, 100); // 8 total steps
   };
 
   const getStageLabel = (stepId: string) => {
@@ -553,7 +552,7 @@ export const ProcessDashboard: React.FC<ProcessDashboardProps> = ({ onSelectProc
                 {/* Progress */}
                 <div>
                   <div className="flex justify-between text-sm mb-2">
-                    <span>Step {getStepOrder(process.currentStep || 'UPLOAD')} of 9</span>
+                    <span>Step {getStepOrder(process.currentStep || 'UPLOAD')} of 8</span>
                     <span>{Math.round(getStepProgress(process.currentStep || 'UPLOAD'))}%</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
