@@ -93,36 +93,53 @@ export const useAddManualAuthor = (processId: string) => {
       const totalFound = data.total_found || (data.author_data ? 1 : 0);
       const searchTerm = data.search_term || (data.author_data?.author) || 'unknown';
       
-      // Show success toast only if author was found
-      if (data.author_data && data.author_data.author) {
-        toast({
-          title: 'Author Found',
-          description: `Found "${data.author_data.author}" in PubMed database${data.warning ? ' (with limited information)' : ''}`,
-        });
-      } else {
-        toast({
-          title: 'No Author Found',
-          description: `No author found matching "${searchTerm}"`,
-          variant: 'destructive',
-        });
-      }
+      // Use setTimeout to avoid React warning about updating during render
+      setTimeout(() => {
+        // Show success toast only if author was found
+        if (data.author_data && data.author_data.author) {
+          toast({
+            title: 'Author Found',
+            description: `Found "${data.author_data.author}" in PubMed database${data.warning ? ' (with limited information)' : ''}`,
+          });
+        } else {
+          toast({
+            title: 'No Author Found',
+            description: `No author found matching "${searchTerm}"`,
+            variant: 'destructive',
+          });
+        }
+      }, 0);
       
       // Invalidate potential reviewers cache if it exists
       queryClient.invalidateQueries({ queryKey: ['potential-reviewers', processId] });
     },
-    onError: (error) => {
+    onError: (error: any) => {
       console.log('[useAddManualAuthor] ❌ onError - Search failed:', error);
       console.log('[useAddManualAuthor] 📝 Error details:', {
         message: error?.message,
         response: error?.response,
         status: error?.response?.status,
       });
+      
+      // Use setTimeout to avoid React warning about updating during render
+      setTimeout(() => {
+        // Show specific error message for 404 (author not found)
+        if (error?.message?.includes('not found')) {
+          toast({
+            title: 'Author Not Found',
+            description: error.message || 'Author not found in PubMed database.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Search Failed',
+            description: 'Failed to search for author. Please check your connection and try again.',
+            variant: 'destructive',
+          });
+        }
+      }, 0);
+      
       handleError(error);
-      toast({
-        title: 'Search Failed',
-        description: 'Failed to search for author. Please try again.',
-        variant: 'destructive',
-      });
     },
     onSettled: (data, error, variables) => {
       console.log('[useAddManualAuthor] 🏁 onSettled - Mutation completed');

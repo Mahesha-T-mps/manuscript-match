@@ -81,7 +81,7 @@ export interface Process {
   id: string;
   title: string;
   description: string;
-  currentStep: 'UPLOAD' | 'METADATA_EXTRACTION' | 'KEYWORD_ENHANCEMENT' | 'DATABASE_SEARCH' | 'MANUAL_SEARCH' | 'VALIDATION' | 'RECOMMENDATIONS' | 'SHORTLIST' | 'EXPORT';
+  currentStep: 'UPLOAD' | 'METADATA_EXTRACTION' | 'KEYWORD_ENHANCEMENT' | 'DATABASE_SEARCH' | 'MANUAL_SEARCH' | 'VALIDATION' | 'RECOMMENDATIONS' | 'SHORTLIST';
   status: 'CREATED' | 'UPLOADING' | 'PROCESSING' | 'SEARCHING' | 'VALIDATING' | 'COMPLETED' | 'ERROR';
   createdAt: string;
   updatedAt: string;

@@ -39,9 +39,10 @@ import type { Reviewer } from "@/features/scholarfinder/types/api";
 
 interface ReviewerResultsProps {
   processId: string;
+  onShortlistCreated?: () => void;
 }
 
-export const ReviewerResults = ({ processId }: ReviewerResultsProps) => {
+export const ReviewerResults = ({ processId, onShortlistCreated }: ReviewerResultsProps) => {
   // State for filtering and search
   const [searchTerm, setSearchTerm] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -246,6 +247,11 @@ export const ReviewerResults = ({ processId }: ReviewerResultsProps) => {
       setShowShortlistDialog(false);
       setShortlistName("");
       setSelectedReviewerIds(new Set());
+      
+      // Navigate to shortlist step if callback provided
+      if (onShortlistCreated) {
+        onShortlistCreated();
+      }
     } catch (error) {
       console.error('Shortlist creation error:', error);
       toast.error("Failed to create shortlist. Please try again.");

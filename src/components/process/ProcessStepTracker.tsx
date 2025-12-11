@@ -78,13 +78,6 @@ const PROCESS_STEPS: ProcessStepInfo[] = [
     description: 'Create shortlist of selected reviewers',
     icon: Users,
   },
-  {
-    id: 'EXPORT',
-    order: 9,
-    title: 'Export',
-    description: 'Export final reviewer recommendations',
-    icon: FileText,
-  },
 ];
 
 interface ProcessStepTrackerProps {

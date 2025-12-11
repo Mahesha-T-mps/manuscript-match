@@ -60,11 +60,21 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins (for development)
+    allow_origins=[
+        "http://localhost:8080",
+        "http://127.0.0.1:8080", 
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
+    ],  # Specific origins for better security
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods (GET, POST, etc.)
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
 )
+
+# Add OPTIONS handler for preflight requests
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str):
+    return {"message": "OK"}
 
 
 # -----------------------------------------------------------
@@ -697,21 +707,25 @@ def manual_authors(
         logger.info("No existing author_email_df found, created empty DataFrame")
 
     # Search PubMed for author details
+    author_email = ""
+    author_affiliation = ""
+    
     try:
         author_email, author_affiliation = search_pubmed_author(author_name)
         logger.info(f"PubMed search result - email: {author_email}, affiliation: {author_affiliation}")
     except Exception as e:
         logger.error(f"Error searching PubMed for author '{author_name}': {str(e)}")
+        # Instead of returning 500, return a 404 with author not found
         return JSONResponse(
-            content={"error": f"Failed to search for author '{author_name}'. Please try again."},
-            status_code=500
+            content={"error": f"Author '{author_name}' not found in PubMed database. Please check the spelling or try a different name."},
+            status_code=404
         )
 
-    if not author_name.strip() or not author_email or not author_affiliation:
-        # print(f"Author '{author_name}' not found or missing email/affiliation.")
+    # Check if author was found
+    if not author_email or not author_affiliation:
         logger.warning(f"Author '{author_name}' not found or missing email/affiliation.")
         return JSONResponse(
-            content={"error": f"Author '{author_name}' not found or missing email/affiliation."},
+            content={"error": f"Author '{author_name}' not found in PubMed database. Please check the spelling or try a different name."},
             status_code=404
         )
 
@@ -775,7 +789,7 @@ def manual_authors(
 # -----------------------------------------------------------
 @app.post("/validate_authors")
 def validate_authors(
-        job_id: str = Query(..., description="Unique job ID folder name created during upload_extract_metadata")
+        job_id: str = Form(..., description="Unique job ID")
 ):
     """
     Validate authors: fetch publication metrics, coauthoring, and condition scoring.

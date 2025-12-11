@@ -730,7 +730,7 @@ export class ScholarFinderApiService {
       
       // Handle 404 specifically for author not found
       if (error.response?.status === 404) {
-        const errorMessage = error.response?.data?.error || `Author '${authorName}' not found. Please try a different name or check the spelling.`;
+        const errorMessage = error.response?.data?.error || `Author '${authorName}' not found in PubMed database. Please check the spelling or try a different name.`;
         
         // Create a proper Error instance with message property
         const err = new Error(errorMessage);
@@ -769,15 +769,33 @@ export class ScholarFinderApiService {
       } as ScholarFinderError;
     }
 
-    const response = await this.makeRequest<ValidationResponse>(
-      'POST',
-      '/validate_authors',
-      { job_id: jobId },
-      undefined,
-      'author validation'
-    );
-    
-    return response;
+    // Use direct API call without retries for validation (long-running process)
+    try {
+      console.log('[ScholarFinderApiService.validateAuthors] 🚀 Starting validation for jobId:', jobId);
+      
+      // Send job_id as query parameter (as expected by the Python API)
+      const response = await this.apiService.request<ValidationResponse>({
+        method: 'POST',
+        url: `/validate_authors?job_id=${encodeURIComponent(jobId)}`,
+        timeout: 3600000, // 1 hour timeout for validation
+        retries: 0 // No retries for validation
+      });
+      
+      console.log('[ScholarFinderApiService.validateAuthors] ✅ Validation successful:', response);
+      return response as any;
+    } catch (error) {
+      console.error('[ScholarFinderApiService.validateAuthors] ❌ Validation failed:', error);
+      console.error('[ScholarFinderApiService.validateAuthors] 📊 Error details:', {
+        message: error?.message,
+        response: error?.response,
+        status: error?.response?.status,
+        data: error?.response?.data
+      });
+      
+      const scholarFinderError = this.handleApiError(error, 'author validation');
+      console.error('[ScholarFinderApiService.validateAuthors] 🔥 Throwing processed error:', scholarFinderError);
+      throw scholarFinderError;
+    }
   }
 
   /**
@@ -817,21 +835,64 @@ export class ScholarFinderApiService {
       } as ScholarFinderError;
     }
 
-    const response = await this.makeRequest<RecommendationsResponse>(
-      'GET',
-      `/recommended_reviewers?job_id=${jobId}`,
-      undefined,
-      undefined,
-      'recommendations retrieval'
-    );
-    
-    // Sort reviewers by conditions_met in descending order (highest scores first)
-    // This ensures Requirement 14.2 is satisfied: reviewers SHALL be sorted by score
-    if (response.data && response.data.reviewers && Array.isArray(response.data.reviewers)) {
-      response.data.reviewers.sort((a, b) => b.conditions_met - a.conditions_met);
+    console.log('[ScholarFinderApiService.getRecommendations] 🚀 Getting recommendations for jobId:', jobId);
+
+    try {
+      // Call the Python API endpoint
+      const response = await this.apiService.request<{
+        job_id: string;
+        reviewer_count: number;
+        reviewers: any[]; // Use any[] since we'll validate the structure
+      }>({
+        method: 'GET',
+        url: `/recommended_reviewers?job_id=${encodeURIComponent(jobId)}`,
+        timeout: 60000, // 1 minute timeout
+        retries: 0 // No retries for recommendations
+      });
+
+      console.log('[ScholarFinderApiService.getRecommendations] ✅ Raw API response:', response);
+
+      // Extract data from response (apiService.request returns response.data)
+      const responseData = (response as any).data || response;
+      const reviewers = responseData.reviewers || [];
+      
+      // Sort reviewers by conditions_met in descending order (highest scores first)
+      // This ensures Requirement 14.2 is satisfied: reviewers SHALL be sorted by score
+      reviewers.sort((a, b) => b.conditions_met - a.conditions_met);
+
+      const transformedResponse: RecommendationsResponse = {
+        message: 'Recommendations retrieved successfully',
+        job_id: responseData.job_id,
+        data: {
+          reviewers: reviewers,
+          total_count: responseData.reviewer_count || reviewers.length,
+          validation_summary: {
+            total_authors: reviewers.length,
+            authors_validated: reviewers.length,
+            conditions_applied: [
+              'Publications (last 10 years) >= 8',
+              'English publications > 50%',
+              'Not a coauthor',
+              'No affiliation conflict',
+              'Country match',
+              'Relevant publications (last 5 years) >= 3',
+              'Publications (last 2 years) >= 1',
+              'Retracted publications <= 1'
+            ],
+            average_conditions_met: reviewers.length > 0 
+              ? reviewers.reduce((sum, r) => sum + r.conditions_met, 0) / reviewers.length 
+              : 0
+          }
+        }
+      };
+
+      console.log('[ScholarFinderApiService.getRecommendations] ✅ Transformed response:', transformedResponse);
+      return transformedResponse;
+    } catch (error) {
+      console.error('[ScholarFinderApiService.getRecommendations] ❌ Failed to get recommendations:', error);
+      const scholarFinderError = this.handleApiError(error, 'recommendations retrieval');
+      throw scholarFinderError;
     }
-    
-    return response;
   }
 
   /**

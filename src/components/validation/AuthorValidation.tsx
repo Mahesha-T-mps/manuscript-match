@@ -120,11 +120,17 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
         setSearchTerm(authorName.trim());
         setLastSearchWarning(null);
       }
-    } catch (error) {
-      // Error is handled by the mutation's onError
-      setSearchResults(null);
-      setSearchTerm('');
+    } catch (error: any) {
+      // Handle specific error cases
+      console.error('[AuthorValidation] Search error:', error);
+      
+      // Set empty results for author not found
+      setSearchResults([]);
+      setSearchTerm(authorName.trim());
       setLastSearchWarning(null);
+      
+      // Clear the search input
+      setAuthorName('');
     }
   };
 
@@ -137,7 +143,7 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <UserPlus className="h-5 w-5" aria-hidden="true" />
-            Add Manual Authors
+            Add Authors Manually
           </CardTitle>
           <CardDescription>
             Search for specific authors to view their information from PubMed database.
@@ -273,9 +279,15 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
         </CardContent>
       </Card>
 
-
-
-
+      {/* Navigation buttons */}
+      <div className="flex justify-end">
+        <Button
+          onClick={onValidationComplete}
+          disabled={!onValidationComplete}
+        >
+          Continue to Validation
+        </Button>
+      </div>
     </div>
   );
 };
