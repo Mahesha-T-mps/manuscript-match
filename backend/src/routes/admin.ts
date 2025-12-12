@@ -59,7 +59,27 @@ router.get('/stats',
   adminController.getAdminStats
 );
 
+/**
+ * @route   GET /api/admin/processes
+ * @desc    Get all processes across all users for admin dashboard
+ * @access  Admin only
+ * @query   page, limit, sortBy, sortOrder, status, userId, dateFrom, dateTo, search
+ */
+router.get('/processes', 
+  logActivity('ADMIN_VIEW_ALL_PROCESSES'),
+  adminController.getAllProcesses
+);
 
+/**
+ * @route   GET /api/admin/users
+ * @desc    Get all users for admin dashboard
+ * @access  Admin only
+ * @query   page, limit, sortBy, sortOrder, role, search, dateFrom, dateTo
+ */
+router.get('/users', 
+  logActivity('ADMIN_VIEW_ALL_USERS'),
+  adminController.getAllUsers
+);
 
 /**
  * @route   GET /api/admin/users/:userId

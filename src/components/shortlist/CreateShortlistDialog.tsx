@@ -26,7 +26,15 @@ interface CreateShortlistDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   processId: string;
-  availableReviewers: Array<{ id: string; name: string; email?: string }>;
+  availableReviewers: Array<{ 
+    id: string; 
+    name: string; 
+    email?: string; 
+    affiliation?: string; 
+    country?: string; 
+    publications?: string;
+    conditions_met?: number;
+  }>;
 }
 
 export const CreateShortlistDialog: React.FC<CreateShortlistDialogProps> = ({
@@ -46,7 +54,8 @@ export const CreateShortlistDialog: React.FC<CreateShortlistDialogProps> = ({
 
   const filteredReviewers = availableReviewers.filter(reviewer =>
     reviewer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    reviewer.email?.toLowerCase().includes(searchTerm.toLowerCase())
+    reviewer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    reviewer.affiliation?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -189,26 +198,39 @@ export const CreateShortlistDialog: React.FC<CreateShortlistDialogProps> = ({
               ) : (
                 <div className="space-y-3">
                   {filteredReviewers.map((reviewer) => (
-                    <div key={reviewer.id} className="flex items-center space-x-3">
+                    <div key={reviewer.id} className="flex items-start space-x-3 p-2 rounded-md hover:bg-muted/50">
                       <Checkbox
                         id={`reviewer-${reviewer.id}`}
                         checked={formData.selectedReviewers.includes(reviewer.id)}
                         onCheckedChange={(checked) => 
                           handleReviewerToggle(reviewer.id, checked as boolean)
                         }
+                        className="mt-1"
                       />
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 space-y-1">
                         <Label 
                           htmlFor={`reviewer-${reviewer.id}`}
-                          className="text-sm font-medium cursor-pointer"
+                          className="text-sm font-medium cursor-pointer block"
                         >
-                          {reviewer.name}
+                          {reviewer.name || 'Unknown Author'}
                         </Label>
-                        {reviewer.email && (
-                          <p className="text-xs text-gray-500 truncate">
-                            {reviewer.email}
-                          </p>
-                        )}
+                        <div className="grid grid-cols-1 gap-1 text-xs text-muted-foreground">
+                          {reviewer.affiliation && (
+                            <div>
+                              <span className="font-medium">Affiliation:</span> {reviewer.affiliation}
+                            </div>
+                          )}
+                          {reviewer.email && (
+                            <div>
+                              <span className="font-medium">Email:</span> {reviewer.email}
+                            </div>
+                          )}
+                          {reviewer.country && (
+                            <div>
+                              <span className="font-medium">Country:</span> {reviewer.country}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}

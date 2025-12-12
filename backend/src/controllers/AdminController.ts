@@ -162,6 +162,124 @@ export class AdminController {
   };
 
   /**
+   * Get all processes across all users
+   * GET /api/admin/processes
+   */
+  getAllProcesses = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      // Validate pagination parameters
+      const { page = 1, limit = 50 } = validatePaginationParams(req.query);
+
+      // Extract filter parameters
+      const {
+        userId,
+        status,
+        sortBy = 'updatedAt',
+        sortOrder = 'desc',
+        dateFrom,
+        dateTo,
+        search
+      } = req.query;
+
+      // Validate date range if provided
+      if (dateFrom || dateTo) {
+        validateDateRange(dateFrom as string, dateTo as string);
+      }
+
+      // Build filters
+      const filters: any = {};
+      if (userId) filters.userId = userId as string;
+      if (status) filters.status = status as string;
+      if (sortBy) filters.sortBy = sortBy as string;
+      if (sortOrder) filters.sortOrder = sortOrder as 'asc' | 'desc';
+      if (dateFrom) filters.dateFrom = new Date(dateFrom as string);
+      if (dateTo) filters.dateTo = new Date(dateTo as string);
+      if (search) filters.search = search as string;
+
+      const result = await this.adminService.getAllProcesses(page, limit, filters);
+
+      const response: PaginatedResponse<any> = {
+        success: true,
+        data: result.processes,
+        pagination: {
+          page,
+          limit,
+          total: result.total,
+          totalPages: Math.ceil(result.total / limit),
+          hasNextPage: page * limit < result.total,
+          hasPreviousPage: page > 1
+        }
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  /**
+   * Get all users
+   * GET /api/admin/users
+   */
+  getAllUsers = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      // Validate pagination parameters
+      const { page = 1, limit = 50 } = validatePaginationParams(req.query);
+
+      // Extract filter parameters
+      const {
+        role,
+        search,
+        sortBy = 'createdAt',
+        sortOrder = 'desc',
+        dateFrom,
+        dateTo
+      } = req.query;
+
+      // Validate date range if provided
+      if (dateFrom || dateTo) {
+        validateDateRange(dateFrom as string, dateTo as string);
+      }
+
+      // Build filters
+      const filters: any = {};
+      if (role) filters.role = role as string;
+      if (search) filters.search = search as string;
+      if (sortBy) filters.sortBy = sortBy as string;
+      if (sortOrder) filters.sortOrder = sortOrder as 'asc' | 'desc';
+      if (dateFrom) filters.dateFrom = new Date(dateFrom as string);
+      if (dateTo) filters.dateTo = new Date(dateTo as string);
+
+      const result = await this.adminService.getAllUsers(page, limit, filters);
+
+      const response: PaginatedResponse<any> = {
+        success: true,
+        data: result.users,
+        pagination: {
+          page,
+          limit,
+          total: result.total,
+          totalPages: Math.ceil(result.total / limit),
+          hasNextPage: page * limit < result.total,
+          hasPreviousPage: page > 1
+        }
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  /**
    * Get detailed user information with processes and activity
    * GET /api/admin/users/:userId
    */

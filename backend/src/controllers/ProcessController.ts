@@ -59,6 +59,39 @@ export class ProcessController {
     this.activityLogService = new ActivityLogService(prisma);
   }
 
+  /**
+   * Get the default status for a given process step
+   */
+  private getDefaultStatusForStep(step: ProcessStep): ProcessStatus {
+    switch (step) {
+      case ProcessStep.UPLOAD:
+        return ProcessStatus.CREATED;
+      case ProcessStep.METADATA_EXTRACTION:
+        return ProcessStatus.PROCESSING;
+      case ProcessStep.KEYWORD_ENHANCEMENT:
+        return ProcessStatus.PROCESSING;
+      case ProcessStep.DATABASE_SEARCH:
+        return ProcessStatus.SEARCHING;
+      case ProcessStep.MANUAL_SEARCH:
+        return ProcessStatus.SEARCHING;
+      case ProcessStep.VALIDATION:
+        return ProcessStatus.VALIDATING;
+      case ProcessStep.RECOMMENDATIONS:
+        return ProcessStatus.PROCESSING;
+      case ProcessStep.SHORTLIST:
+        return ProcessStatus.COMPLETED; // Final step - mark as completed
+      default:
+        return ProcessStatus.PROCESSING;
+    }
+  }
+
+  /**
+   * Check if a step represents completion of the workflow
+   */
+  private isCompletionStep(step: ProcessStep): boolean {
+    return step === ProcessStep.SHORTLIST;
+  }
+
   // POST /api/processes - Create new process
   createProcess = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -325,11 +358,22 @@ export class ProcessController {
 
       const userId = req.user!.id;
       
+      // Determine appropriate status based on step if not provided
+      let status = value.status as ProcessStatus;
+      if (!status) {
+        status = this.getDefaultStatusForStep(value.step as ProcessStep);
+      }
+
+      // If this is a completion step, ensure status is COMPLETED
+      if (this.isCompletionStep(value.step as ProcessStep)) {
+        status = ProcessStatus.COMPLETED;
+      }
+      
       const process = await this.processService.updateProcessStep(
         processId, 
         userId, 
         value.step as ProcessStep, 
-        value.status as ProcessStatus
+        status
       );
 
       if (!process) {

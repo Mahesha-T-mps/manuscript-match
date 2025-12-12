@@ -18,7 +18,15 @@ import type { Shortlist } from '../../types/api';
 
 interface ShortlistManagerProps {
   processId: string;
-  availableReviewers?: Array<{ id: string; name: string; email?: string }>;
+  availableReviewers?: Array<{ 
+    id: string; 
+    name: string; 
+    email?: string; 
+    affiliation?: string; 
+    country?: string; 
+    publications?: string;
+    conditions_met?: number;
+  }>;
 }
 
 export const ShortlistManager: React.FC<ShortlistManagerProps> = ({
@@ -222,17 +230,34 @@ export const ShortlistManager: React.FC<ShortlistManagerProps> = ({
                             return (
                               <div 
                                 key={reviewerId} 
-                                className="flex items-center justify-between p-2 bg-muted rounded-md text-sm"
+                                className="flex items-center justify-between p-3 bg-muted rounded-md"
                               >
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-medium truncate">
-                                    {reviewer?.name || reviewerId}
+                                <div className="flex-1 min-w-0 space-y-1">
+                                  <div className="font-medium text-base">
+                                    {reviewer?.name || 'Unknown Author'}
                                   </div>
-                                  {reviewer?.email && (
-                                    <div className="text-xs text-muted-foreground truncate">
-                                      {reviewer.email}
-                                    </div>
-                                  )}
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-1 text-xs text-muted-foreground">
+                                    {reviewer?.affiliation && (
+                                      <div>
+                                        <span className="font-medium">Affiliation:</span> {reviewer.affiliation}
+                                      </div>
+                                    )}
+                                    {reviewer?.email && (
+                                      <div>
+                                        <span className="font-medium">Email:</span> {reviewer.email}
+                                      </div>
+                                    )}
+                                    {reviewer?.country && (
+                                      <div>
+                                        <span className="font-medium">Country:</span> {reviewer.country}
+                                      </div>
+                                    )}
+                                    {reviewer?.publications && (
+                                      <div>
+                                        <span className="font-medium">Publications:</span> {reviewer.publications}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                                 <Button
                                   variant="ghost"

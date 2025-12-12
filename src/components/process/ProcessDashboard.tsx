@@ -30,6 +30,87 @@ interface ProcessDashboardProps {
 export const ProcessDashboard: React.FC<ProcessDashboardProps> = ({ onSelectProcess }) => {
   useRenderPerformance('ProcessDashboard');
   
+  // Helper functions - moved to top to avoid hoisting issues
+  const getStepOrder = (stepId: string) => {
+    const stepMap: Record<string, number> = {
+      'UPLOAD': 1,
+      'METADATA_EXTRACTION': 2,
+      'KEYWORD_ENHANCEMENT': 3,
+      'DATABASE_SEARCH': 4,
+      'MANUAL_SEARCH': 5,
+      'VALIDATION': 6,
+      'RECOMMENDATIONS': 7,
+      'SHORTLIST': 8,
+    };
+    return stepMap[stepId] || 1;
+  };
+
+  const getStepProgress = (currentStep: string) => {
+    const stepOrder = getStepOrder(currentStep);
+    return Math.min((stepOrder / 8) * 100, 100); // 8 total steps
+  };
+
+  const getStageLabel = (stepId: string) => {
+    const stageLabels: Record<string, string> = {
+      'UPLOAD': 'Upload & Extract',
+      'METADATA_EXTRACTION': 'Metadata Extraction',
+      'KEYWORD_ENHANCEMENT': 'Keyword Enhancement',
+      'DATABASE_SEARCH': 'Database Search',
+      'MANUAL_SEARCH': 'Manual Search',
+      'VALIDATION': 'Validation',
+      'RECOMMENDATIONS': 'Recommendations',
+      'SHORTLIST': 'Shortlist',
+    };
+    return stageLabels[stepId] || stepId;
+  };
+
+  // Get status based on progress percentage instead of backend status
+  const getProgressBasedStatus = (currentStep: string) => {
+    const progress = getStepProgress(currentStep);
+    
+    if (progress >= 100) {
+      return 'Completed';
+    } else if (progress <= 12.5) { // First step (UPLOAD) is 12.5%
+      return 'Created';
+    } else {
+      return 'In Progress';
+    }
+  };
+
+  const getProgressBasedStatusColor = (currentStep: string) => {
+    const status = getProgressBasedStatus(currentStep);
+    
+    switch (status) {
+      case 'Completed':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'In Progress':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'Created':
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  // Keep the old function for backward compatibility if needed
+  const getStatusColor = (status: Process['status']) => {
+    switch (status) {
+      case 'COMPLETED':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'PROCESSING':
+      case 'SEARCHING':
+      case 'VALIDATING':
+      case 'UPLOADING':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'ERROR':
+        return 'bg-red-100 text-red-800 border-red-200';
+      case 'CREATED':
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+      default:
+        return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+  
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingProcess, setEditingProcess] = useState<Process | null>(null);
   const [useVirtualScrolling, setUseVirtualScrolling] = useState(false);
@@ -99,9 +180,12 @@ export const ProcessDashboard: React.FC<ProcessDashboardProps> = ({ onSelectProc
       });
     }
 
-    // Apply status filters (multiselect)
+    // Apply status filters (multiselect) - now based on progress
     if (statusFilters.length > 0) {
-      filtered = filtered.filter(process => statusFilters.includes(process.status));
+      filtered = filtered.filter(process => {
+        const progressBasedStatus = getProgressBasedStatus(process.currentStep || 'UPLOAD');
+        return statusFilters.includes(progressBasedStatus);
+      });
     }
 
     // Apply stage filters (multiselect)
@@ -120,16 +204,20 @@ export const ProcessDashboard: React.FC<ProcessDashboardProps> = ({ onSelectProc
           bValue = b.title?.toLowerCase() || '';
           break;
         case 'status':
-          aValue = a.status || '';
-          bValue = b.status || '';
+          aValue = getProgressBasedStatus(a.currentStep || 'UPLOAD');
+          bValue = getProgressBasedStatus(b.currentStep || 'UPLOAD');
           break;
         case 'currentStep':
-          aValue = getStepOrder(a.currentStep || 'UPLOAD');
-          bValue = getStepOrder(b.currentStep || 'UPLOAD');
+          // Primary sort by step order, secondary by creation date
+          aValue = getStepOrder(a.currentStep || 'UPLOAD') * 1000 + new Date(a.createdAt || 0).getTime() / 1000000;
+          bValue = getStepOrder(b.currentStep || 'UPLOAD') * 1000 + new Date(b.createdAt || 0).getTime() / 1000000;
           break;
         case 'progress':
-          aValue = getStepProgress(a.currentStep || 'UPLOAD');
-          bValue = getStepProgress(b.currentStep || 'UPLOAD');
+          // Primary sort by progress, secondary by update date for same progress
+          const aProgress = getStepProgress(a.currentStep || 'UPLOAD');
+          const bProgress = getStepProgress(b.currentStep || 'UPLOAD');
+          aValue = aProgress * 1000 + new Date(a.updatedAt || 0).getTime() / 1000000;
+          bValue = bProgress * 1000 + new Date(b.updatedAt || 0).getTime() / 1000000;
           break;
         case 'createdAt':
           aValue = new Date(a.createdAt || 0).getTime();
@@ -215,58 +303,7 @@ export const ProcessDashboard: React.FC<ProcessDashboardProps> = ({ onSelectProc
     }
   };
 
-  // Helper functions (non-hooks, can be anywhere)
-  const getStepOrder = (stepId: string) => {
-    const stepMap: Record<string, number> = {
-      'UPLOAD': 1,
-      'METADATA_EXTRACTION': 2,
-      'KEYWORD_ENHANCEMENT': 3,
-      'DATABASE_SEARCH': 4,
-      'MANUAL_SEARCH': 5,
-      'VALIDATION': 6,
-      'RECOMMENDATIONS': 7,
-      'SHORTLIST': 8,
-    };
-    return stepMap[stepId] || 1;
-  };
 
-  const getStepProgress = (currentStep: string) => {
-    const stepOrder = getStepOrder(currentStep);
-    return Math.min((stepOrder / 8) * 100, 100); // 8 total steps
-  };
-
-  const getStageLabel = (stepId: string) => {
-    const stageLabels: Record<string, string> = {
-      'UPLOAD': 'Upload & Extract',
-      'METADATA_EXTRACTION': 'Metadata Extraction',
-      'KEYWORD_ENHANCEMENT': 'Keyword Enhancement',
-      'DATABASE_SEARCH': 'Database Search',
-      'MANUAL_SEARCH': 'Manual Search',
-      'VALIDATION': 'Validation',
-      'RECOMMENDATIONS': 'Recommendations',
-      'SHORTLIST': 'Shortlist',
-      'EXPORT': 'Export',
-    };
-    return stageLabels[stepId] || stepId;
-  };
-
-  const getStatusColor = (status: Process['status']) => {
-    switch (status) {
-      case 'COMPLETED':
-        return 'bg-green-100 text-green-800 border-green-200';
-      case 'PROCESSING':
-      case 'SEARCHING':
-      case 'VALIDATING':
-      case 'UPLOADING':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      case 'ERROR':
-        return 'bg-red-100 text-red-800 border-red-200';
-      case 'CREATED':
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
 
   // Early returns AFTER all hooks
   if (isLoading) {
@@ -337,7 +374,7 @@ export const ProcessDashboard: React.FC<ProcessDashboardProps> = ({ onSelectProc
               <PopoverContent className="w-[200px] p-3" align="start">
                 <div className="space-y-2">
                   <div className="font-medium text-sm mb-2">Select Statuses</div>
-                  {['CREATED', 'UPLOADING', 'PROCESSING', 'SEARCHING', 'VALIDATING', 'COMPLETED', 'ERROR'].map((status) => (
+                  {['Created', 'In Progress', 'Completed'].map((status) => (
                     <div key={status} className="flex items-center space-x-2">
                       <Checkbox
                         id={`status-${status}`}
@@ -348,7 +385,7 @@ export const ProcessDashboard: React.FC<ProcessDashboardProps> = ({ onSelectProc
                         htmlFor={`status-${status}`}
                         className="text-sm cursor-pointer flex-1"
                       >
-                        {status.charAt(0) + status.slice(1).toLowerCase().replace('_', ' ')}
+                        {status}
                       </label>
                     </div>
                   ))}
@@ -381,7 +418,6 @@ export const ProcessDashboard: React.FC<ProcessDashboardProps> = ({ onSelectProc
                     { value: 'VALIDATION', label: 'Validation' },
                     { value: 'RECOMMENDATIONS', label: 'Recommendations' },
                     { value: 'SHORTLIST', label: 'Shortlist' },
-                    { value: 'EXPORT', label: 'Export' },
                   ].map((stage) => (
                     <div key={stage.value} className="flex items-center space-x-2">
                       <Checkbox
@@ -402,7 +438,10 @@ export const ProcessDashboard: React.FC<ProcessDashboardProps> = ({ onSelectProc
             </Popover>
 
             {/* Sort By */}
-            <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
+            <Select value={sortBy} onValueChange={(value: any) => {
+              console.log('[ProcessDashboard] Changing sort to:', value);
+              setSortBy(value);
+            }}>
               <SelectTrigger className="w-[160px]">
                 <ArrowUpDown className="w-4 h-4 mr-2" />
                 <SelectValue placeholder="Sort" />
@@ -535,8 +574,8 @@ export const ProcessDashboard: React.FC<ProcessDashboardProps> = ({ onSelectProc
                       {process.description || 'No description available'}
                     </CardDescription>
                   </div>
-                  <Badge className={getStatusColor(process.status || 'CREATED')}>
-                    {(process.status || 'CREATED').replace('_', ' ')}
+                  <Badge className={getProgressBasedStatusColor(process.currentStep || 'UPLOAD')}>
+                    {getProgressBasedStatus(process.currentStep || 'UPLOAD')}
                   </Badge>
                 </div>
               </CardHeader>

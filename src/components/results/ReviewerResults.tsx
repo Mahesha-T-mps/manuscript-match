@@ -40,9 +40,10 @@ import type { Reviewer } from "@/features/scholarfinder/types/api";
 interface ReviewerResultsProps {
   processId: string;
   onShortlistCreated?: () => void;
+  validationData?: any; // Optional validation data to display instead of fetching
 }
 
-export const ReviewerResults = ({ processId, onShortlistCreated }: ReviewerResultsProps) => {
+export const ReviewerResults = ({ processId, onShortlistCreated, validationData }: ReviewerResultsProps) => {
   // State for filtering and search
   const [searchTerm, setSearchTerm] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -59,22 +60,66 @@ export const ReviewerResults = ({ processId, onShortlistCreated }: ReviewerResul
   // State for export dialog
   const [showExportDialog, setShowExportDialog] = useState(false);
 
-  // Fetch recommendations from ScholarFinder API
+  // Fetch recommendations from ScholarFinder API (only if no validation data provided)
   const { 
     data: apiResponse, 
     isLoading, 
     error,
     refetch
-  } = useRecommendations(processId, true);
+  } = useRecommendations(processId, !validationData);
   
   // Shortlist creation mutation
   const createShortlistMutation = useCreateShortlist();
 
-  // Extract reviewers from API response
+  // Extract reviewers from API response or validation data
   // API returns: { reviewers: Reviewer[], total_count: number, validation_summary: {...} }
-  const allReviewers = apiResponse?.reviewers || [];
-  const totalCount = apiResponse?.total_count || 0;
-  const validationSummary = apiResponse?.validation_summary;
+  // Validation data returns: { data: { reviewers: [...] } }
+  const dataSource = validationData || apiResponse;
+  
+  // Transform validation data to match expected reviewer format
+  const rawReviewers = validationData ? (validationData.data?.reviewers || []) : (apiResponse?.reviewers || []);
+  const allReviewers = validationData ? rawReviewers.map((reviewer: any, index: number) => {
+    // Extract name using the same logic as ProcessWorkflow
+    let name = reviewer.name;
+    if (!name || name === 'Unknown Author' || name.trim() === '') {
+      if (reviewer.email) {
+        const emailParts = reviewer.email.split('@')[0];
+        name = emailParts
+          .replace(/[._-]/g, ' ')
+          .split(' ')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+          .join(' ');
+      } else {
+        name = `Reviewer ${index + 1}`;
+      }
+    }
+    
+    return {
+      reviewer: name,
+      email: reviewer.email || `reviewer-${index}@example.com`,
+      aff: reviewer.affiliation || 'Unknown affiliation',
+      country: reviewer.country || 'Unknown',
+      city: reviewer.city || 'Unknown',
+      conditions_met: reviewer.conditions_met || 0,
+      conditions_satisfied: `${reviewer.conditions_met || 0} of 8`,
+      Total_Publications: reviewer.publications || 0,
+      'Publications (last 10 years)': reviewer.publications_10y || 0,
+      'Relevant Publications (last 5 years)': reviewer.publications_5y || 0,
+      'Publications (last 2 years)': reviewer.publications_2y || 0,
+      English_Pubs: reviewer.english_pubs || 0,
+      Retracted_Pubs_no: reviewer.retracted_pubs || 0,
+      coauthor: reviewer.coauthor || false,
+      aff_match: reviewer.aff_match || 'no',
+      country_match: reviewer.country_match || 'yes'
+    };
+  }) : rawReviewers;
+  
+  const totalCount = validationData ? allReviewers.length : (apiResponse?.total_count || 0);
+  const validationSummary = validationData ? {
+    total_authors: allReviewers.length,
+    authors_validated: allReviewers.length,
+    average_conditions_met: allReviewers.reduce((sum: number, r: any) => sum + (r.conditions_met || 0), 0) / Math.max(allReviewers.length, 1)
+  } : apiResponse?.validation_summary;
 
   // Client-side filtering and sorting
   // Reviewers are already sorted by conditions_met (descending) from the API
@@ -263,13 +308,13 @@ export const ReviewerResults = ({ processId, onShortlistCreated }: ReviewerResul
     setShortlistName("");
   };
 
-  // Handle loading state
-  if (isLoading) {
+  // Handle loading state (only if not using validation data)
+  if (!validationData && isLoading) {
     return <ReviewerResultsSkeleton />;
   }
 
-  // Handle error state
-  if (error) {
+  // Handle error state (only if not using validation data)
+  if (!validationData && error) {
     return (
       <Card>
         <CardContent className="py-12">
@@ -316,7 +361,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated }: ReviewerResul
             <div>
               <CardTitle className="flex items-center space-x-2">
                 <Users className="w-5 h-5 text-primary" />
-                <span>Reviewer Recommendations</span>
+                <span>{validationData ? 'Reviewer Recommendations from Validation' : 'Reviewer Recommendations'}</span>
               </CardTitle>
               <CardDescription>
                 Showing {filteredReviewers.length} of {totalCount} validated reviewers

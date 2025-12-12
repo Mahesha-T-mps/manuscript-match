@@ -69,6 +69,8 @@ export function useReports(options: UseReportsOptions = {}) {
     queryKey: ['reports', 'processes', userId, dateRange, isAdmin],
     queryFn: async () => {
       try {
+        console.log('[useReports] Starting to fetch processes...', { isAdmin, userId, dateRange });
+        
         if (isAdmin) {
           try {
             // Check if adminService and its getProcesses method exist
@@ -84,24 +86,28 @@ export function useReports(options: UseReportsOptions = {}) {
               userId: userId === 'all' ? undefined : userId,
             });
             
-            console.log('[useReports] Admin processes fetched successfully:', response.data.length);
+            console.log('[useReports] Admin processes fetched successfully:', response.data?.length || 0);
             // Filter by date range
-            return filterProcessesByDateRange(response.data, dateRange);
+            const processes = response.data || [];
+            return filterProcessesByDateRange(processes, dateRange);
           } catch (adminError) {
             console.warn('[useReports] Admin service failed, falling back to regular process service:', adminError);
             // Fallback to regular process service for admin users
             const allProcesses = await processService.getProcesses();
-            return filterProcessesByDateRange(allProcesses, dateRange);
+            console.log('[useReports] Fallback processes fetched:', allProcesses?.length || 0);
+            return filterProcessesByDateRange(allProcesses || [], dateRange);
           }
         } else {
           // Regular users get their own processes
           console.log('[useReports] Fetching regular user processes...');
           const allProcesses = await processService.getProcesses();
-          return filterProcessesByDateRange(allProcesses, dateRange);
+          console.log('[useReports] Regular processes fetched:', allProcesses?.length || 0);
+          return filterProcessesByDateRange(allProcesses || [], dateRange);
         }
       } catch (error) {
         console.error('Error fetching processes for reports:', error);
-        throw error;
+        // Return empty array instead of throwing to prevent UI crash
+        return [];
       }
     },
     staleTime: 2 * 60 * 1000,
@@ -129,16 +135,16 @@ export function useReports(options: UseReportsOptions = {}) {
         }
         
         const response = await adminService.getUsers({ limit: 1000 });
-        console.log('[useReports] Users fetched successfully:', response.data.length, 'users');
+        console.log('[useReports] Users fetched successfully:', response.data?.length || 0, 'users');
         console.log('[useReports] Users data:', response.data);
-        return response.data;
+        return response.data || [];
       } catch (error) {
         console.error('Error fetching users for reports:', error);
         console.error('Error details:', {
-          message: error.message,
-          status: error.response?.status,
-          statusText: error.response?.statusText,
-          data: error.response?.data
+          message: error?.message,
+          status: error?.response?.status,
+          statusText: error?.response?.statusText,
+          data: error?.response?.data
         });
         // Return empty array on error so the UI doesn't break
         return [];
@@ -146,6 +152,7 @@ export function useReports(options: UseReportsOptions = {}) {
     },
     enabled: isAdmin,
     staleTime: 5 * 60 * 1000,
+    retry: false, // Don't retry failed admin requests
   });
 
   // Debug users data
@@ -163,10 +170,15 @@ export function useReports(options: UseReportsOptions = {}) {
       processCount: processes?.length, 
       isAdmin, 
       dateRange,
-      hasUsers: !!usersData 
+      hasUsers: !!usersData,
+      processes: processes
     });
 
-    if (!processes || processes.length === 0) {
+    // Ensure we have a valid processes array
+    const validProcesses = Array.isArray(processes) ? processes : [];
+    const validUsers = Array.isArray(usersData) ? usersData : [];
+
+    if (validProcesses.length === 0) {
       console.log('No processes available for reports');
       return {
         stats: {
@@ -182,38 +194,38 @@ export function useReports(options: UseReportsOptions = {}) {
         },
         timelineData: [],
         userActivityData: [],
-        users: usersData || [],
+        users: validUsers,
       };
     }
 
     // Calculate stats
-    const stats = calculateStats(processes);
+    const stats = calculateStats(validProcesses);
     console.log('Calculated stats:', stats);
     
     // Process status distribution
-    const byStatus = calculateStatusDistribution(processes);
+    const byStatus = calculateStatusDistribution(validProcesses);
     console.log('Status distribution:', byStatus);
     
     // Process stage distribution
-    const byStage = calculateStageDistribution(processes);
+    const byStage = calculateStageDistribution(validProcesses);
     console.log('Stage distribution:', byStage);
     
     // Timeline data
-    const timelineData = calculateTimelineData(processes, dateRange);
+    const timelineData = calculateTimelineData(validProcesses, dateRange);
     
     // User activity (admin only)
-    const userActivityData = isAdmin ? calculateUserActivity(processes) : [];
+    const userActivityData = isAdmin ? calculateUserActivity(validProcesses) : [];
 
     return {
       stats,
       processData: {
         byStatus,
         byStage,
-        processes,
+        processes: validProcesses,
       },
       timelineData,
       userActivityData,
-      users: usersData || [],
+      users: validUsers,
     };
   }, [processes, usersData, isAdmin, dateRange]);
 
@@ -246,44 +258,116 @@ function filterProcessesByDateRange(processes: (Process | AdminProcess)[], range
   return processes.filter(p => new Date(p.createdAt) >= cutoffDate);
 }
 
-function calculateStats(processes: (Process | AdminProcess)[]): ReportStats {
-  const total = processes.length;
-  const active = processes.filter(p => 
-    p.status === 'PROCESSING' || p.status === 'SEARCHING' || p.status === 'VALIDATING' || p.status === 'UPLOADING'
-  ).length;
-  const completed = processes.filter(p => p.status === 'COMPLETED').length;
-  const pending = processes.filter(p => p.status === 'CREATED').length;
+// Helper functions for progress-based status
+function getStepOrder(stepId: string): number {
+  const stepMap: Record<string, number> = {
+    'UPLOAD': 1,
+    'METADATA_EXTRACTION': 2,
+    'KEYWORD_ENHANCEMENT': 3,
+    'DATABASE_SEARCH': 4,
+    'MANUAL_SEARCH': 5,
+    'VALIDATION': 6,
+    'RECOMMENDATIONS': 7,
+    'SHORTLIST': 8,
+  };
+  return stepMap[stepId] || 1;
+}
 
-  // Calculate average completion time for completed processes
-  const completedProcesses = processes.filter(p => p.status === 'COMPLETED');
+function getStepProgress(currentStep: string): number {
+  const stepOrder = getStepOrder(currentStep);
+  return Math.min((stepOrder / 8) * 100, 100); // 8 total steps
+}
+
+function getProgressBasedStatus(currentStep: string): string {
+  const progress = getStepProgress(currentStep);
+  
+  if (progress >= 100) {
+    return 'Completed';
+  } else if (progress <= 12.5) { // First step (UPLOAD) is 12.5%
+    return 'Created';
+  } else {
+    return 'In Progress';
+  }
+}
+
+function calculateStats(processes: (Process | AdminProcess)[]): ReportStats {
+  if (!Array.isArray(processes)) {
+    console.warn('calculateStats received non-array:', processes);
+    return {
+      totalProcesses: 0,
+      activeProcesses: 0,
+      completedProcesses: 0,
+      pendingProcesses: 0,
+    };
+  }
+
+  const total = processes.length;
+  
+  // Use progress-based status instead of backend status
+  const completed = processes.filter(p => {
+    const progressStatus = getProgressBasedStatus(p?.currentStep || 'UPLOAD');
+    return progressStatus === 'Completed';
+  }).length;
+  
+  const pending = processes.filter(p => {
+    const progressStatus = getProgressBasedStatus(p?.currentStep || 'UPLOAD');
+    return progressStatus === 'Created';
+  }).length;
+  
+  // Active processes = all processes except completed ones (includes both Created and In Progress)
+  const active = total - completed;
+
+  // Calculate average completion time for completed processes (progress-based)
+  const completedProcesses = processes.filter(p => {
+    const progressStatus = getProgressBasedStatus(p?.currentStep || 'UPLOAD');
+    return progressStatus === 'Completed' && p?.createdAt && p?.updatedAt;
+  });
   let averageCompletionTime: number | undefined;
   
   if (completedProcesses.length > 0) {
-    const totalTime = completedProcesses.reduce((sum, p) => {
-      const created = new Date(p.createdAt).getTime();
-      const updated = new Date(p.updatedAt).getTime();
-      return sum + (updated - created);
-    }, 0);
-    averageCompletionTime = totalTime / completedProcesses.length / (1000 * 60 * 60 * 24); // Convert to days
+    try {
+      const totalTime = completedProcesses.reduce((sum, p) => {
+        const created = new Date(p.createdAt).getTime();
+        const updated = new Date(p.updatedAt).getTime();
+        if (isNaN(created) || isNaN(updated)) {
+          console.warn('Invalid date in process:', p);
+          return sum;
+        }
+        return sum + (updated - created);
+      }, 0);
+      averageCompletionTime = totalTime / completedProcesses.length / (1000 * 60 * 60 * 24); // Convert to days
+    } catch (error) {
+      console.error('Error calculating average completion time:', error);
+    }
   }
 
-  return {
+  const stats = {
     totalProcesses: total,
     activeProcesses: active,
     completedProcesses: completed,
     pendingProcesses: pending,
     averageCompletionTime,
   };
+
+  console.log('Calculated stats:', stats);
+  return stats;
 }
 
 function calculateStatusDistribution(processes: (Process | AdminProcess)[]): ProcessStatusData[] {
+  if (!Array.isArray(processes) || processes.length === 0) {
+    return [];
+  }
+
   const statusCounts: Record<string, number> = {};
   
   processes.forEach(p => {
-    statusCounts[p.status] = (statusCounts[p.status] || 0) + 1;
+    if (p?.currentStep) {
+      const progressStatus = getProgressBasedStatus(p.currentStep);
+      statusCounts[progressStatus] = (statusCounts[progressStatus] || 0) + 1;
+    }
   });
 
-  const total = processes.length || 1;
+  const total = processes.length;
   
   return Object.entries(statusCounts).map(([status, count]) => ({
     status,
@@ -293,13 +377,19 @@ function calculateStatusDistribution(processes: (Process | AdminProcess)[]): Pro
 }
 
 function calculateStageDistribution(processes: (Process | AdminProcess)[]): ProcessStageData[] {
+  if (!Array.isArray(processes) || processes.length === 0) {
+    return [];
+  }
+
   const stageCounts: Record<string, number> = {};
   
   processes.forEach(p => {
-    stageCounts[p.currentStep] = (stageCounts[p.currentStep] || 0) + 1;
+    if (p?.currentStep) {
+      stageCounts[p.currentStep] = (stageCounts[p.currentStep] || 0) + 1;
+    }
   });
 
-  const total = processes.length || 1;
+  const total = processes.length;
   
   return Object.entries(stageCounts).map(([stage, count]) => ({
     stage,

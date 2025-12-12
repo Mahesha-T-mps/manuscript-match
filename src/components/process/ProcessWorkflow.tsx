@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { ArrowLeft, Save, User, Mail, MapPin, BookOpen, Award } from 'lucide-react';
+import { ArrowLeft, User, Mail, MapPin, BookOpen, Award } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
@@ -54,21 +54,98 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   // Hook for enhancing keywords
   const enhanceKeywordsMutation = useEnhanceKeywords();
 
-  // Local state for workflow data
+  // Local state for workflow data with localStorage persistence
+  const getStorageKey = (key: string) => `process_${processId}_${key}`;
+  
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [uploadResponse, setUploadResponse] = useState<any>(null);
-  const [enhancedKeywords, setEnhancedKeywords] = useState<EnhancedKeywords | null>(null);
-  const [primaryKeywords, setPrimaryKeywords] = useState<string[]>([]);
-  const [secondaryKeywords, setSecondaryKeywords] = useState<string[]>([]);
-  const [keywordString, setKeywordString] = useState<string>('');
-  const [searchCompleted, setSearchCompleted] = useState(false);
+  const [uploadResponse, setUploadResponse] = useState<any>(() => {
+    const saved = localStorage.getItem(getStorageKey('uploadResponse'));
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [enhancedKeywords, setEnhancedKeywords] = useState<EnhancedKeywords | null>(() => {
+    const saved = localStorage.getItem(getStorageKey('enhancedKeywords'));
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [primaryKeywords, setPrimaryKeywords] = useState<string[]>(() => {
+    const saved = localStorage.getItem(getStorageKey('primaryKeywords'));
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [secondaryKeywords, setSecondaryKeywords] = useState<string[]>(() => {
+    const saved = localStorage.getItem(getStorageKey('secondaryKeywords'));
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [keywordString, setKeywordString] = useState<string>(() => {
+    const saved = localStorage.getItem(getStorageKey('keywordString'));
+    return saved || '';
+  });
+  const [searchCompleted, setSearchCompleted] = useState(() => {
+    const saved = localStorage.getItem(getStorageKey('searchCompleted'));
+    return saved ? JSON.parse(saved) : false;
+  });
   const [isValidating, setIsValidating] = useState(false);
-  const [validationCompleted, setValidationCompleted] = useState(false);
-  const [validationRecommendations, setValidationRecommendations] = useState<any>(null);
+  const [validationCompleted, setValidationCompleted] = useState(() => {
+    const saved = localStorage.getItem(getStorageKey('validationCompleted'));
+    return saved ? JSON.parse(saved) : false;
+  });
+  const [validationRecommendations, setValidationRecommendations] = useState<any>(() => {
+    const saved = localStorage.getItem(getStorageKey('validationRecommendations'));
+    return saved ? JSON.parse(saved) : null;
+  });
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
   
   // Track if keyword enhancement has been triggered for this process
   const keywordEnhancementTriggered = useRef(false);
+
+  // Auto-save workflow state to localStorage
+  useEffect(() => {
+    if (uploadResponse) {
+      localStorage.setItem(getStorageKey('uploadResponse'), JSON.stringify(uploadResponse));
+    }
+  }, [uploadResponse, processId]);
+
+  useEffect(() => {
+    if (enhancedKeywords) {
+      localStorage.setItem(getStorageKey('enhancedKeywords'), JSON.stringify(enhancedKeywords));
+    }
+  }, [enhancedKeywords, processId]);
+
+  useEffect(() => {
+    localStorage.setItem(getStorageKey('primaryKeywords'), JSON.stringify(primaryKeywords));
+  }, [primaryKeywords, processId]);
+
+  useEffect(() => {
+    localStorage.setItem(getStorageKey('secondaryKeywords'), JSON.stringify(secondaryKeywords));
+  }, [secondaryKeywords, processId]);
+
+  useEffect(() => {
+    localStorage.setItem(getStorageKey('keywordString'), keywordString);
+  }, [keywordString, processId]);
+
+  useEffect(() => {
+    localStorage.setItem(getStorageKey('searchCompleted'), JSON.stringify(searchCompleted));
+  }, [searchCompleted, processId]);
+
+  useEffect(() => {
+    localStorage.setItem(getStorageKey('validationCompleted'), JSON.stringify(validationCompleted));
+  }, [validationCompleted, processId]);
+
+  useEffect(() => {
+    if (validationRecommendations) {
+      localStorage.setItem(getStorageKey('validationRecommendations'), JSON.stringify(validationRecommendations));
+    }
+  }, [validationRecommendations, processId]);
+
+  // Cleanup function to clear localStorage when component unmounts
+  useEffect(() => {
+    return () => {
+      // Optional: Clear localStorage when navigating away (uncomment if desired)
+      // const keys = [
+      //   'uploadResponse', 'enhancedKeywords', 'primaryKeywords', 'secondaryKeywords',
+      //   'keywordString', 'searchCompleted', 'validationCompleted', 'validationRecommendations'
+      // ];
+      // keys.forEach(key => localStorage.removeItem(getStorageKey(key)));
+    };
+  }, [processId]);
 
   // Memoize callbacks to prevent unnecessary re-renders
   const handleStepChange = useCallback(async (newStep: string) => {
@@ -78,6 +155,12 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       await updateStepMutation.mutateAsync({
         processId: process.id,
         step: newStep,
+      });
+      
+      // Show progress saved notification
+      toast({
+        title: 'Progress Saved',
+        description: `Moved to ${newStep.replace('_', ' ').toLowerCase()} step.`,
       });
     } catch (error) {
       toast({
@@ -109,7 +192,13 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   const handleKeywordEnhancement = useCallback(async (keywords: EnhancedKeywords) => {
     setEnhancedKeywords(keywords);
     // Don't set keywords here - let KeywordEnhancement component manage selections
-  }, []);
+    
+    // Show progress saved notification
+    toast({
+      title: 'Progress Saved',
+      description: 'Enhanced keywords have been saved automatically.',
+    });
+  }, [toast]);
 
   const handleKeywordStringChange = useCallback((newKeywordString: string) => {
     setKeywordString(newKeywordString);
@@ -209,8 +298,8 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       
       setValidationRecommendations(response);
       toast({
-        title: 'Results Loaded',
-        description: `Found ${response.data?.reviewers?.length || 0} recommended reviewers.`,
+        title: 'Results Loaded & Saved',
+        description: `Found ${response.data?.reviewers?.length || 0} recommended reviewers. Progress saved automatically.`,
       });
       
       console.log('Validation recommendations:', response);
@@ -301,6 +390,10 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
               onSearchComplete={() => {
                 console.log('[ProcessWorkflow] Search completed, setting searchCompleted to true');
                 setSearchCompleted(true);
+                toast({
+                  title: 'Search Completed & Saved',
+                  description: 'Database search results have been saved automatically.',
+                });
               }}
             />
             {searchCompleted && (
@@ -405,8 +498,8 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                         
                         setValidationCompleted(true);
                         toast({
-                          title: 'Validation Started',
-                          description: 'Author validation has been initiated successfully.',
+                          title: 'Validation Started & Saved',
+                          description: 'Author validation has been initiated successfully. Progress saved automatically.',
                         });
                         
                         console.log('Validation response:', response);
@@ -525,19 +618,172 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         );
 
       case "SHORTLIST":
+        // Prepare available reviewers from validation results and recommendations
+        let availableReviewers: any[] = [];
+        
+        console.log('[ProcessWorkflow] SHORTLIST step - Available data:', {
+          validationRecommendations,
+          recommendations,
+          validationReviewersCount: validationRecommendations?.data?.reviewers?.length || 0,
+          recommendationsReviewersCount: recommendations?.reviewers?.length || 0
+        });
+        
+        // First, try to get reviewers from validation results
+        if (validationRecommendations?.data?.reviewers) {
+          console.log('[ProcessWorkflow] Raw validation reviewers:', validationRecommendations.data.reviewers);
+          
+          availableReviewers = validationRecommendations.data.reviewers.map((reviewer: any, index: number) => {
+            console.log(`[ProcessWorkflow] Processing reviewer ${index}:`, reviewer);
+            
+            // Extract name more carefully - use the same logic as the validation display
+            let name = reviewer.name;
+            if (!name || name === 'Unknown Author' || name.trim() === '') {
+              // Try to extract name from email if available
+              if (reviewer.email) {
+                const emailParts = reviewer.email.split('@')[0];
+                // Convert email username to a readable name format
+                name = emailParts
+                  .replace(/[._-]/g, ' ')
+                  .split(' ')
+                  .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                  .join(' ');
+              } else {
+                name = `Reviewer ${index + 1}`;
+              }
+            }
+            
+            const mappedReviewer = {
+              id: reviewer.email || reviewer.name || `reviewer-${index}`,
+              name: name,
+              email: reviewer.email,
+              affiliation: reviewer.affiliation,
+              country: reviewer.country,
+              publications: reviewer.publications,
+              conditions_met: reviewer.conditions_met
+            };
+            
+            console.log(`[ProcessWorkflow] Mapped reviewer ${index}:`, mappedReviewer);
+            return mappedReviewer;
+          });
+          console.log('[ProcessWorkflow] Using validation results:', availableReviewers.length, 'reviewers');
+        }
+        
+        // If no validation results, fall back to recommendations data
+        if (availableReviewers.length === 0 && recommendations?.reviewers) {
+          console.log('[ProcessWorkflow] Raw recommendations reviewers:', recommendations.reviewers);
+          
+          availableReviewers = recommendations.reviewers.map((reviewer: any, index: number) => {
+            // Extract name more carefully - use the same logic as the validation display
+            let name = reviewer.name;
+            if (!name || name === 'Unknown Author' || name.trim() === '') {
+              // Try to extract name from email if available
+              if (reviewer.email) {
+                const emailParts = reviewer.email.split('@')[0];
+                // Convert email username to a readable name format
+                name = emailParts
+                  .replace(/[._-]/g, ' ')
+                  .split(' ')
+                  .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                  .join(' ');
+              } else {
+                name = `Reviewer ${index + 1}`;
+              }
+            }
+            
+            return {
+              id: reviewer.email || reviewer.name || `reviewer-${index}`,
+              name: name,
+              email: reviewer.email,
+              affiliation: reviewer.affiliation,
+              country: reviewer.country,
+              publications: reviewer.publications
+            };
+          });
+          console.log('[ProcessWorkflow] Using recommendations fallback:', availableReviewers.length, 'reviewers');
+        }
+        
+        console.log('[ProcessWorkflow] Final availableReviewers:', availableReviewers);
+
         return (
           <div className="space-y-6">
-            <ShortlistManager processId={processId} />
-            <div className="flex justify-between pt-4">
+            {availableReviewers.length === 0 && (
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="text-center space-y-4">
+                    <p className="text-muted-foreground">
+                      No validated reviewers available for shortlisting.
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Load validation results from the Author Validation step to see recommended reviewers.
+                    </p>
+                    <div className="flex gap-2 justify-center">
+                      <Button 
+                        onClick={fetchValidationRecommendations}
+                        disabled={isLoadingRecommendations}
+                        size="lg"
+                      >
+                        {isLoadingRecommendations ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
+                            Loading Validation Results...
+                          </>
+                        ) : (
+                          'Load Validation Results'
+                        )}
+                      </Button>
+                      <Button 
+                        variant="outline"
+                        onClick={() => handleStepChange('VALIDATION')}
+                      >
+                        Back to Validation
+                      </Button>
+                      <Button 
+                        variant="outline"
+                        onClick={() => handleStepChange('RECOMMENDATIONS')}
+                      >
+                        Back to Recommendations
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            {/* Display Validation Recommendations using ReviewerResults component */}
+            {validationRecommendations && validationRecommendations.data?.reviewers && (
+              <ReviewerResults 
+                processId={processId}
+                onShortlistCreated={() => {
+                  // Refresh shortlists after creation
+                  shortlistsHook.refetch?.();
+                }}
+                validationData={validationRecommendations}
+              />
+            )}
+
+            {/* Shortlist Management Section */}
+            {!validationRecommendations?.data?.reviewers && (
+              <ShortlistManager 
+                processId={processId} 
+                availableReviewers={availableReviewers}
+              />
+            )}
+            
+            {/* Show existing shortlists when validation recommendations are displayed */}
+            {validationRecommendations?.data?.reviewers && (
+              <ShortlistManager 
+                processId={processId} 
+                availableReviewers={availableReviewers}
+              />
+            )}
+            
+            <div className="flex justify-start pt-4">
               <Button 
                 variant="outline"
                 onClick={() => handleStepChange('RECOMMENDATIONS')}
               >
                 Back to Recommendations
               </Button>
-              <div className="text-sm text-muted-foreground">
-                Shortlist management complete. Use the shortlist tools above to manage your selected reviewers.
-              </div>
             </div>
           </div>
         );
@@ -613,10 +859,6 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
             <span className="text-muted-foreground">Job ID:</span>{' '}
             <span className="font-mono font-medium">{fileService.getJobId(processId) || 'Not assigned'}</span>
           </div>
-          <Button variant="outline">
-            <Save className="w-4 h-4 mr-2" />
-            Save Progress
-          </Button>
         </div>
       </div>
 
