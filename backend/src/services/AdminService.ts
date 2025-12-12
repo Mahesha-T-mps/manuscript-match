@@ -216,6 +216,204 @@ export class AdminService {
   }
 
   /**
+   * Get all processes across all users with filtering and pagination
+   */
+  async getAllProcesses(
+    page: number,
+    limit: number,
+    filters: {
+      userId?: string;
+      status?: ProcessStatus;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+      dateFrom?: Date;
+      dateTo?: Date;
+      search?: string;
+    }
+  ): Promise<{ processes: any[]; total: number }> {
+    try {
+      const skip = (page - 1) * limit;
+
+      // Build where clause
+      const where: any = {};
+
+      if (filters.userId) {
+        where.userId = filters.userId;
+      }
+
+      if (filters.status) {
+        where.status = filters.status;
+      }
+
+      if (filters.dateFrom || filters.dateTo) {
+        where.createdAt = {};
+        if (filters.dateFrom) {
+          where.createdAt.gte = filters.dateFrom;
+        }
+        if (filters.dateTo) {
+          where.createdAt.lte = filters.dateTo;
+        }
+      }
+
+      if (filters.search) {
+        where.OR = [
+          { title: { contains: filters.search, mode: 'insensitive' } },
+          { description: { contains: filters.search, mode: 'insensitive' } }
+        ];
+      }
+
+      // Build order by clause
+      const orderBy: any = {};
+      if (filters.sortBy) {
+        orderBy[filters.sortBy] = filters.sortOrder || 'desc';
+      } else {
+        orderBy.updatedAt = 'desc';
+      }
+
+      // Get processes with user information
+      const processes = await this.processRepository.getPrismaClient().process.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              role: true
+            }
+          }
+        }
+      });
+
+      // Get total count
+      const total = await this.processRepository.getPrismaClient().process.count({ where });
+
+      // Format processes for admin view
+      const formattedProcesses = processes.map(process => ({
+        id: process.id,
+        title: process.title,
+        description: process.description,
+        status: process.status,
+        currentStep: process.currentStep,
+        createdAt: process.createdAt,
+        updatedAt: process.updatedAt,
+        userId: process.userId,
+        userEmail: process.user ? this.sanitizeEmail(process.user.email) : 'Unknown',
+        userRole: process.user?.role || 'UNKNOWN'
+      }));
+
+      return {
+        processes: formattedProcesses,
+        total
+      };
+    } catch (error) {
+      throw new CustomError(
+        ErrorType.DATABASE_ERROR,
+        `Failed to fetch admin processes: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        500
+      );
+    }
+  }
+
+  /**
+   * Get all users with filtering and pagination
+   */
+  async getAllUsers(
+    page: number,
+    limit: number,
+    filters: {
+      role?: string;
+      search?: string;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+      dateFrom?: Date;
+      dateTo?: Date;
+    }
+  ): Promise<{ users: any[]; total: number }> {
+    try {
+      const skip = (page - 1) * limit;
+
+      // Build where clause
+      const where: any = {};
+
+      if (filters.role) {
+        where.role = filters.role;
+      }
+
+      if (filters.dateFrom || filters.dateTo) {
+        where.createdAt = {};
+        if (filters.dateFrom) {
+          where.createdAt.gte = filters.dateFrom;
+        }
+        if (filters.dateTo) {
+          where.createdAt.lte = filters.dateTo;
+        }
+      }
+
+      if (filters.search) {
+        where.OR = [
+          { email: { contains: filters.search, mode: 'insensitive' } },
+          { firstName: { contains: filters.search, mode: 'insensitive' } },
+          { lastName: { contains: filters.search, mode: 'insensitive' } }
+        ];
+      }
+
+      // Build order by clause
+      const orderBy: any = {};
+      if (filters.sortBy) {
+        orderBy[filters.sortBy] = filters.sortOrder || 'desc';
+      } else {
+        orderBy.createdAt = 'desc';
+      }
+
+      // Get users with process counts
+      const users = await this.userRepository.getPrismaClient().user.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy,
+        include: {
+          _count: {
+            select: {
+              processes: true
+            }
+          }
+        }
+      });
+
+      // Get total count
+      const total = await this.userRepository.getPrismaClient().user.count({ where });
+
+      // Format users for admin view
+      const formattedUsers = users.map(user => ({
+        id: user.id,
+        email: this.sanitizeEmail(user.email),
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        status: user.status,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        processCount: user._count.processes,
+        lastLoginAt: user.lastLoginAt
+      }));
+
+      return {
+        users: formattedUsers,
+        total
+      };
+    } catch (error) {
+      throw new CustomError(
+        ErrorType.DATABASE_ERROR,
+        `Failed to fetch admin users: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        500
+      );
+    }
+  }
+
+  /**
    * Get detailed user information with processes and activity
    */
   async getUserDetails(userId: string): Promise<any> {
