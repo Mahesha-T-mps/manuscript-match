@@ -608,10 +608,16 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
           </div>
         </div>
         
-        <Button variant="outline">
-          <Save className="w-4 h-4 mr-2" />
-          Save Progress
-        </Button>
+        <div className="flex items-center space-x-4">
+          <div className="px-3 py-1 bg-muted rounded-md text-sm">
+            <span className="text-muted-foreground">Job ID:</span>{' '}
+            <span className="font-mono font-medium">{fileService.getJobId(processId) || 'Not assigned'}</span>
+          </div>
+          <Button variant="outline">
+            <Save className="w-4 h-4 mr-2" />
+            Save Progress
+          </Button>
+        </div>
       </div>
 
       {/* Main Content */}

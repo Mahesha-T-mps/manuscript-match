@@ -44,6 +44,19 @@ export default function Reports() {
     dateRange,
   });
 
+  // Debug logging
+  console.log('[Reports] Current state:', {
+    isAdmin,
+    selectedUserId,
+    userActivityDataLength: userActivityData?.length,
+    usersLength: users?.length,
+    isLoading,
+    isError
+  });
+  console.log('[Reports] User activity data:', userActivityData);
+  console.log('[Reports] Users list:', users);
+  console.log('[Reports] Users array details:', users?.map(u => ({ id: u.id, email: u.email })));
+
   const handleExport = async (format: 'csv' | 'xlsx' | 'pdf') => {
     try {
       toast({

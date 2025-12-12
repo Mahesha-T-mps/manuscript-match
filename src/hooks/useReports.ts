@@ -69,45 +69,92 @@ export function useReports(options: UseReportsOptions = {}) {
     queryKey: ['reports', 'processes', userId, dateRange, isAdmin],
     queryFn: async () => {
       try {
-        // For now, all users (including admin) use the regular process endpoint
-        // TODO: Implement admin-specific endpoint in backend for cross-user process viewing
-        const allProcesses = await processService.getProcesses();
-        
-        // Filter by date range
-        const filteredProcesses = filterProcessesByDateRange(allProcesses, dateRange);
-        
-        // For admin viewing specific user, filter by userId if the process has userId field
-        if (isAdmin && userId && userId !== 'all') {
-          return filteredProcesses.filter(p => {
-            // Check if process has userId field (AdminProcess type)
-            return 'userId' in p && p.userId === userId;
-          });
+        if (isAdmin) {
+          try {
+            // Check if adminService and its getProcesses method exist
+            if (!adminService || typeof adminService.getProcesses !== 'function') {
+              console.warn('[useReports] Admin service or getProcesses method not available, using fallback');
+              throw new Error('Admin service not available');
+            }
+            
+            // Try to get admin processes with user information
+            console.log('[useReports] Attempting to fetch admin processes...');
+            const response = await adminService.getProcesses({
+              limit: 1000, // Get all processes for reporting
+              userId: userId === 'all' ? undefined : userId,
+            });
+            
+            console.log('[useReports] Admin processes fetched successfully:', response.data.length);
+            // Filter by date range
+            return filterProcessesByDateRange(response.data, dateRange);
+          } catch (adminError) {
+            console.warn('[useReports] Admin service failed, falling back to regular process service:', adminError);
+            // Fallback to regular process service for admin users
+            const allProcesses = await processService.getProcesses();
+            return filterProcessesByDateRange(allProcesses, dateRange);
+          }
+        } else {
+          // Regular users get their own processes
+          console.log('[useReports] Fetching regular user processes...');
+          const allProcesses = await processService.getProcesses();
+          return filterProcessesByDateRange(allProcesses, dateRange);
         }
-        
-        return filteredProcesses;
       } catch (error) {
         console.error('Error fetching processes for reports:', error);
         throw error;
       }
     },
     staleTime: 2 * 60 * 1000,
+    retry: (failureCount, error: any) => {
+      console.error(`[useReports] Query failed (attempt ${failureCount + 1}):`, error);
+      // Retry up to 2 times for network errors, but not for auth errors
+      if (failureCount < 2 && error?.response?.status !== 401 && error?.response?.status !== 403) {
+        return true;
+      }
+      return false;
+    },
   });
 
   // Fetch users list (admin only)
-  const { data: usersData } = useQuery({
+  const { data: usersData, isLoading: usersLoading, isError: usersError } = useQuery({
     queryKey: ['reports', 'users'],
     queryFn: async () => {
       try {
+        console.log('[useReports] Fetching users list for admin...');
+        
+        // Check if adminService and getUsers method exist
+        if (!adminService || typeof adminService.getUsers !== 'function') {
+          console.warn('[useReports] Admin service getUsers method not available');
+          return [];
+        }
+        
         const response = await adminService.getUsers({ limit: 1000 });
+        console.log('[useReports] Users fetched successfully:', response.data.length, 'users');
+        console.log('[useReports] Users data:', response.data);
         return response.data;
       } catch (error) {
         console.error('Error fetching users for reports:', error);
+        console.error('Error details:', {
+          message: error.message,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data
+        });
         // Return empty array on error so the UI doesn't break
         return [];
       }
     },
     enabled: isAdmin,
     staleTime: 5 * 60 * 1000,
+  });
+
+  // Debug users data
+  console.log('[useReports] Users query state:', {
+    isAdmin,
+    usersLoading,
+    usersError,
+    usersDataLength: usersData?.length,
+    usersData
   });
 
   // Process the data
@@ -189,7 +236,7 @@ function getDateFromRange(range: string): string | undefined {
   return date.toISOString();
 }
 
-function filterProcessesByDateRange(processes: Process[], range: string): Process[] {
+function filterProcessesByDateRange(processes: (Process | AdminProcess)[], range: string): (Process | AdminProcess)[] {
   if (range === 'all') return processes;
   
   const cutoffDate = new Date();
@@ -294,9 +341,13 @@ function calculateTimelineData(
 function calculateUserActivity(processes: (Process | AdminProcess)[]): UserActivityData[] {
   const userMap: Record<string, UserActivityData> = {};
   
+  console.log('[calculateUserActivity] Processing', processes.length, 'processes');
+  
   processes.forEach(p => {
-    // Only process AdminProcess items that have userId and userEmail
+    // Check if this is an AdminProcess with user information
     if ('userId' in p && 'userEmail' in p) {
+      console.log('[calculateUserActivity] Found AdminProcess:', p.userId, p.userEmail);
+      
       if (!userMap[p.userId]) {
         userMap[p.userId] = {
           userId: p.userId,
@@ -316,10 +367,17 @@ function calculateUserActivity(processes: (Process | AdminProcess)[]): UserActiv
       if (p.status === 'COMPLETED') {
         userMap[p.userId].completedCount++;
       }
+    } else {
+      // This is a regular Process without user info
+      // Since we don't have user information, we can't create meaningful user activity data
+      console.log('[calculateUserActivity] Regular Process (no user info), skipping for user activity:', p.id);
     }
   });
   
-  return Object.values(userMap).sort((a, b) => b.processCount - a.processCount);
+  const result = Object.values(userMap).sort((a, b) => b.processCount - a.processCount);
+  console.log('[calculateUserActivity] Final user activity data:', result);
+  
+  return result;
 }
 
 // Add React import for useMemo

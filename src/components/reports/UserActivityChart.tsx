@@ -10,8 +10,11 @@ interface UserActivityChartProps {
 export function UserActivityChart({ data, detailed = false }: UserActivityChartProps) {
   if (!data || data.length === 0) {
     return (
-      <div className="flex items-center justify-center h-[300px] text-muted-foreground">
-        No user activity data available
+      <div className="flex flex-col items-center justify-center h-[300px] text-muted-foreground space-y-2">
+        <p>No user activity data available</p>
+        <p className="text-sm text-center max-w-md">
+          User activity requires admin-level process data. Individual user breakdown is not available with the current data source.
+        </p>
       </div>
     );
   }
