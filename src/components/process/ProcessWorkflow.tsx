@@ -749,33 +749,11 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
               </Card>
             )}
             
-            {/* Display Validation Recommendations using ReviewerResults component */}
-            {validationRecommendations && validationRecommendations.data?.reviewers && (
-              <ReviewerResults 
-                processId={processId}
-                onShortlistCreated={() => {
-                  // Refresh shortlists after creation
-                  shortlistsHook.refetch?.();
-                }}
-                validationData={validationRecommendations}
-              />
-            )}
-
             {/* Shortlist Management Section */}
-            {!validationRecommendations?.data?.reviewers && (
-              <ShortlistManager 
-                processId={processId} 
-                availableReviewers={availableReviewers}
-              />
-            )}
-            
-            {/* Show existing shortlists when validation recommendations are displayed */}
-            {validationRecommendations?.data?.reviewers && (
-              <ShortlistManager 
-                processId={processId} 
-                availableReviewers={availableReviewers}
-              />
-            )}
+            <ShortlistManager 
+              processId={processId} 
+              availableReviewers={availableReviewers}
+            />
             
             <div className="flex justify-start pt-4">
               <Button 

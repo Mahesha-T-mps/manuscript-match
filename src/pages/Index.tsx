@@ -6,7 +6,7 @@ import { LogOut } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProfileButton } from "@/components/profile/ProfileButton";
-import logo from "@/assets/logo.png";
+import logo from "@/assets/s3 1.png";
 import Reports from "./Reports";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
