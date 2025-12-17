@@ -279,7 +279,7 @@ try {
   // Fallback configuration
   config = {
     apiBaseUrl: 'http://localhost:3002',
-    scholarFinderApiUrl: 'http://192.168.61.60:8000',
+    scholarFinderApiUrl: 'http://10.1.0.103:8000',
     apiTimeout: 60000,
     apiRetryAttempts: 3,
     apiRetryDelay: 1000,

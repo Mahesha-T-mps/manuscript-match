@@ -21,14 +21,20 @@ import type { EnhancedKeywords } from '@/services/keywordService';
 
 interface KeywordEnhancementProps {
   processId: string;
-  onEnhancementComplete?: (keywords: EnhancedKeywords) => void;
+  onEnhancementComplete?: (keywords: any) => void;
   onKeywordStringChange?: (keywordString: string) => void;
+  onTriggerEnhancement?: () => void;
+  isEnhancing?: boolean;
+  hasEnhanced?: boolean;
 }
 
 export const KeywordEnhancement: React.FC<KeywordEnhancementProps> = ({
   processId,
   onEnhancementComplete,
   onKeywordStringChange,
+  onTriggerEnhancement,
+  isEnhancing = false,
+  hasEnhanced = false,
 }) => {
   const { toast } = useToast();
   
@@ -45,7 +51,6 @@ export const KeywordEnhancement: React.FC<KeywordEnhancementProps> = ({
   // API hooks
   const { data: metadata } = useMetadata(processId);
   const { data: enhancedKeywords, isLoading: isLoadingKeywords, error: keywordsError } = useKeywords(processId, enableKeywordsQuery);
-  const enhanceKeywordsMutation = useEnhanceKeywords();
 
   // Initialize keyword lists when enhanced keywords are loaded
   React.useEffect(() => {
@@ -55,29 +60,13 @@ export const KeywordEnhancement: React.FC<KeywordEnhancementProps> = ({
     }
   }, [enhancedKeywords, primaryKeywords.length, secondaryKeywords.length]);
 
-  const handleEnhanceKeywords = useCallback(async () => {
-    try {
-      const result = await enhanceKeywordsMutation.mutateAsync({
-        processId,
-      });
-
-      // Enable the keywords query now that enhancement is complete
+  const handleEnhanceKeywords = useCallback(() => {
+    if (onTriggerEnhancement) {
+      onTriggerEnhancement();
+      // Enable the keywords query now that enhancement is triggered
       setEnableKeywordsQuery(true);
-
-      toast({
-        title: 'Keywords Enhanced',
-        description: `Generated ${result.enhanced.length} enhanced keywords and ${result.meshTerms.length} MeSH terms.`,
-      });
-
-      onEnhancementComplete?.(result);
-    } catch (error: any) {
-      toast({
-        title: 'Enhancement Failed',
-        description: error.message || 'Failed to enhance keywords. Please try again.',
-        variant: 'destructive',
-      });
     }
-  }, [processId, enhanceKeywordsMutation, toast, onEnhancementComplete]);
+  }, [onTriggerEnhancement]);
 
   const handlePrimaryKeywordToggle = useCallback((keyword: string, checked: boolean) => {
     setSelectedPrimaryKeywords(prev => {
@@ -398,10 +387,10 @@ export const KeywordEnhancement: React.FC<KeywordEnhancementProps> = ({
 
             <Button
               onClick={handleEnhanceKeywords}
-              disabled={enhanceKeywordsMutation.isPending}
+              disabled={isEnhancing}
               className="w-full"
             >
-              {enhanceKeywordsMutation.isPending ? (
+              {isEnhancing ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   Enhancing Keywords...
@@ -412,6 +401,20 @@ export const KeywordEnhancement: React.FC<KeywordEnhancementProps> = ({
                   Enhance Keywords
                 </>
               )}
+            </Button>
+          </div>
+        )}
+        
+        {/* Re-enhancement option when keywords already exist */}
+        {enhancedKeywords && !isEnhancing && (
+          <div className="mb-4">
+            <Button
+              onClick={handleEnhanceKeywords}
+              variant="outline"
+              size="sm"
+            >
+              <Sparkles className="w-4 h-4 mr-2" />
+              Re-enhance Keywords
             </Button>
           </div>
         )}

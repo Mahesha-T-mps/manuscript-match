@@ -189,7 +189,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     // await handleStepChange('METADATA_EXTRACTION');
   }, [handleStepChange]);
 
-  const handleKeywordEnhancement = useCallback(async (keywords: EnhancedKeywords) => {
+  const handleKeywordEnhancement = useCallback((keywords: any) => {
     setEnhancedKeywords(keywords);
     // Don't set keywords here - let KeywordEnhancement component manage selections
     
@@ -204,39 +204,34 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     setKeywordString(newKeywordString);
   }, []);
   
-  // Auto-trigger keyword enhancement when entering KEYWORD_ENHANCEMENT step
-  useEffect(() => {
-    if (process?.currentStep === 'KEYWORD_ENHANCEMENT' && !keywordEnhancementTriggered.current) {
-      keywordEnhancementTriggered.current = true;
-      
-      console.log('[ProcessWorkflow] Triggering keyword enhancement for processId:', processId);
-      
-      // Trigger keyword enhancement API call
-      enhanceKeywordsMutation.mutateAsync({ processId })
-        .then((result) => {
-          console.log('[ProcessWorkflow] Keyword enhancement successful:', result);
-          handleKeywordEnhancement(result);
-          toast({
-            title: 'Keywords Enhanced',
-            description: `Generated ${result.enhanced.length} enhanced keywords and ${result.meshTerms.length} MeSH terms.`,
-          });
-        })
-        .catch((error) => {
-          console.error('[ProcessWorkflow] Keyword enhancement failed:', error);
-          toast({
-            title: 'Enhancement Failed',
-            description: error.message || 'Failed to enhance keywords. Please try again.',
-            variant: 'destructive',
-          });
-          keywordEnhancementTriggered.current = false; // Allow retry
-        });
-    }
+  // Manual keyword enhancement trigger function
+  const triggerKeywordEnhancement = useCallback(async () => {
+    console.log('[ProcessWorkflow] Triggering keyword enhancement for processId:', processId);
     
-    // Reset the trigger when leaving the KEYWORD_ENHANCEMENT step
+    try {
+      const result = await enhanceKeywordsMutation.mutateAsync({ processId });
+      console.log('[ProcessWorkflow] Keyword enhancement successful:', result);
+      handleKeywordEnhancement(result);
+      toast({
+        title: 'Keywords Enhanced',
+        description: `Generated ${result.enhanced.length} enhanced keywords and ${result.meshTerms.length} MeSH terms.`,
+      });
+    } catch (error: any) {
+      console.error('[ProcessWorkflow] Keyword enhancement failed:', error);
+      toast({
+        title: 'Enhancement Failed',
+        description: error.message || 'Failed to enhance keywords. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  }, [processId, enhanceKeywordsMutation, handleKeywordEnhancement, toast]);
+
+  // Reset the trigger when leaving the KEYWORD_ENHANCEMENT step
+  useEffect(() => {
     if (process?.currentStep !== 'KEYWORD_ENHANCEMENT') {
       keywordEnhancementTriggered.current = false;
     }
-  }, [process?.currentStep, processId, enhanceKeywordsMutation, handleKeywordEnhancement, toast]);
+  }, [process?.currentStep]);
 
   // Auto-fetch recommendations when entering RECOMMENDATIONS step
   useEffect(() => {
@@ -367,6 +362,9 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
               processId={processId}
               onEnhancementComplete={handleKeywordEnhancement}
               onKeywordStringChange={handleKeywordStringChange}
+              onTriggerEnhancement={triggerKeywordEnhancement}
+              isEnhancing={enhanceKeywordsMutation.isPending}
+              hasEnhanced={!!enhancedKeywords}
             />
             {enhancedKeywords && (
               <div className="flex justify-end">
@@ -588,22 +586,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                     </div>
                   )}
                   
-                  <div className="flex justify-between">
-                    <Button 
-                      onClick={fetchValidationRecommendations}
-                      variant="outline"
-                      size="lg"
-                      disabled={isLoadingRecommendations}
-                    >
-                      {isLoadingRecommendations ? (
-                        <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                          Loading Results...
-                        </>
-                      ) : (
-                        'View Results'
-                      )}
-                    </Button>
+                  <div className="flex justify-end">
                     <Button 
                       onClick={() => handleStepChange('RECOMMENDATIONS')}
                       size="lg"

@@ -140,27 +140,74 @@ export interface ManualAuthor {
 }
 
 export interface Reviewer {
+  // Basic info
   reviewer: string;
   email: string;
   aff: string;
   city: string;
   country: string;
+  
+  // Total publications
   Total_Publications: number;
-  English_Pubs: number;
+  Total_Publications_first: number;
+  Total_Publications_last: number;
+  
+  // 10 years publications
   'Publications (last 10 years)': number;
+  Publications_10_years: number;
+  Publications_10_years_first: number;
+  Publications_10_years_last: number;
+  
+  // 5 years publications
+  Publications_5_years: number;
+  Publications_5_years_first: number;
+  Publications_5_years_last: number;
   'Relevant Publications (last 5 years)': number;
+  Relevant_Publications_5_years: number;
+  Relevant_Publications_5_years_first: number;
+  Relevant_Publications_5_years_last: number;
+  
+  // 2 years publications
   'Publications (last 2 years)': number;
+  Publications_2_years: number;
+  Publications_2_years_first: number;
+  Publications_2_years_last: number;
+  Relevant_Primary_Pub_2_years: number;
+  Relevant_Secondary_Pub_2_years: number;
+  
+  // Last year publications
   'Publications (last year)': number;
+  Publications_last_year: number;
+  Publications_last_year_first: number;
+  Publications_last_year_last: number;
+  
+  // Specialized publications
   Clinical_Trials_no: number;
   Clinical_study_no: number;
   Case_reports_no: number;
   Retracted_Pubs_no: number;
   TF_Publications_last_year: number;
+  
+  // Language and quality
+  English_Pubs: number;
+  english_ratio: number;
+  
+  // Validation fields
   coauthor: boolean;
   country_match: string;
   aff_match: string;
   conditions_met: number;
   conditions_satisfied: string;
+  
+  // Validation condition flags
+  no_of_pub_condition_10_years: number;
+  no_of_pub_condition_5_years: number;
+  no_of_pub_condition_2_years: number;
+  english_condition: number;
+  coauthor_condition: number;
+  aff_condition: number;
+  country_match_condition: number;
+  retracted_condition: number;
 }
 
 // API Request Types

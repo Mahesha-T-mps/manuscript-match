@@ -97,20 +97,71 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
     return {
       reviewer: name,
       email: reviewer.email || `reviewer-${index}@example.com`,
-      aff: reviewer.affiliation || 'Unknown affiliation',
+      aff: reviewer.affiliation || reviewer.aff || 'Unknown affiliation',
       country: reviewer.country || 'Unknown',
       city: reviewer.city || 'Unknown',
       conditions_met: reviewer.conditions_met || 0,
-      conditions_satisfied: `${reviewer.conditions_met || 0} of 8`,
-      Total_Publications: reviewer.publications || 0,
-      'Publications (last 10 years)': reviewer.publications_10y || 0,
-      'Relevant Publications (last 5 years)': reviewer.publications_5y || 0,
-      'Publications (last 2 years)': reviewer.publications_2y || 0,
-      English_Pubs: reviewer.english_pubs || 0,
-      Retracted_Pubs_no: reviewer.retracted_pubs || 0,
+      conditions_satisfied: reviewer.conditions_satisfied || `${reviewer.conditions_met || 0} of 8`,
+      
+      // Total publications
+      Total_Publications: reviewer.publications || reviewer.Total_Publications || 0,
+      Total_Publications_first: reviewer.Total_Publications_first || 0,
+      Total_Publications_last: reviewer.Total_Publications_last || 0,
+      
+      // 10 years publications
+      'Publications (last 10 years)': reviewer.publications_10y || reviewer['Publications (last 10 years)'] || reviewer.Publications_10_years || 0,
+      Publications_10_years: reviewer.Publications_10_years || reviewer.publications_10y || reviewer['Publications (last 10 years)'] || 0,
+      Publications_10_years_first: reviewer.Publications_10_years_first || 0,
+      Publications_10_years_last: reviewer.Publications_10_years_last || 0,
+      
+      // 5 years publications
+      Publications_5_years: reviewer.Publications_5_years || 0,
+      Publications_5_years_first: reviewer.Publications_5_years_first || 0,
+      Publications_5_years_last: reviewer.Publications_5_years_last || 0,
+      'Relevant Publications (last 5 years)': reviewer.publications_5y || reviewer['Relevant Publications (last 5 years)'] || reviewer.Relevant_Publications_5_years || 0,
+      Relevant_Publications_5_years: reviewer.Relevant_Publications_5_years || reviewer.publications_5y || reviewer['Relevant Publications (last 5 years)'] || 0,
+      Relevant_Publications_5_years_first: reviewer.Relevant_Publications_5_years_first || 0,
+      Relevant_Publications_5_years_last: reviewer.Relevant_Publications_5_years_last || 0,
+      
+      // 2 years publications
+      'Publications (last 2 years)': reviewer.publications_2y || reviewer['Publications (last 2 years)'] || reviewer.Publications_2_years || 0,
+      Publications_2_years: reviewer.Publications_2_years || reviewer.publications_2y || reviewer['Publications (last 2 years)'] || 0,
+      Publications_2_years_first: reviewer.Publications_2_years_first || 0,
+      Publications_2_years_last: reviewer.Publications_2_years_last || 0,
+      Relevant_Primary_Pub_2_years: reviewer.Relevant_Primary_Pub_2_years || 0,
+      Relevant_Secondary_Pub_2_years: reviewer.Relevant_Secondary_Pub_2_years || 0,
+      
+      // Last year publications
+      'Publications (last year)': reviewer.publications_1y || reviewer['Publications (last year)'] || reviewer.Publications_last_year || 0,
+      Publications_last_year: reviewer.Publications_last_year || reviewer.publications_1y || reviewer['Publications (last year)'] || 0,
+      Publications_last_year_first: reviewer.Publications_last_year_first || 0,
+      Publications_last_year_last: reviewer.Publications_last_year_last || 0,
+      
+      // Specialized publications
+      Clinical_Trials_no: reviewer.clinical_trials || reviewer.Clinical_Trials_no || 0,
+      Clinical_study_no: reviewer.clinical_studies || reviewer.Clinical_study_no || 0,
+      Case_reports_no: reviewer.case_reports || reviewer.Case_reports_no || 0,
+      Retracted_Pubs_no: reviewer.retracted_pubs || reviewer.Retracted_Pubs_no || 0,
+      TF_Publications_last_year: reviewer.tf_publications_last_year || reviewer.TF_Publications_last_year || 0,
+      
+      // Language and quality
+      English_Pubs: reviewer.english_pubs || reviewer.English_Pubs || 0,
+      english_ratio: reviewer.english_ratio || 0,
+      
+      // Validation fields
       coauthor: reviewer.coauthor || false,
       aff_match: reviewer.aff_match || 'no',
-      country_match: reviewer.country_match || 'yes'
+      country_match: reviewer.country_match || 'yes',
+      
+      // Condition flags
+      no_of_pub_condition_10_years: reviewer.no_of_pub_condition_10_years || 0,
+      no_of_pub_condition_5_years: reviewer.no_of_pub_condition_5_years || 0,
+      no_of_pub_condition_2_years: reviewer.no_of_pub_condition_2_years || 0,
+      english_condition: reviewer.english_condition || 0,
+      coauthor_condition: reviewer.coauthor_condition || 0,
+      aff_condition: reviewer.aff_condition || 0,
+      country_match_condition: reviewer.country_match_condition || 0,
+      retracted_condition: reviewer.retracted_condition || 0
     };
   }) : rawReviewers;
   
@@ -554,31 +605,217 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
                   <div className="space-y-4">
                     {/* Publication Metrics */}
                     <div role="region" aria-label="Publication metrics">
-                      <h4 className="text-sm font-medium mb-2">Publication Metrics</h4>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                        <div className="p-2 bg-muted rounded">
-                          <div className="text-xs text-muted-foreground">Total</div>
-                          <div className="font-semibold">{reviewer.Total_Publications}</div>
+                      <h4 className="text-sm font-medium mb-4 flex items-center">
+                        <BookOpen className="w-4 h-4 mr-2 text-primary" />
+                        Publication Portfolio
+                      </h4>
+                      
+                      {/* Career Overview */}
+                      <div className="mb-6">
+                        <div className="flex items-center mb-3">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full mr-2"></div>
+                          <h5 className="text-sm font-medium text-gray-700">Career Overview</h5>
                         </div>
-                        <div className="p-2 bg-muted rounded">
-                          <div className="text-xs text-muted-foreground">Last 10 years</div>
-                          <div className="font-semibold">{reviewer['Publications (last 10 years)']}</div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div className="p-3 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-medium text-blue-700">Total Publications</span>
+                              <BookOpen className="w-3 h-3 text-blue-600" />
+                            </div>
+                            <div className="text-lg font-bold text-blue-900">{reviewer.Total_Publications || 0}</div>
+                            <div className="text-xs text-blue-600 mt-1">
+                              {reviewer.Total_Publications_first || 0} as first • {reviewer.Total_Publications_last || 0} as last
+                            </div>
+                          </div>
+                          
+                          <div className="p-3 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg border border-emerald-200">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-medium text-emerald-700">English Publications</span>
+                              <span className="text-xs bg-emerald-200 text-emerald-800 px-1 rounded">EN</span>
+                            </div>
+                            <div className="text-lg font-bold text-emerald-900">{reviewer.English_Pubs || 0}</div>
+                            <div className="text-xs text-emerald-600 mt-1">
+                              {reviewer.english_ratio ? 
+                                `${Math.round(reviewer.english_ratio * 100)}% ratio` : 
+                                reviewer.Total_Publications > 0 ? 
+                                  `${Math.round((reviewer.English_Pubs || 0) / reviewer.Total_Publications * 100)}% of total` : 
+                                  'No publications'
+                              }
+                            </div>
+                          </div>
+
+                          <div className="p-3 bg-gradient-to-br from-amber-50 to-amber-100 rounded-lg border border-amber-200">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-medium text-amber-700">Recent Activity</span>
+                              <span className="text-xs bg-amber-200 text-amber-800 px-1 rounded">2Y</span>
+                            </div>
+                            <div className="text-lg font-bold text-amber-900">{reviewer['Publications (last 2 years)'] || 0}</div>
+                            <div className="text-xs text-amber-600 mt-1">
+                              {reviewer['Publications (last year)'] || 0} in last year
+                            </div>
+                          </div>
+
+                          <div className="p-3 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs font-medium text-purple-700">Quality Score</span>
+                              <span className="text-xs bg-purple-200 text-purple-800 px-1 rounded">QS</span>
+                            </div>
+                            <div className="text-lg font-bold text-purple-900">
+                              {reviewer.Retracted_Pubs_no === 0 ? '✓' : '⚠'}
+                            </div>
+                            <div className="text-xs text-purple-600 mt-1">
+                              {reviewer.Retracted_Pubs_no || 0} retractions
+                            </div>
+                          </div>
                         </div>
-                        <div className="p-2 bg-muted rounded">
-                          <div className="text-xs text-muted-foreground">Last 5 years</div>
-                          <div className="font-semibold">{reviewer['Relevant Publications (last 5 years)']}</div>
+                      </div>
+
+                      {/* Publication Timeline */}
+                      <div className="mb-6">
+                        <div className="flex items-center mb-3">
+                          <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+                          <h5 className="text-sm font-medium text-gray-700">Publication Timeline</h5>
+                          <span className="text-xs text-gray-500 ml-2">(Total • First Author • Last Author)</span>
                         </div>
-                        <div className="p-2 bg-muted rounded">
-                          <div className="text-xs text-muted-foreground">Last 2 years</div>
-                          <div className="font-semibold">{reviewer['Publications (last 2 years)']}</div>
+                        
+                        <div className="space-y-3">
+                          {/* 10 Years Timeline */}
+                          <div className="relative">
+                            <div className="flex items-center mb-2">
+                              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center mr-3">
+                                <span className="text-xs font-bold text-green-700">10Y</span>
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm font-medium text-gray-700">Last 10 Years</span>
+                                  <div className="flex items-center space-x-4 text-sm">
+                                    <span className="font-semibold text-green-700">{reviewer['Publications (last 10 years)'] || 0}</span>
+                                    <span className="text-green-600">({reviewer.Publications_10_years_first || 0} • {reviewer.Publications_10_years_last || 0})</span>
+                                  </div>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                                  <div 
+                                    className="bg-green-500 h-2 rounded-full transition-all duration-300" 
+                                    style={{
+                                      width: `${Math.min(100, ((reviewer['Publications (last 10 years)'] || 0) / Math.max(reviewer.Total_Publications || 1, 1)) * 100)}%`
+                                    }}
+                                  ></div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 5 Years Timeline */}
+                          <div className="relative">
+                            <div className="flex items-center mb-2">
+                              <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center mr-3">
+                                <span className="text-xs font-bold text-yellow-700">5Y</span>
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-sm font-medium text-gray-700">Last 5 Years</span>
+                                  <div className="flex items-center space-x-4 text-sm">
+                                    <span className="font-semibold text-yellow-700">{reviewer.Publications_5_years || 0}</span>
+                                    <span className="text-yellow-600">({reviewer.Publications_5_years_first || 0} • {reviewer.Publications_5_years_last || 0})</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-gray-600">Relevant to keywords:</span>
+                                  <div className="flex items-center space-x-2">
+                                    <span className="font-semibold text-purple-700">{reviewer['Relevant Publications (last 5 years)'] || 0}</span>
+                                    <span className="text-purple-600">({reviewer.Relevant_Publications_5_years_first || 0} • {reviewer.Relevant_Publications_5_years_last || 0})</span>
+                                  </div>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                                  <div 
+                                    className="bg-yellow-500 h-2 rounded-full transition-all duration-300" 
+                                    style={{
+                                      width: `${Math.min(100, ((reviewer.Publications_5_years || 0) / Math.max(reviewer.Total_Publications || 1, 1)) * 100)}%`
+                                    }}
+                                  ></div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Recent Activity */}
+                          <div className="relative">
+                            <div className="flex items-center mb-2">
+                              <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center mr-3">
+                                <span className="text-xs font-bold text-orange-700">2Y</span>
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-sm font-medium text-gray-700">Last 2 Years</span>
+                                  <div className="flex items-center space-x-4 text-sm">
+                                    <span className="font-semibold text-orange-700">{reviewer['Publications (last 2 years)'] || 0}</span>
+                                    <span className="text-orange-600">({reviewer.Publications_2_years_first || 0} • {reviewer.Publications_2_years_last || 0})</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center justify-between text-xs mb-1">
+                                  <span className="text-gray-600">Relevant (Primary/Secondary):</span>
+                                  <div className="flex items-center space-x-2">
+                                    <span className="font-semibold text-purple-700">{reviewer.Relevant_Primary_Pub_2_years || 0}</span>
+                                    <span className="text-purple-600">/ {reviewer.Relevant_Secondary_Pub_2_years || 0}</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-gray-600">Last year only:</span>
+                                  <div className="flex items-center space-x-2">
+                                    <span className="font-semibold text-red-700">{reviewer['Publications (last year)'] || 0}</span>
+                                    <span className="text-red-600">({reviewer.Publications_last_year_first || 0} • {reviewer.Publications_last_year_last || 0})</span>
+                                  </div>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                                  <div 
+                                    className="bg-orange-500 h-2 rounded-full transition-all duration-300" 
+                                    style={{
+                                      width: `${Math.min(100, ((reviewer['Publications (last 2 years)'] || 0) / Math.max(reviewer.Total_Publications || 1, 1)) * 100)}%`
+                                    }}
+                                  ></div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="p-2 bg-muted rounded">
-                          <div className="text-xs text-muted-foreground">English</div>
-                          <div className="font-semibold">{reviewer.English_Pubs}</div>
+                      </div>
+
+                      {/* Research Focus Areas */}
+                      <div>
+                        <div className="flex items-center mb-3">
+                          <div className="w-2 h-2 bg-purple-500 rounded-full mr-2"></div>
+                          <h5 className="text-sm font-medium text-gray-700">Research Focus Areas</h5>
                         </div>
-                        <div className="p-2 bg-muted rounded">
-                          <div className="text-xs text-muted-foreground">Retractions</div>
-                          <div className="font-semibold">{reviewer.Retracted_Pubs_no}</div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                          <div className="p-3 bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-lg border border-indigo-200 text-center">
+                            <div className="text-xs font-medium text-indigo-700 mb-1">Clinical Trials</div>
+                            <div className="text-lg font-bold text-indigo-900">{reviewer.Clinical_Trials_no || 0}</div>
+                            <div className="text-xs text-indigo-600">Research studies</div>
+                          </div>
+                          
+                          <div className="p-3 bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-lg border border-cyan-200 text-center">
+                            <div className="text-xs font-medium text-cyan-700 mb-1">Clinical Studies</div>
+                            <div className="text-lg font-bold text-cyan-900">{reviewer.Clinical_study_no || 0}</div>
+                            <div className="text-xs text-cyan-600">Clinical research</div>
+                          </div>
+                          
+                          <div className="p-3 bg-gradient-to-br from-teal-50 to-teal-100 rounded-lg border border-teal-200 text-center">
+                            <div className="text-xs font-medium text-teal-700 mb-1">Case Reports</div>
+                            <div className="text-lg font-bold text-teal-900">{reviewer.Case_reports_no || 0}</div>
+                            <div className="text-xs text-teal-600">Case studies</div>
+                          </div>
+                          
+                          <div className="p-3 bg-gradient-to-br from-red-50 to-red-100 rounded-lg border border-red-200 text-center">
+                            <div className="text-xs font-medium text-red-700 mb-1">Retractions</div>
+                            <div className="text-lg font-bold text-red-900">{reviewer.Retracted_Pubs_no || 0}</div>
+                            <div className="text-xs text-red-600">Quality indicator</div>
+                          </div>
+                          
+                          <div className="p-3 bg-gradient-to-br from-violet-50 to-violet-100 rounded-lg border border-violet-200 text-center">
+                            <div className="text-xs font-medium text-violet-700 mb-1">T&F Publications</div>
+                            <div className="text-lg font-bold text-violet-900">{reviewer.TF_Publications_last_year || 0}</div>
+                            <div className="text-xs text-violet-600">Last year</div>
+                          </div>
                         </div>
                       </div>
                     </div>
