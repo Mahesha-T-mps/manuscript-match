@@ -72,7 +72,9 @@ async function createMPSUsers() {
       // Additional New Users
       { email: 'kaviya.s@mpslimited.com', firstName: 'Kaviya', password: 'Kaviya9751', role: 'USER' },
       { email: 'vinuchakkaravarthy.t@mpslimited.com', firstName: 'Vinuchakkaravarthy', password: 'Vinuchakkaravarthy9875', role: 'USER' },
-      { email: 'christy.anitha@mpslimited.com', firstName: 'Christy', password: 'Christy3321', role: 'USER' }
+      { email: 'christy.anitha@mpslimited.com', firstName: 'Christy', password: 'Christy3321', role: 'USER' },
+      { email: 'sivanandini.nedunchezhian@mpslimited.com', firstName: 'Sivanandini', password: 'Sivanandini4582', role: 'USER' },
+      { email: 'abaaranjita@mpslimited.com', firstName: 'Abaaranjita', password: 'Abaaranjita7293', role: 'USER' }
     ];
 
     let successCount = 0;
