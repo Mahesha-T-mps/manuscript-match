@@ -84,6 +84,44 @@ class KeywordService {
   }
 
   /**
+   * Get enhanced keywords for a process without localStorage dependency
+   * This method directly calls the API to enhance keywords
+   */
+  async enhanceKeywordsDirectly(processId: string): Promise<EnhancedKeywords> {
+    try {
+      // Call the API directly without checking localStorage
+      const data = await fileService.enhanceKeywords(processId);
+      
+      // Check if data exists
+      if (!data) {
+        throw new Error('No data received from keyword enhancement API');
+      }
+      
+      console.log('Direct keyword enhancement API response:', data);
+      
+      // Transform API response to internal format
+      const transformedKeywords: EnhancedKeywords = {
+        original: data.primary_focus || [],
+        enhanced: data.additional_primary_keywords || [],
+        meshTerms: data.mesh_terms || [],
+        broaderTerms: data.broader_terms || [],
+        primaryFocus: data.all_primary_focus_list || [],
+        secondaryFocus: data.all_secondary_focus_list || [],
+        searchStrings: {}
+      };
+      
+      // Cache the transformed keywords for later retrieval
+      const key = `process_${processId}_keywords`;
+      localStorage.setItem(key, JSON.stringify(transformedKeywords));
+      
+      return transformedKeywords;
+    } catch (error) {
+      console.error('Direct keyword enhancement error:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Update keyword selection for a process
    * Stores selection in localStorage
    */

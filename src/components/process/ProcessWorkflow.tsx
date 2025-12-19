@@ -24,7 +24,8 @@ import { ReviewerSearch } from '@/components/search/ReviewerSearch';
 import { ReviewerResults } from '@/components/results/ReviewerResults';
 import { AuthorValidation } from '@/components/validation/AuthorValidation';
 import { ShortlistManager } from '@/components/shortlist/ShortlistManager';
-import type { EnhancedKeywords, Reviewer } from '@/types/api';
+import type { Reviewer } from '@/types/api';
+import type { EnhancedKeywords } from '@/services/keywordService';
 
 interface ProcessWorkflowProps {
   processId: string;
@@ -62,10 +63,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     const saved = localStorage.getItem(getStorageKey('uploadResponse'));
     return saved ? JSON.parse(saved) : null;
   });
-  const [enhancedKeywords, setEnhancedKeywords] = useState<EnhancedKeywords | null>(() => {
-    const saved = localStorage.getItem(getStorageKey('enhancedKeywords'));
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [enhancedKeywords, setEnhancedKeywords] = useState<EnhancedKeywords | null>(null);
   const [primaryKeywords, setPrimaryKeywords] = useState<string[]>(() => {
     const saved = localStorage.getItem(getStorageKey('primaryKeywords'));
     return saved ? JSON.parse(saved) : [];
@@ -103,11 +101,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     }
   }, [uploadResponse, processId]);
 
-  useEffect(() => {
-    if (enhancedKeywords) {
-      localStorage.setItem(getStorageKey('enhancedKeywords'), JSON.stringify(enhancedKeywords));
-    }
-  }, [enhancedKeywords, processId]);
+
 
   useEffect(() => {
     localStorage.setItem(getStorageKey('primaryKeywords'), JSON.stringify(primaryKeywords));
@@ -140,7 +134,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     return () => {
       // Optional: Clear localStorage when navigating away (uncomment if desired)
       // const keys = [
-      //   'uploadResponse', 'enhancedKeywords', 'primaryKeywords', 'secondaryKeywords',
+      //   'uploadResponse', 'primaryKeywords', 'secondaryKeywords',
       //   'keywordString', 'searchCompleted', 'validationCompleted', 'validationRecommendations'
       // ];
       // keys.forEach(key => localStorage.removeItem(getStorageKey(key)));
@@ -152,6 +146,14 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     if (!process) return;
 
     try {
+      // Clear enhanced keywords when going back to upload or metadata extraction step
+      if (newStep === 'UPLOAD' || newStep === 'METADATA_EXTRACTION') {
+        setEnhancedKeywords(null);
+        setPrimaryKeywords([]);
+        setSecondaryKeywords([]);
+        setKeywordString('');
+      }
+      
       await updateStepMutation.mutateAsync({
         processId: process.id,
         step: newStep,
@@ -176,6 +178,11 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     if (!uploadResponse) {
       setUploadResponse(null);
       setUploadedFile(null);
+      // Clear enhanced keywords when file is removed
+      setEnhancedKeywords(null);
+      setPrimaryKeywords([]);
+      setSecondaryKeywords([]);
+      setKeywordString('');
       // Reset to upload step when file is removed
       await handleStepChange('UPLOAD');
       return;
@@ -184,6 +191,12 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     // Handle successful file upload
     setUploadResponse(uploadResponse);
     setUploadedFile({ name: uploadResponse.fileName, size: uploadResponse.fileSize } as File);
+    
+    // Clear enhanced keywords when a new file is uploaded
+    setEnhancedKeywords(null);
+    setPrimaryKeywords([]);
+    setSecondaryKeywords([]);
+    setKeywordString('');
     
     // Don't automatically move to next step - wait for user to click Next
     // await handleStepChange('METADATA_EXTRACTION');
@@ -365,6 +378,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
               onTriggerEnhancement={triggerKeywordEnhancement}
               isEnhancing={enhanceKeywordsMutation.isPending}
               hasEnhanced={!!enhancedKeywords}
+              enhancedKeywords={enhancedKeywords}
             />
             {enhancedKeywords && (
               <div className="flex justify-end">

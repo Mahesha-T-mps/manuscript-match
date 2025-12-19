@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { useKeywords, useEnhanceKeywords } from '@/hooks/useKeywords';
+
 import { useMetadata } from '@/hooks/useFiles';
 import type { EnhancedKeywords } from '@/services/keywordService';
 
@@ -26,6 +26,7 @@ interface KeywordEnhancementProps {
   onTriggerEnhancement?: () => void;
   isEnhancing?: boolean;
   hasEnhanced?: boolean;
+  enhancedKeywords?: EnhancedKeywords | null;
 }
 
 export const KeywordEnhancement: React.FC<KeywordEnhancementProps> = ({
@@ -35,6 +36,7 @@ export const KeywordEnhancement: React.FC<KeywordEnhancementProps> = ({
   onTriggerEnhancement,
   isEnhancing = false,
   hasEnhanced = false,
+  enhancedKeywords,
 }) => {
   const { toast } = useToast();
   
@@ -45,12 +47,11 @@ export const KeywordEnhancement: React.FC<KeywordEnhancementProps> = ({
   const [secondaryKeywords, setSecondaryKeywords] = useState<string[]>([]);
   const [newPrimaryKeyword, setNewPrimaryKeyword] = useState('');
   const [newSecondaryKeyword, setNewSecondaryKeyword] = useState('');
-  const [enableKeywordsQuery, setEnableKeywordsQuery] = useState(false);
+
   const [copiedKeywordString, setCopiedKeywordString] = useState(false);
   
   // API hooks
   const { data: metadata } = useMetadata(processId);
-  const { data: enhancedKeywords, isLoading: isLoadingKeywords, error: keywordsError } = useKeywords(processId, enableKeywordsQuery);
 
   // Initialize keyword lists when enhanced keywords are loaded
   React.useEffect(() => {
@@ -63,8 +64,6 @@ export const KeywordEnhancement: React.FC<KeywordEnhancementProps> = ({
   const handleEnhanceKeywords = useCallback(() => {
     if (onTriggerEnhancement) {
       onTriggerEnhancement();
-      // Enable the keywords query now that enhancement is triggered
-      setEnableKeywordsQuery(true);
     }
   }, [onTriggerEnhancement]);
 
@@ -312,50 +311,7 @@ export const KeywordEnhancement: React.FC<KeywordEnhancementProps> = ({
     );
   };
 
-  // Show loading state
-  if (isLoadingKeywords) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Zap className="w-5 h-5 text-primary" />
-            <span>Keyword Enhancement</span>
-          </CardTitle>
-          <CardDescription>
-            Enhance keywords and generate search terms for better reviewer matching
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin mr-2" />
-            <span>Loading keywords...</span>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
 
-  // Show error state
-  if (keywordsError) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Zap className="w-5 h-5 text-primary" />
-            <span>Keyword Enhancement</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              Failed to load keywords. Please try enhancing them first.
-            </AlertDescription>
-          </Alert>
-        </CardContent>
-      </Card>
-    );
-  }
 
   return (
     <Card>
@@ -405,19 +361,7 @@ export const KeywordEnhancement: React.FC<KeywordEnhancementProps> = ({
           </div>
         )}
         
-        {/* Re-enhancement option when keywords already exist */}
-        {enhancedKeywords && !isEnhancing && (
-          <div className="mb-4">
-            <Button
-              onClick={handleEnhanceKeywords}
-              variant="outline"
-              size="sm"
-            >
-              <Sparkles className="w-4 h-4 mr-2" />
-              Re-enhance Keywords
-            </Button>
-          </div>
-        )}
+
 
         {/* Enhanced Keywords Display */}
         {enhancedKeywords && (

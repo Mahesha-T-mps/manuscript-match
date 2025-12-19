@@ -17,7 +17,7 @@ export const useEnhanceKeywords = () => {
     mutationFn: ({ processId }: { 
       processId: string;
     }): Promise<EnhancedKeywords> => 
-      keywordService.enhanceKeywords(processId),
+      keywordService.enhanceKeywordsDirectly(processId),
     onSuccess: (enhancedKeywords, { processId }) => {
       // Cache the enhanced keywords
       queryClient.setQueryData(
