@@ -207,7 +207,7 @@ export class ScholarFinderApiService {
     // Use external API configuration pointing to the ScholarFinder Lambda API
     const defaultConfig: ScholarFinderApiConfig = {
       baseURL: config.scholarFinderApiUrl, // Use configured URL from environment
-      timeout: 300000, // 5 minutes for external API calls (increased from 2 minutes)
+      timeout: config.apiTimeout * 6, // Use 6x the configured timeout for long-running operations (36 minutes for 600000ms config)
       retries: 3,
       retryDelay: 2000
     };
@@ -611,7 +611,7 @@ export class ScholarFinderApiService {
     });
 
     try {
-      // Use shorter timeout for initiating search - this should return quickly
+      // Use extended timeout for database search - this operation takes 20-30 minutes
       const response = await this.apiService.request<DatabaseSearchResponse>({
         method: 'POST',
         url: `/database_search?job_id=${encodeURIComponent(jobId)}`,
@@ -619,7 +619,7 @@ export class ScholarFinderApiService {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded'
         },
-        timeout: 30000, // 30 seconds timeout for initiating search
+        timeout: 2400000, // 40 minutes timeout for database search (20-30 min typical + buffer)
         retries: 0 // No retries for long-running operations
       });
       
@@ -1040,6 +1040,26 @@ export class ScholarFinderApiService {
       return transformedResponse;
     } catch (error) {
       console.error('[ScholarFinderApiService.getRecommendations] ❌ Failed to get recommendations:', error);
+      
+      // Handle 404 as "NOT READY" - validation process hasn't completed yet
+      if (error.response?.status === 404) {
+        console.log('[ScholarFinderApiService.getRecommendations] 📋 404 received - recommendations not ready yet');
+        return {
+          message: 'Recommendations not ready - validation still in progress',
+          job_id: jobId,
+          data: {
+            reviewers: [],
+            total_count: 0,
+            validation_summary: {
+              total_authors: 0,
+              authors_validated: 0,
+              conditions_applied: [],
+              average_conditions_met: 0
+            }
+          }
+        } as RecommendationsResponse;
+      }
+      
       const scholarFinderError = this.handleApiError(error, 'recommendations retrieval');
       throw scholarFinderError;
     }

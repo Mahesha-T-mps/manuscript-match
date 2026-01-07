@@ -46,7 +46,13 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                           process?.currentStep === 'RECOMMENDATIONS' ||
                           process?.currentStep === 'MANUAL_SEARCH';
   const searchHook = useSearch(processId, shouldPollSearch);
-  const { data: recommendations, isLoading: recommendationsLoading, refetch: refetchRecommendations } = useRecommendations(processId);
+  
+  // Only enable recommendations hook when we're in RECOMMENDATIONS step or later
+  // This prevents premature API calls during database search
+  const shouldFetchRecommendations = process?.currentStep === 'RECOMMENDATIONS' || 
+                                   process?.currentStep === 'SHORTLIST' ||
+                                   process?.currentStep === 'EXPORT';
+  const { data: recommendations, isLoading: recommendationsLoading, refetch: refetchRecommendations } = useRecommendations(processId, shouldFetchRecommendations);
   const shortlistsHook = useShortlists(processId);
   
   // Hook to check if metadata is loaded for the METADATA_EXTRACTION step
@@ -341,7 +347,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                   onClick={() => handleStepChange('METADATA_EXTRACTION')}
                   size="lg"
                 >
-                  Next: Metadata Extraction
+                  Next: Review Metadata
                 </Button>
               </div>
             )}
@@ -452,14 +458,30 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
             <CardContent className="pt-6">
               <div className="text-center space-y-4">
                 <p className="text-muted-foreground">
-                  No reviewer recommendations found.
+                  {recommendations && recommendations.reviewers && recommendations.reviewers.length === 0 && recommendations.message?.includes('not ready') 
+                    ? "Recommendations are not ready yet. The validation process may still be running in the background."
+                    : "No reviewer recommendations found."
+                  }
                 </p>
-                <Button 
-                  onClick={() => refetchRecommendations?.()}
-                  variant="outline"
-                >
-                  Retry Loading Recommendations
-                </Button>
+                <div className="flex gap-2 justify-center">
+                  <Button 
+                    onClick={() => refetchRecommendations?.()}
+                    variant="outline"
+                  >
+                    {recommendations && recommendations.message?.includes('not ready') 
+                      ? "Check Again" 
+                      : "Retry Loading Recommendations"
+                    }
+                  </Button>
+                  {recommendations && recommendations.message?.includes('not ready') && (
+                    <Button 
+                      variant="outline"
+                      onClick={() => handleStepChange('VALIDATION')}
+                    >
+                      Back to Validation
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>

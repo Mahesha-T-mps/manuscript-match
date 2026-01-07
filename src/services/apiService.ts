@@ -7,10 +7,8 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } f
 import { config } from '../lib/config';
 import type { 
   ApiResponse, 
-  ApiError, 
   UserFriendlyError, 
-  RequestConfig,
-  HttpMethod 
+  RequestConfig
 } from '../types/api';
 
 /**
@@ -131,7 +129,7 @@ export class ErrorHandler {
       return {
         type: 'GATEWAY_TIMEOUT',
         message: 'The operation is taking longer than expected but may still be processing in the background. You can try checking the results later or proceed to the next step.',
-        action: 'CONTINUE',
+        action: 'RETRY',
         details: { status: 504, originalError: error }
       };
     }
@@ -466,7 +464,7 @@ export class ApiService {
         }
 
         // Check if we should retry this error
-        const shouldRetry = this.shouldRetryRequest(error, attempt);
+        const shouldRetry = this.shouldRetryRequest(error);
         if (!shouldRetry) {
           break;
         }
@@ -507,7 +505,7 @@ export class ApiService {
   /**
    * Determine if a request should be retried
    */
-  private shouldRetryRequest(error: any, attemptNumber: number): boolean {
+  private shouldRetryRequest(error: any): boolean {
     // 🔥 NEVER retry manual_authors endpoint
     if (error.config?.url?.includes('manual_authors')) {
       console.log('🔥 NOT retrying manual_authors endpoint');

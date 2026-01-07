@@ -239,6 +239,15 @@ export const useRecommendations = (processId: string, enabled: boolean = true) =
     enabled: enabled && !!processId,
     staleTime: optimizedCacheConfig.recommendations.staleTime,
     gcTime: optimizedCacheConfig.recommendations.gcTime,
+    refetchInterval: (query) => {
+      // Poll every 10 seconds if recommendations are not ready (404 case)
+      const data = query.state.data;
+      if (data && typeof data === 'object' && 'message' in data && 
+          typeof data.message === 'string' && data.message.includes('not ready')) {
+        return 10000; // 10 seconds
+      }
+      return false; // No polling otherwise
+    },
   });
 };
 
