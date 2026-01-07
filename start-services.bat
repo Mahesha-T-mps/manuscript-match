@@ -2,6 +2,10 @@
 echo Starting ScholarFinder Services...
 
 echo.
+echo Starting FastAPI Server on port 8000...
+start "FastAPI" cmd /k "python -m uvicorn scholarfinder_api:app --host 127.0.0.1 --port 8000 --reload"
+
+echo.
 echo Starting Backend on port 3002...
 start "Backend" cmd /k "cd backend && npm run dev"
 
@@ -15,8 +19,4 @@ start "Frontend" cmd /k "npm run dev"
 
 echo.
 echo Services are starting...
-echo Backend: http://localhost:3002
-echo Frontend: http://localhost:8080
-echo.
-echo Press any key to exit...
-pause > nul
+echo Fastul

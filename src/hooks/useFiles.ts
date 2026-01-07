@@ -228,9 +228,14 @@ export const useValidationStatus = (processId: string, enabled: boolean = true) 
  * Hook for getting recommended reviewers - uses ScholarFinder API
  */
 export const useRecommendations = (processId: string, enabled: boolean = true) => {
+  console.log('[useRecommendations] Hook called with:', { processId, enabled });
+  
   return useQuery({
     queryKey: ['recommendations', processId],
-    queryFn: () => fileService.getRecommendations(processId),
+    queryFn: () => {
+      console.log('[useRecommendations] Query function called for processId:', processId);
+      return fileService.getRecommendations(processId);
+    },
     enabled: enabled && !!processId,
     staleTime: optimizedCacheConfig.recommendations.staleTime,
     gcTime: optimizedCacheConfig.recommendations.gcTime,

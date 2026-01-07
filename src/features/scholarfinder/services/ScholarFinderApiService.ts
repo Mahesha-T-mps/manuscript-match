@@ -207,7 +207,7 @@ export class ScholarFinderApiService {
     // Use external API configuration pointing to the ScholarFinder Lambda API
     const defaultConfig: ScholarFinderApiConfig = {
       baseURL: config.scholarFinderApiUrl, // Use configured URL from environment
-      timeout: 120000, // 2 minutes for external API calls
+      timeout: 300000, // 5 minutes for external API calls (increased from 2 minutes)
       retries: 3,
       retryDelay: 2000
     };
@@ -257,6 +257,16 @@ export class ScholarFinderApiService {
         details: error.message,
         retryable: true,
         retryAfter: 10000
+      };
+    }
+
+    // 504 Gateway Timeout - special handling for long-running operations
+    if (status === 504) {
+      return {
+        type: ScholarFinderErrorType.TIMEOUT_ERROR,
+        message: `${operation} is taking longer than expected but may still be processing in the background. You can try checking the results later or proceed to the next step.`,
+        details: data,
+        retryable: false // Don't retry 504s automatically
       };
     }
 
@@ -438,25 +448,34 @@ export class ScholarFinderApiService {
     }
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      // Add process_id if provided
-      if (processId) {
-        formData.append('process_id', processId);
-      }
+      // Calculate extended timeout for upload + metadata extraction
+      // Base timeout: 10 minutes, plus 2 minutes per 10MB of file size
+      const baseTimeout = 10 * 60 * 1000; // 10 minutes
+      const fileSizeInMB = file.size / (1024 * 1024);
+      const additionalTimeout = Math.ceil(fileSizeInMB / 10) * 2 * 60 * 1000; // 2 minutes per 10MB
+      const uploadTimeout = baseTimeout + additionalTimeout;
+
+      console.log(`[ScholarFinderAPI] Upload timeout calculated: ${uploadTimeout}ms (${uploadTimeout/1000/60} minutes) for ${fileSizeInMB.toFixed(1)}MB file`);
 
       // Build URL with query parameter if processId is provided
       let url = '/upload_extract_metadata';
       if (processId) {
         url += `?process_id=${encodeURIComponent(processId)}`;
       }
+      console.log("Upload URL:", url);
 
-      // Use uploadFile method for proper file upload handling with progress tracking
-      const response = await this.apiService.uploadFile<UploadResponse>(
+      // Create a temporary API service instance with extended timeout for this upload
+      const uploadApiService = new ApiService({
+        baseURL: this.config.baseURL,
+        timeout: uploadTimeout, // Use calculated extended timeout
+        retries: 0 // No retries for file uploads
+      });
+
+      // Use uploadFile method with extended timeout
+      const response = await uploadApiService.uploadFile<UploadResponse>(
         url,
         file,
-        onProgress // Pass the progress callback through
+        onProgress
       );
 
       return (response.data || response) as UploadResponse;
@@ -558,7 +577,8 @@ export class ScholarFinderApiService {
   }
 
   /**
-   * Step 4: Search academic databases
+   * Step 4: Search academic databases (Async - starts background job)
+   * This method initiates the search and returns immediately with job status
    */
   async searchDatabases(jobId: string, databases: DatabaseSelection): Promise<DatabaseSearchResponse> {
     if (!jobId) {
@@ -591,8 +611,7 @@ export class ScholarFinderApiService {
     });
 
     try {
-      // Use request method directly with extended timeout for long-running search
-      // Database search can take several minutes, so use a 10-minute timeout
+      // Use shorter timeout for initiating search - this should return quickly
       const response = await this.apiService.request<DatabaseSearchResponse>({
         method: 'POST',
         url: `/database_search?job_id=${encodeURIComponent(jobId)}`,
@@ -600,15 +619,111 @@ export class ScholarFinderApiService {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded'
         },
-        timeout: 600000 // 10 minutes for database search
+        timeout: 30000, // 30 seconds timeout for initiating search
+        retries: 0 // No retries for long-running operations
       });
       
-      console.log('[ScholarFinderAPI] Database search response:', response);
-      // The database_search endpoint returns data directly, not wrapped in a data field
-      return response as any;
+      console.log('[ScholarFinderAPI] Database search initiated:', response);
+      
+      // If we get a successful response, the search completed immediately
+      const transformedResponse: DatabaseSearchResponse = {
+        message: 'Database search completed successfully',
+        job_id: jobId,
+        data: {
+          total_reviewers: response.reviewers_count || 0,
+          databases_searched: databases.selected_websites,
+          search_status: databases.selected_websites.reduce((acc, db) => {
+            acc[db] = 'success';
+            return acc;
+          }, {} as Record<string, 'success' | 'failed' | 'in_progress'>),
+          preview_reviewers: response.author_email_affiliation_preview?.slice(0, 5).map(author => ({
+            reviewer: author.author || '',
+            email: author.email || '',
+            aff: author.aff || '',
+            city: author.city || '',
+            country: author.country || '',
+            Total_Publications: 0,
+            English_Pubs: 0,
+            'Publications (last 10 years)': 0,
+            'Relevant Publications (last 5 years)': 0,
+            'Publications (last 2 years)': 0,
+            'Publications (last year)': 0,
+            Clinical_Trials_no: 0,
+            Clinical_study_no: 0,
+            Case_reports_no: 0,
+            Retracted_Pubs_no: 0,
+            TF_Publications_last_year: 0,
+            coauthor: false,
+            country_match: '',
+            aff_match: '',
+            conditions_met: 0,
+            conditions_satisfied: ''
+          })) || []
+        }
+      };
+      
+      return transformedResponse;
     } catch (error) {
       console.error('[ScholarFinderAPI] Database search error:', error);
+      
+      // Handle 504 Gateway Timeout specially - this means search is running in background
+      const is504Timeout = (
+        (error as any)?.userError?.type === 'GATEWAY_TIMEOUT' || 
+        (error as any)?.type === 'GATEWAY_TIMEOUT' ||
+        (error as any)?.type === 'TIMEOUT_ERROR' ||
+        (error as any)?.details?.status === 504 ||
+        (error as any)?.response?.status === 504 ||
+        (error as any)?.status === 504 ||
+        error?.message?.includes('504') ||
+        error?.message?.includes('Gateway Timeout')
+      );
+      
+      if (is504Timeout) {
+        console.warn('[ScholarFinderAPI] 504 timeout - database search initiated and running in background');
+        
+        // Return a "processing" response - search was initiated successfully
+        return {
+          message: 'Database search initiated successfully and is running in background',
+          job_id: jobId,
+          data: {
+            total_reviewers: 0,
+            databases_searched: databases.selected_websites,
+            search_status: databases.selected_websites.reduce((acc, db) => {
+              acc[db] = 'in_progress';
+              return acc;
+            }, {} as Record<string, 'success' | 'failed' | 'in_progress'>),
+            preview_reviewers: []
+          }
+        } as DatabaseSearchResponse;
+      }
+      
       const scholarFinderError = this.handleApiError(error, 'database search');
+      throw scholarFinderError;
+    }
+  }
+
+  /**
+   * Step 4b: Get database search status (for polling)
+   */
+  async getDatabaseSearchStatus(jobId: string): Promise<DatabaseSearchResponse> {
+    if (!jobId) {
+      throw {
+        type: ScholarFinderErrorType.SEARCH_ERROR,
+        message: 'Job ID is required to check database search status',
+        retryable: false
+      } as ScholarFinderError;
+    }
+
+    try {
+      const response = await this.apiService.request<DatabaseSearchResponse>({
+        method: 'GET',
+        url: `/database_search_status?job_id=${encodeURIComponent(jobId)}`,
+        timeout: 10000 // 10 seconds for status check
+      });
+      
+      return response as any;
+    } catch (error) {
+      const scholarFinderError = this.handleApiError(error, 'database search status check');
       throw scholarFinderError;
     }
   }
@@ -759,6 +874,7 @@ export class ScholarFinderApiService {
 
   /**
    * Step 6: Validate authors against conflict rules
+   * Note: This is a long-running process (up to 1 hour). 504 timeouts are expected and should be treated as "still processing"
    */
   async validateAuthors(jobId: string): Promise<ValidationResponse> {
     if (!jobId) {
@@ -787,10 +903,44 @@ export class ScholarFinderApiService {
       console.error('[ScholarFinderApiService.validateAuthors] ❌ Validation failed:', error);
       console.error('[ScholarFinderApiService.validateAuthors] 📊 Error details:', {
         message: error?.message,
-        response: error?.response,
-        status: error?.response?.status,
-        data: error?.response?.data
+        type: (error as any)?.type,
+        userError: (error as any)?.userError,
+        details: (error as any)?.details,
+        response: (error as any)?.response,
+        status: (error as any)?.status
       });
+      
+      // Handle 504 Gateway Timeout specially - this means validation is still running in background
+      // Check multiple possible error structures for 504 timeout
+      const is504Timeout = (
+        (error as any)?.userError?.type === 'GATEWAY_TIMEOUT' || 
+        (error as any)?.type === 'GATEWAY_TIMEOUT' ||
+        (error as any)?.type === 'TIMEOUT_ERROR' ||
+        (error as any)?.details?.status === 504 ||
+        (error as any)?.response?.status === 504 ||
+        (error as any)?.status === 504 ||
+        (error as any)?.originalError?.response?.status === 504 ||
+        error?.message?.includes('504') ||
+        error?.message?.includes('Gateway Timeout') ||
+        error?.message?.includes('A server error occurred')
+      );
+      
+      if (is504Timeout) {
+        console.warn('[ScholarFinderApiService.validateAuthors] ⏳ 504 timeout - validation still running in backend');
+        
+        // Return a "still processing" response instead of throwing an error
+        return {
+          message: 'Validation started successfully and is running in background',
+          job_id: jobId,
+          data: {
+            validation_status: 'in_progress' as const,
+            progress_percentage: 0,
+            estimated_completion_time: 'Processing may take up to 1 hour',
+            total_authors_processed: 0,
+            validation_criteria: ['Publications (10 years)', 'English publications', 'No coauthorship', 'Different affiliation', 'Same country', 'Relevant publications (5 years)', 'Recent publications (2 years)', 'Low retracted publications']
+          }
+        } as ValidationResponse;
+      }
       
       const scholarFinderError = this.handleApiError(error, 'author validation');
       console.error('[ScholarFinderApiService.validateAuthors] 🔥 Throwing processed error:', scholarFinderError);

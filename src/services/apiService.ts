@@ -96,6 +96,15 @@ export class ErrorHandler {
   static handle(error: any): UserFriendlyError {
     // Network errors (no response)
     if (!error.response) {
+      // Check for specific empty response error
+      if (error.message?.includes('ERR_EMPTY_RESPONSE') || error.code === 'ERR_EMPTY_RESPONSE') {
+        return {
+          type: 'NETWORK_ERROR',
+          message: 'The server connection was interrupted during file upload. This may be due to a large file or slow connection. Please try uploading a smaller file or check your internet connection.',
+          action: 'RETRY'
+        };
+      }
+      
       return {
         type: 'NETWORK_ERROR',
         message: 'Unable to connect to the server. Please check your internet connection and try again.',
@@ -114,6 +123,16 @@ export class ErrorHandler {
         type: 'AUTHENTICATION_ERROR',
         message: errorMessage,
         action: 'REDIRECT_TO_LOGIN'
+      };
+    }
+
+    // Gateway Timeout (504) - special handling for long-running operations
+    if (status === 504) {
+      return {
+        type: 'GATEWAY_TIMEOUT',
+        message: 'The operation is taking longer than expected but may still be processing in the background. You can try checking the results later or proceed to the next step.',
+        action: 'CONTINUE',
+        details: { status: 504, originalError: error }
       };
     }
 
@@ -140,7 +159,7 @@ export class ErrorHandler {
       };
     }
 
-    // Server errors
+    // Server errors (but not 504 which is handled above)
     if (status >= 500) {
       return {
         type: 'SERVER_ERROR',
@@ -477,6 +496,11 @@ export class ApiService {
     (error as any).action = userError.action;
     (error as any).retryAfter = userError.retryAfter;
     
+    // Preserve original error information for debugging
+    (error as any).originalError = lastError;
+    (error as any).response = lastError?.response;
+    (error as any).status = lastError?.response?.status;
+    
     throw error;
   }
 
@@ -587,11 +611,13 @@ export class ApiService {
     const formData = new FormData();
     formData.append('file', file);
 
-    // Calculate timeout based on file size (minimum 5 minutes, add 1 minute per 10MB)
-    const baseTimeout = 5 * 60 * 1000; // 5 minutes
+    // Calculate timeout based on file size (minimum 10 minutes, add 2 minutes per 10MB)
+    const baseTimeout = 10 * 60 * 1000; // 10 minutes
     const fileSizeInMB = file.size / (1024 * 1024);
-    const additionalTimeout = Math.ceil(fileSizeInMB / 10) * 60 * 1000; // 1 minute per 10MB
-    const uploadTimeout = baseTimeout + additionalTimeout;
+    const additionalTimeout = Math.ceil(fileSizeInMB / 10) * 2 * 60 * 1000; // 2 minutes per 10MB
+    const uploadTimeout = Math.max(baseTimeout + additionalTimeout, 15 * 60 * 1000); // Minimum 15 minutes
+
+    console.log(`[ApiService] Upload timeout: ${uploadTimeout}ms (${uploadTimeout/1000/60} minutes) for ${fileSizeInMB.toFixed(1)}MB file`);
 
     try {
       const response = await this.axiosInstance.post<ApiResponse<T>>(url, formData, {
@@ -609,6 +635,7 @@ export class ApiService {
 
       return response.data;
     } catch (error) {
+      console.error('[ApiService] Upload error:', error);
       const userError = ErrorHandler.handle(error);
       const err = new Error(userError.message);
       (err as any).userError = userError;

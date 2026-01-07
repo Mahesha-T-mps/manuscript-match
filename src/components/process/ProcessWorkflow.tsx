@@ -341,7 +341,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                   onClick={() => handleStepChange('METADATA_EXTRACTION')}
                   size="lg"
                 >
-                  Next: Review Metadata
+                  Next: Metadata Extraction
                 </Button>
               </div>
             )}

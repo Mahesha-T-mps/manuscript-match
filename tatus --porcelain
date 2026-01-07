@@ -1,0 +1,43 @@
+[1mdiff --git a/.env b/.env[m
+[1mindex a26a3c3..d0626a4 100644[m
+[1m--- a/.env[m
+[1m+++ b/.env[m
+[36m@@ -1,17 +1,15 @@[m
+ # Default Environment Configuration[m
+ # This file is used when no specific environment is set[m
+ [m
+[31m-# API Configuration[m
+[31m-# VITE_API_BASE_URL="http://192.168.3.187:3002"[m
+[31m-VITE_API_BASE_URL="http://10.1.1.54:3002"[m
+[32m+[m[32m# API Configuration - USE HTTPS WITH DOMAIN[m
+[32m+[m[32mVITE_API_BASE_URL="https://scholarfinder.mpslimited.com"[m
+ VITE_API_TIMEOUT="30000"[m
+ VITE_API_RETRY_ATTEMPTS="3"[m
+ VITE_API_RETRY_DELAY="1000"[m
+ [m
+[31m-# ScholarFinder External API Configuration[m
+[31m-#VITE_SCHOLARFINDER_API_URL="https://192.168.61.60:8000"[m
+[31m-VITE_SCHOLARFINDER_API_URL="http://10.1.1.54:8000"[m
+[31m-[m
+[32m+[m[32m# ScholarFinder External API Configuration - USE HTTPS WITH DOMAIN[m
+[32m+[m[32mVITE_SCHOLARFINDER_API_URL="/api/scholar"[m
+[32m+[m[32m# VITE_SCHOLARFINDER_API_URL = "http://10.1.0.103:8000"[m
+ # File Upload Configuration[m
+ VITE_MAX_FILE_SIZE="52428800"[m
+ VITE_SUPPORTED_FILE_TYPES="docx,doc"[m
+[36m@@ -25,7 +23,7 @@[m [mVITE_TOKEN_REFRESH_THRESHOLD="300000"[m
+ VITE_ENABLE_DEV_TOOLS="true"[m
+ VITE_ENABLE_QUERY_DEVTOOLS="true"[m
+ VITE_ENABLE_DEBUG_LOGGING="true"[m
+[31m-VITE_ENABLE_PERFORMANCE_MONITORING="true"[m
+[32m+[m[32mVITE_ENABLE_PERFORMANCE_MONITORING="false"[m
+ [m
+ # Cache Configuration[m
+ VITE_CACHE_STALE_TIME="300000"[m
+[36m@@ -43,4 +41,4 @@[m [mVITE_ENABLE_API_MOCKING="false"[m
+ # Legacy Supabase Configuration (for migration)[m
+ VITE_SUPABASE_PROJECT_ID="ofutrsieokzfvypdoeen"[m
+ VITE_SUPABASE_PUBLISHABLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mdXRyc2llb2t6ZnZ5cGRvZWVuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYxOTQ0OTcsImV4cCI6MjA3MTc3MDQ5N30.N7elAdkxhFxBkgjHZqxilwd-IfuudQK1fyA-87W2Axw"[m
+[31m-VITE_SUPABASE_URL="https://ofutrsieokzfvypdoeen.supabase.co"[m
+[32m+[m[32mVITE_SUPABASE_URL="https://ofutrsieokzfvypdoeen.supabase.co"[m
+\ No newline at end of file[m

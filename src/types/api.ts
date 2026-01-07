@@ -395,7 +395,7 @@ export interface RequestConfig {
 
 // User-Friendly Error Types
 export interface UserFriendlyError {
-  type: 'NETWORK_ERROR' | 'AUTHENTICATION_ERROR' | 'VALIDATION_ERROR' | 'RATE_LIMIT_ERROR' | 'SERVER_ERROR' | 'UNKNOWN_ERROR';
+  type: 'NETWORK_ERROR' | 'AUTHENTICATION_ERROR' | 'VALIDATION_ERROR' | 'RATE_LIMIT_ERROR' | 'SERVER_ERROR' | 'GATEWAY_TIMEOUT' | 'UNKNOWN_ERROR';
   message: string;
   action?: 'REDIRECT_TO_LOGIN' | 'RETRY' | 'CONTACT_SUPPORT';
   retryAfter?: number;
