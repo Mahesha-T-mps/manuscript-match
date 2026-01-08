@@ -50,8 +50,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   // Only enable recommendations hook when we're in RECOMMENDATIONS step or later
   // This prevents premature API calls during database search
   const shouldFetchRecommendations = process?.currentStep === 'RECOMMENDATIONS' || 
-                                   process?.currentStep === 'SHORTLIST' ||
-                                   process?.currentStep === 'EXPORT';
+                                   process?.currentStep === 'SHORTLIST';
   const { data: recommendations, isLoading: recommendationsLoading, refetch: refetchRecommendations } = useRecommendations(processId, shouldFetchRecommendations);
   const shortlistsHook = useShortlists(processId);
   
@@ -91,14 +90,195 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     const saved = localStorage.getItem(getStorageKey('validationCompleted'));
     return saved ? JSON.parse(saved) : false;
   });
+  const [validationProgress, setValidationProgress] = useState(() => {
+    const saved = localStorage.getItem(getStorageKey('validationProgress'));
+    return saved ? JSON.parse(saved) : { 
+      percentage: 0, 
+      processed: 0, 
+      total: 0, 
+      criteria: [],
+      status: 'pending',
+      estimatedCompletion: null
+    };
+  });
   const [validationRecommendations, setValidationRecommendations] = useState<any>(() => {
     const saved = localStorage.getItem(getStorageKey('validationRecommendations'));
     return saved ? JSON.parse(saved) : null;
   });
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
   
+  // Validation progress polling with proper completion tracking
+  const pollValidationProgress = useCallback(async (jobId: string): Promise<boolean> => {
+    try {
+      console.log('[ProcessWorkflow] Polling validation progress for jobId:', jobId);
+      const statusResponse = await scholarFinderApiService.getValidationStatus(jobId);
+      
+      console.log('[ProcessWorkflow] Validation status response:', statusResponse);
+      
+      // Update progress state with more comprehensive tracking
+      setValidationProgress(prev => {
+        const newProgress = {
+          ...prev,
+          percentage: statusResponse.data.progress_percentage || 0,
+          processed: statusResponse.data.total_authors_processed || 0,
+          total: Math.max(statusResponse.data.total_authors_processed || 0, prev.total),
+          criteria: statusResponse.data.validation_criteria || prev.criteria,
+          status: statusResponse.data.validation_status,
+          estimatedCompletion: statusResponse.data.estimated_completion_time || null
+        };
+        
+        console.log('[ProcessWorkflow] Updated validation progress:', newProgress);
+        return newProgress;
+      });
+      
+      // Handle completion
+      if (statusResponse.data.validation_status === 'completed') {
+        console.log('[ProcessWorkflow] Validation completed!');
+        setValidationCompleted(true);
+        
+        // Show enhanced completion notification with detailed stats
+        const processedCount = statusResponse.data.total_authors_processed || 0;
+        const criteriaCount = statusResponse.data.validation_criteria?.length || 0;
+        const summary = statusResponse.data.summary;
+        
+        let description = `Processed ${processedCount} authors against ${criteriaCount} validation criteria.`;
+        if (summary) {
+          description += ` Found ${summary.authors_validated} validated authors with average score of ${summary.average_conditions_met.toFixed(1)}.`;
+        }
+        description += ' Results are now available.';
+        
+        toast({
+          title: 'Validation Completed Successfully! 🎉',
+          description,
+          duration: 8000, // Show longer for important completion notification
+        });
+        
+        return true; // Stop polling
+      }
+      
+      // Handle failure
+      if (statusResponse.data.validation_status === 'failed') {
+        console.error('[ProcessWorkflow] Validation failed');
+        setValidationProgress(prev => ({ ...prev, status: 'failed' }));
+        
+        toast({
+          title: 'Validation Failed',
+          description: 'Author validation process encountered an error. Please try again.',
+          variant: 'destructive',
+          duration: 8000,
+        });
+        
+        return true; // Stop polling
+      }
+      
+      // Still in progress - show progress update for larger batches
+      if (statusResponse.data.total_authors_processed > 0) {
+        const processed = statusResponse.data.total_authors_processed;
+        const percentage = statusResponse.data.progress_percentage || 0;
+        
+        // Show progress notifications for every 25% completion or every 100 authors processed
+        const shouldShowProgress = (
+          percentage > 0 && percentage % 25 === 0 && percentage !== validationProgress.percentage
+        ) || (
+          processed > 0 && processed % 100 === 0 && processed !== validationProgress.processed
+        );
+        
+        if (shouldShowProgress) {
+          toast({
+            title: 'Validation Progress Update',
+            description: `Processed ${processed} authors (${percentage}% complete). ${statusResponse.data.estimated_completion_time || 'Continuing...'}`,
+            duration: 4000,
+          });
+        }
+      }
+      
+      return false; // Continue polling
+    } catch (error) {
+      console.error('[ProcessWorkflow] Error polling validation progress:', error);
+      
+      // Don't show error toast for polling failures - validation might still be running
+      // Just log the error and continue polling
+      return false; // Continue polling despite error
+    }
+  }, [toast, validationProgress.percentage, validationProgress.processed]);
+  
+  // Validation polling state and control
+  const validationPollingRef = useRef<NodeJS.Timeout | null>(null);
+  const [isPollingValidation, setIsPollingValidation] = useState(false);
+
+  // Start validation polling
+  const startValidationPolling = useCallback(async (jobId: string) => {
+    console.log('[ProcessWorkflow] Starting validation polling for jobId:', jobId);
+    
+    // Clear any existing polling
+    if (validationPollingRef.current) {
+      clearTimeout(validationPollingRef.current);
+    }
+    
+    setIsPollingValidation(true);
+    
+    const poll = async () => {
+      try {
+        const shouldStop = await pollValidationProgress(jobId);
+        
+        if (shouldStop) {
+          console.log('[ProcessWorkflow] Stopping validation polling - process completed or failed');
+          setIsPollingValidation(false);
+          validationPollingRef.current = null;
+          return;
+        }
+        
+        // Continue polling every 15 seconds for validation (longer interval for long-running process)
+        validationPollingRef.current = setTimeout(poll, 15000);
+      } catch (error) {
+        console.error('[ProcessWorkflow] Validation polling error:', error);
+        // Continue polling even on error - validation might still be running
+        validationPollingRef.current = setTimeout(poll, 30000); // Longer interval on error
+      }
+    };
+    
+    // Start first poll after 5 seconds
+    validationPollingRef.current = setTimeout(poll, 5000);
+  }, [pollValidationProgress]);
+
+  // Stop validation polling
+  const stopValidationPolling = useCallback(() => {
+    console.log('[ProcessWorkflow] Stopping validation polling');
+    if (validationPollingRef.current) {
+      clearTimeout(validationPollingRef.current);
+      validationPollingRef.current = null;
+    }
+    setIsPollingValidation(false);
+  }, []);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (validationPollingRef.current) {
+        clearTimeout(validationPollingRef.current);
+      }
+    };
+  }, []);
+
   // Track if keyword enhancement has been triggered for this process
   const keywordEnhancementTriggered = useRef(false);
+
+  // Auto-resume validation polling if validation was in progress
+  useEffect(() => {
+    // Only auto-resume if we're in the VALIDATION step and validation is marked as in progress
+    if (
+      process?.currentStep === 'VALIDATION' && 
+      validationProgress.status === 'in_progress' && 
+      !validationCompleted && 
+      !isPollingValidation
+    ) {
+      const jobId = fileService.getJobId(processId);
+      if (jobId) {
+        console.log('[ProcessWorkflow] Auto-resuming validation polling for in-progress validation');
+        startValidationPolling(jobId);
+      }
+    }
+  }, [process?.currentStep, validationProgress.status, validationCompleted, isPollingValidation, processId, startValidationPolling]);
 
   // Auto-save workflow state to localStorage
   useEffect(() => {
@@ -128,6 +308,10 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   useEffect(() => {
     localStorage.setItem(getStorageKey('validationCompleted'), JSON.stringify(validationCompleted));
   }, [validationCompleted, processId]);
+
+  useEffect(() => {
+    localStorage.setItem(getStorageKey('validationProgress'), JSON.stringify(validationProgress));
+  }, [validationProgress, processId]);
 
   useEffect(() => {
     if (validationRecommendations) {
@@ -505,7 +689,73 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {!validationCompleted ? (
+              {/* Validation Progress Display */}
+              {(isPollingValidation || validationProgress.status === 'in_progress') && !validationCompleted && (
+                <div className="space-y-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-medium text-blue-900">Validation in Progress</h4>
+                    <span className="text-sm text-blue-700">
+                      {validationProgress.percentage > 0 ? `${validationProgress.percentage}%` : 'Processing...'}
+                    </span>
+                  </div>
+                  
+                  {/* Progress Bar */}
+                  {validationProgress.percentage > 0 && (
+                    <div className="w-full bg-blue-200 rounded-full h-2">
+                      <div 
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-500 ease-out"
+                        style={{ width: `${validationProgress.percentage}%` }}
+                      ></div>
+                    </div>
+                  )}
+                  
+                  {/* Progress Details */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    {validationProgress.processed > 0 && (
+                      <div className="text-blue-700">
+                        <span className="font-medium">Authors Processed:</span> {validationProgress.processed}
+                        {validationProgress.total > validationProgress.processed && ` of ${validationProgress.total}`}
+                      </div>
+                    )}
+                    
+                    {validationProgress.criteria.length > 0 && (
+                      <div className="text-blue-700">
+                        <span className="font-medium">Validation Criteria:</span> {validationProgress.criteria.length} rules
+                      </div>
+                    )}
+                    
+                    {validationProgress.estimatedCompletion && (
+                      <div className="text-blue-700 md:col-span-2">
+                        <span className="font-medium">Estimated Completion:</span> {validationProgress.estimatedCompletion}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Status Message */}
+                  <div className="text-sm text-blue-600">
+                    {validationProgress.status === 'in_progress' 
+                      ? 'Validation is running in the background. You can continue with other tasks while waiting.'
+                      : 'Checking validation status...'
+                    }
+                  </div>
+                  
+                  {/* Stop Polling Button */}
+                  {isPollingValidation && (
+                    <div className="flex justify-end">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={stopValidationPolling}
+                        className="text-blue-700 border-blue-300 hover:bg-blue-100"
+                      >
+                        Stop Checking Progress
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!validationCompleted && !isPollingValidation && validationProgress.status !== 'in_progress' ? (
                 <div className="flex flex-col items-center space-y-4">
                   <div className="text-center text-muted-foreground">
                     <p>Click the button below to start author validation.</p>
@@ -527,22 +777,79 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                           return;
                         }
 
+                        console.log('[ProcessWorkflow] Starting validation for jobId:', jobId);
+
                         // Call the validate authors API
                         const response = await scholarFinderApiService.validateAuthors(jobId);
                         
-                        setValidationCompleted(true);
-                        toast({
-                          title: 'Validation Started & Saved',
-                          description: 'Author validation has been initiated successfully. Progress saved automatically.',
+                        console.log('[ProcessWorkflow] Validation API response:', response);
+                        
+                        // Initialize progress tracking
+                        setValidationProgress({
+                          percentage: response.data?.progress_percentage || 0,
+                          processed: response.data?.total_authors_processed || 0,
+                          total: response.data?.total_authors_processed || 0,
+                          criteria: response.data?.validation_criteria || [],
+                          status: response.data?.validation_status || 'in_progress',
+                          estimatedCompletion: response.data?.estimated_completion_time || null
                         });
                         
-                        console.log('Validation response:', response);
+                        // Check if validation completed immediately (small number of authors)
+                        if (response.data?.validation_status === 'completed') {
+                          console.log('[ProcessWorkflow] Validation completed immediately');
+                          setValidationCompleted(true);
+                          
+                          const processedCount = response.data.total_authors_processed || 0;
+                          const criteriaCount = response.data.validation_criteria?.length || 0;
+                          const summary = response.data.summary;
+                          
+                          let description = `Processed ${processedCount} authors against ${criteriaCount} validation criteria.`;
+                          if (summary) {
+                            description += ` Found ${summary.authors_validated} validated authors with average score of ${summary.average_conditions_met.toFixed(1)}.`;
+                          }
+                          description += ' Results are now available.';
+                          
+                          toast({
+                            title: 'Validation Completed Successfully! 🎉',
+                            description,
+                            duration: 8000,
+                          });
+                        } else {
+                          // Validation is running in background - start polling for completion
+                          console.log('[ProcessWorkflow] Validation started, beginning polling');
+                          
+                          const processedCount = response.data?.total_authors_processed || 0;
+                          const estimatedTime = response.data?.estimated_completion_time;
+                          
+                          let description = 'Author validation has been initiated successfully and is running in the background.';
+                          if (processedCount > 0) {
+                            description += ` Processing ${processedCount} authors.`;
+                          }
+                          if (estimatedTime) {
+                            description += ` ${estimatedTime}`;
+                          }
+                          
+                          toast({
+                            title: 'Validation Started & Saved',
+                            description,
+                            duration: 6000,
+                          });
+                          
+                          // Start polling for validation completion
+                          await startValidationPolling(jobId);
+                        }
+                        
                       } catch (error: any) {
-                        console.error('Validation error:', error);
+                        console.error('[ProcessWorkflow] Validation error:', error);
+                        
+                        // Stop any ongoing polling
+                        stopValidationPolling();
+                        
                         toast({
                           title: 'Validation Failed',
-                          description: error.message || 'Failed to start author validation.',
+                          description: error.message || 'Failed to start author validation. Please try again.',
                           variant: 'destructive',
+                          duration: 8000,
                         });
                       } finally {
                         setIsValidating(false);
@@ -550,25 +857,91 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                     }}
                     size="lg"
                     className="px-8"
-                    disabled={isValidating}
+                    disabled={isValidating || isPollingValidation}
                   >
                     {isValidating ? (
                       <>
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Validating Authors...
+                        Starting Validation...
+                      </>
+                    ) : isPollingValidation ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Validating Authors... ({validationProgress.percentage}%)
                       </>
                     ) : (
                       'Validate Authors'
                     )}
                   </Button>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="text-center text-green-600">
-                    <p className="font-medium">✅ Author validation has been initiated successfully!</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      The validation process is running in the background.
+              ) : validationProgress.status === 'in_progress' && !isPollingValidation ? (
+                // Show resume polling option if validation is in progress but polling stopped
+                <div className="space-y-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="text-center">
+                    <h4 className="font-medium text-yellow-900 mb-2">Validation May Still Be Running</h4>
+                    <p className="text-sm text-yellow-700 mb-4">
+                      The validation process was started but progress checking was stopped. 
+                      Click below to check the current status.
                     </p>
+                    <div className="flex gap-2 justify-center">
+                      <Button 
+                        onClick={async () => {
+                          const jobId = fileService.getJobId(processId);
+                          if (jobId) {
+                            await startValidationPolling(jobId);
+                          }
+                        }}
+                        size="sm"
+                        className="bg-yellow-600 hover:bg-yellow-700"
+                      >
+                        Check Progress
+                      </Button>
+                      <Button 
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setValidationProgress(prev => ({ ...prev, status: 'pending' }));
+                        }}
+                      >
+                        Reset Status
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              
+              {validationCompleted ? (
+                <div className="space-y-6">
+                  <div className="text-center p-6 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="text-green-600 mb-4">
+                      <div className="flex items-center justify-center mb-2">
+                        <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                          <span className="text-2xl">✅</span>
+                        </div>
+                      </div>
+                      <h3 className="text-lg font-semibold text-green-800">Validation Completed Successfully!</h3>
+                      <p className="text-sm text-green-700 mt-2">
+                        The validation process has finished processing all authors against the eligibility criteria.
+                      </p>
+                    </div>
+                    
+                    {/* Validation Statistics */}
+                    {validationProgress.processed > 0 && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 p-4 bg-white rounded-lg border border-green-200">
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-green-600">{validationProgress.processed}</div>
+                          <div className="text-sm text-green-700">Authors Processed</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-green-600">{validationProgress.criteria.length}</div>
+                          <div className="text-sm text-green-700">Validation Rules</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-2xl font-bold text-green-600">100%</div>
+                          <div className="text-sm text-green-700">Complete</div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   
                   {/* Show recommendations if loaded */}
@@ -631,7 +1004,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                     </Button>
                   </div>
                 </div>
-              )}
+              ) : null}
             </CardContent>
           </Card>
         );
@@ -790,8 +1163,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
           <Card>
             <CardContent className="pt-6">
               <p className="text-center text-muted-foreground">
-                {process.currentStep}
-                Invalid step. Please contact support.
+                Invalid step: {process.currentStep}. Please contact support.
               </p>
             </CardContent>
           </Card>
