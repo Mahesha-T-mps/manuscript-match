@@ -12,6 +12,42 @@ import type {
 } from '../types/api';
 
 /**
+ * Global request tracking to prevent duplicate HTTP requests
+ */
+class GlobalRequestTracker {
+  private static ongoingRequests = new Map<string, Promise<any>>();
+  
+  static createRequestKey(method: string, url: string, data?: any): string {
+    const dataString = data ? JSON.stringify(data) : '';
+    return `${method.toUpperCase()}-${url}-${dataString}`;
+  }
+  
+  static hasOngoingRequest(key: string): boolean {
+    return this.ongoingRequests.has(key);
+  }
+  
+  static getOngoingRequest(key: string): Promise<any> | undefined {
+    return this.ongoingRequests.get(key);
+  }
+  
+  static setOngoingRequest(key: string, promise: Promise<any>): void {
+    this.ongoingRequests.set(key, promise);
+    // Auto-cleanup after promise resolves
+    promise.finally(() => {
+      this.ongoingRequests.delete(key);
+    });
+  }
+  
+  static clearAll(): void {
+    this.ongoingRequests.clear();
+  }
+  
+  static getOngoingRequestKeys(): string[] {
+    return Array.from(this.ongoingRequests.keys());
+  }
+}
+
+/**
  * Configuration interface for API service
  */
 export interface ApiConfig {
@@ -425,10 +461,29 @@ export class ApiService {
    * Make HTTP request with error handling and retry logic
    */
   async request<T = any>(requestConfig: RequestConfig): Promise<ApiResponse<T>> {
-    // 🔥 FORCE FIX: Disable retries for manual_authors endpoint
-    if (requestConfig.url?.includes('manual_authors')) {
+    // 🔥 FORCE FIX: Disable retries for manual_authors and validate_authors endpoints
+    if (requestConfig.url?.includes('manual_authors') || requestConfig.url?.includes('validate_authors')) {
       requestConfig.retries = 0;
-      console.log('🔥 FORCED retries to 0 for manual_authors endpoint');
+      console.log('🔥 FORCED retries to 0 for manual_authors/validate_authors endpoint');
+    }
+    
+    // 🔥 GLOBAL REQUEST DEDUPLICATION for manual_authors endpoint
+    if (requestConfig.url?.includes('manual_authors')) {
+      const requestKey = GlobalRequestTracker.createRequestKey(
+        requestConfig.method || 'GET',
+        requestConfig.url,
+        requestConfig.data
+      );
+      
+      console.log('[ApiService] 🔍 Checking for duplicate manual_authors request');
+      console.log('[ApiService] 🔑 Request key:', requestKey);
+      console.log('[ApiService] 📊 Ongoing requests:', GlobalRequestTracker.getOngoingRequestKeys());
+      
+      if (GlobalRequestTracker.hasOngoingRequest(requestKey)) {
+        console.log('[ApiService] 🚫 DUPLICATE HTTP REQUEST detected, returning existing promise');
+        console.log('[ApiService] 🔑 Duplicate key:', requestKey);
+        return GlobalRequestTracker.getOngoingRequest(requestKey)!;
+      }
     }
     
     // Allow overriding retries per request (default to 3)
@@ -441,6 +496,33 @@ export class ApiService {
       console.log(`[API Request] retries config:`, requestConfig.retries);
       console.log(`[API Request] maxRetries:`, maxRetries);
     }
+
+    // Create the request promise for manual_authors endpoints
+    let requestPromise: Promise<ApiResponse<T>> | null = null;
+    
+    if (requestConfig.url?.includes('manual_authors')) {
+      const requestKey = GlobalRequestTracker.createRequestKey(
+        requestConfig.method || 'GET',
+        requestConfig.url,
+        requestConfig.data
+      );
+      
+      requestPromise = this.executeRequest<T>(requestConfig, maxRetries);
+      GlobalRequestTracker.setOngoingRequest(requestKey, requestPromise);
+      console.log('[ApiService] 💾 Stored HTTP request promise for key:', requestKey);
+      
+      return requestPromise;
+    }
+
+    // For non-manual_authors endpoints, execute normally
+    return this.executeRequest<T>(requestConfig, maxRetries);
+  }
+
+  /**
+   * Execute the actual HTTP request with retry logic
+   */
+  private async executeRequest<T = any>(requestConfig: RequestConfig, maxRetries: number): Promise<ApiResponse<T>> {
+    let lastError: any;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
@@ -506,9 +588,9 @@ export class ApiService {
    * Determine if a request should be retried
    */
   private shouldRetryRequest(error: any): boolean {
-    // 🔥 NEVER retry manual_authors endpoint
-    if (error.config?.url?.includes('manual_authors')) {
-      console.log('🔥 NOT retrying manual_authors endpoint');
+    // 🔥 NEVER retry manual_authors or validate_authors endpoints
+    if (error.config?.url?.includes('manual_authors') || error.config?.url?.includes('validate_authors')) {
+      console.log('🔥 NOT retrying manual_authors/validate_authors endpoint');
       return false;
     }
     

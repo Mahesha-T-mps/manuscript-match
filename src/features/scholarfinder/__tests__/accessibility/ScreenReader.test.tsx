@@ -473,7 +473,7 @@ describe('Screen Reader Accessibility', () => {
       expect(publicationsHeader.closest('th')).toHaveAttribute('aria-sort', 'descending');
       
       // Data should have meaningful labels
-      const validationScore = screen.getByLabelText('8 out of 8 validation criteria met');
+      const validationScore = screen.getByLabelText('9 out of 9 validation criteria met');
       expect(validationScore).toBeInTheDocument();
     });
   });

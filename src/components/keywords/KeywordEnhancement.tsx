@@ -49,6 +49,8 @@ export const KeywordEnhancement: React.FC<KeywordEnhancementProps> = ({
   const [newSecondaryKeyword, setNewSecondaryKeyword] = useState('');
 
   const [copiedKeywordString, setCopiedKeywordString] = useState(false);
+  const [isEditingKeywordString, setIsEditingKeywordString] = useState(false);
+  const [editableKeywordString, setEditableKeywordString] = useState('');
   
   // API hooks
   const { data: metadata } = useMetadata(processId);
@@ -204,6 +206,89 @@ export const KeywordEnhancement: React.FC<KeywordEnhancementProps> = ({
       onKeywordStringChange(keywordString);
     }
   }, [keywordString, onKeywordStringChange]);
+
+  // Parse keyword string back into primary and secondary keywords
+  const parseKeywordString = useCallback((keywordStr: string) => {
+    try {
+      // Expected format: (keyword1 OR keyword2) AND (keyword3 OR keyword4)
+      const parts = keywordStr.split(' AND ');
+      
+      let newPrimaryKeywords: string[] = [];
+      let newSecondaryKeywords: string[] = [];
+      
+      if (parts.length >= 1) {
+        // Parse first part as primary keywords
+        const primaryPart = parts[0].trim();
+        if (primaryPart.startsWith('(') && primaryPart.endsWith(')')) {
+          const primaryContent = primaryPart.slice(1, -1); // Remove parentheses
+          newPrimaryKeywords = primaryContent.split(' OR ').map(k => k.trim()).filter(k => k.length > 0);
+        }
+      }
+      
+      if (parts.length >= 2) {
+        // Parse second part as secondary keywords
+        const secondaryPart = parts[1].trim();
+        if (secondaryPart.startsWith('(') && secondaryPart.endsWith(')')) {
+          const secondaryContent = secondaryPart.slice(1, -1); // Remove parentheses
+          newSecondaryKeywords = secondaryContent.split(' OR ').map(k => k.trim()).filter(k => k.length > 0);
+        }
+      }
+      
+      return { primary: newPrimaryKeywords, secondary: newSecondaryKeywords };
+    } catch (error) {
+      console.error('Error parsing keyword string:', error);
+      return { primary: [], secondary: [] };
+    }
+  }, []);
+
+  // Handle saving edited keyword string
+  const handleSaveKeywordString = useCallback(() => {
+    const parsed = parseKeywordString(editableKeywordString);
+    
+    if (parsed.primary.length === 0 && parsed.secondary.length === 0) {
+      toast({
+        title: 'Invalid Format',
+        description: 'Please use the format: (keyword1 OR keyword2) AND (keyword3 OR keyword4)',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    // Update the keyword lists
+    setSelectedPrimaryKeywords(parsed.primary);
+    setSelectedSecondaryKeywords(parsed.secondary);
+    
+    // Add any new keywords to the available lists
+    const newPrimaryKeywords = parsed.primary.filter(k => !primaryKeywords.includes(k));
+    const newSecondaryKeywords = parsed.secondary.filter(k => !secondaryKeywords.includes(k));
+    
+    if (newPrimaryKeywords.length > 0) {
+      setPrimaryKeywords(prev => [...prev, ...newPrimaryKeywords]);
+    }
+    
+    if (newSecondaryKeywords.length > 0) {
+      setSecondaryKeywords(prev => [...prev, ...newSecondaryKeywords]);
+    }
+    
+    setIsEditingKeywordString(false);
+    
+    toast({
+      title: 'Keyword String Updated',
+      description: `Updated with ${parsed.primary.length} primary and ${parsed.secondary.length} secondary keywords`,
+    });
+  }, [editableKeywordString, parseKeywordString, primaryKeywords, secondaryKeywords, toast]);
+
+  // Handle canceling edit
+  const handleCancelEdit = useCallback(() => {
+    setEditableKeywordString(keywordString);
+    setIsEditingKeywordString(false);
+  }, [keywordString]);
+
+  // Handle starting edit
+  const handleStartEdit = useCallback(() => {
+    setEditableKeywordString(keywordString);
+    setIsEditingKeywordString(true);
+  }, [keywordString]);
 
   const handleCopyKeywordString = useCallback(async () => {
     if (!keywordString) {
@@ -414,25 +499,77 @@ export const KeywordEnhancement: React.FC<KeywordEnhancementProps> = ({
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-sm font-medium text-purple-900">Final Keyword String</CardTitle>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleCopyKeywordString}
-                      className="h-8 w-8 p-0"
-                      aria-label={copiedKeywordString ? 'Copied keyword string' : 'Copy keyword string to clipboard'}
-                    >
-                      {copiedKeywordString ? (
-                        <Check className="h-4 w-4 text-green-600" aria-hidden="true" />
-                      ) : (
-                        <Copy className="h-4 w-4" aria-hidden="true" />
+                    <div className="flex items-center gap-2">
+                      {!isEditingKeywordString && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleStartEdit}
+                            className="h-8 px-2 text-purple-700 hover:text-purple-900"
+                            aria-label="Edit keyword string"
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleCopyKeywordString}
+                            className="h-8 w-8 p-0"
+                            aria-label={copiedKeywordString ? 'Copied keyword string' : 'Copy keyword string to clipboard'}
+                          >
+                            {copiedKeywordString ? (
+                              <Check className="h-4 w-4 text-green-600" aria-hidden="true" />
+                            ) : (
+                              <Copy className="h-4 w-4" aria-hidden="true" />
+                            )}
+                          </Button>
+                        </>
                       )}
-                    </Button>
+                      {isEditingKeywordString && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleSaveKeywordString}
+                            className="h-8 px-2 text-green-700 hover:text-green-900"
+                            aria-label="Save keyword string"
+                          >
+                            Save
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleCancelEdit}
+                            className="h-8 px-2 text-gray-700 hover:text-gray-900"
+                            aria-label="Cancel edit"
+                          >
+                            Cancel
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="pt-0">
-                  <code className="text-xs bg-white p-3 rounded block overflow-x-auto text-purple-900">
-                    {keywordString}
-                  </code>
+                  {isEditingKeywordString ? (
+                    <div className="space-y-3">
+                      <textarea
+                        value={editableKeywordString}
+                        onChange={(e) => setEditableKeywordString(e.target.value)}
+                        className="w-full p-3 text-xs font-mono bg-white border rounded resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        rows={3}
+                        placeholder="Format: (keyword1 OR keyword2) AND (keyword3 OR keyword4)"
+                      />
+                      <div className="text-xs text-purple-700">
+                        <strong>Format:</strong> (primary1 OR primary2) AND (secondary1 OR secondary2)
+                      </div>
+                    </div>
+                  ) : (
+                    <code className="text-xs bg-white p-3 rounded block overflow-x-auto text-purple-900">
+                      {keywordString}
+                    </code>
+                  )}
                 </CardContent>
               </Card>
             )}

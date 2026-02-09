@@ -11,8 +11,8 @@ A comprehensive web application for finding and recommending suitable peer revie
 - **Automated Metadata Extraction**: Upload Word documents and automatically extract title, authors, affiliations, keywords, and abstract
 - **AI-Powered Keyword Enhancement**: Generate MeSH terms, broader terms, and focused keywords using external AI services
 - **Multi-Database Search**: Search across PubMed, TandFonline, ScienceDirect, and WileyLibrary for potential reviewers
-- **Automated Validation**: Validate reviewers against 8 conflict of interest criteria
-- **Smart Recommendations**: Get reviewers sorted by validation score (0-8 conditions met)
+- **Automated Validation**: Validate reviewers against 9 conflict of interest criteria
+- **Smart Recommendations**: Get reviewers sorted by validation score (0-9 conditions met)
 - **Flexible Export**: Export recommendations in CSV or JSON format
 
 ## Quick Start

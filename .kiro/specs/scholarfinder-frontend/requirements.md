@@ -87,7 +87,7 @@ ScholarFinder Frontend is a React-based web application that provides a user-fri
 1. WHEN recommendations are displayed THEN the system SHALL show a sortable table with reviewer name, affiliation, country, email, publications, and validation score
 2. WHEN filters are applied THEN the system SHALL update the table in real-time showing matching reviewers
 3. WHEN sorting is requested THEN the system SHALL order results by the selected column (ascending/descending)
-4. WHEN validation scores are displayed THEN the system SHALL show conditions met (e.g., "8 of 8") with color-coded indicators
+4. WHEN validation scores are displayed THEN the system SHALL show conditions met (e.g., "9 of 9") with color-coded indicators
 5. IF no reviewers meet filter criteria THEN the system SHALL suggest relaxing specific filter parameters
 
 ### Requirement 8: Reviewer Shortlist Management

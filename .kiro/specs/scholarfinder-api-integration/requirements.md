@@ -173,7 +173,7 @@ This document specifies the requirements for integrating the complete ScholarFin
 
 1. WHEN the user initiates validation THEN the system SHALL send all potential reviewers to the validation API
 2. WHILE validation is in progress THEN the system SHALL display progress percentage and estimated completion time
-3. WHEN validation completes THEN the system SHALL receive validation scores (conditions_met 0-8) for each reviewer
+3. WHEN validation completes THEN the system SHALL receive validation scores (conditions_met 0-9) for each reviewer
 4. WHEN validation results are displayed THEN the system SHALL show which of the 8 validation criteria each reviewer satisfies
 5. IF validation fails THEN the system SHALL display an error message and allow retry
 

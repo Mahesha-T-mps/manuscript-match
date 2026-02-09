@@ -82,4 +82,7 @@ router.get('/:id/export/:format', processController.exportShortlist);
 // Activity logging routes
 router.get('/:id/logs', processController.getProcessLogs);
 
+// COI publications route
+router.get('/:id/coi-publications/:authorId', processController.getCOIPublications);
+
 export default router;

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +35,7 @@ import { ActivityLogger } from "@/services/activityLogger";
 import { toast } from "sonner";
 import { ExportReviewersDialog } from "./ExportReviewersDialog";
 import { exportReviewersAsCSV, exportReviewersAsJSON } from "@/utils/exportUtils";
+import { COIPublicationsModal } from "@/components/coi/COIPublicationsModal";
 import type { Reviewer } from "@/features/scholarfinder/types/api";
 
 interface ReviewerResultsProps {
@@ -53,12 +54,22 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
   // State for selection
   const [selectedReviewerIds, setSelectedReviewerIds] = useState<Set<string>>(new Set());
   
+  // Ref to prevent race conditions in selection
+  const selectionInProgressRef = useRef(false);
+  
   // State for shortlist dialog
   const [showShortlistDialog, setShowShortlistDialog] = useState(false);
   const [shortlistName, setShortlistName] = useState("");
   
   // State for export dialog
   const [showExportDialog, setShowExportDialog] = useState(false);
+
+  // COI Publications Modal state
+  const [coiModalOpen, setCOIModalOpen] = useState(false);
+  const [selectedCOIAuthor, setSelectedCOIAuthor] = useState<{
+    authorId: string;
+    authorName: string;
+  } | null>(null);
 
   // Fetch recommendations from ScholarFinder API (only if no validation data provided)
   const { 
@@ -150,6 +161,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
       
       // Validation fields
       coauthor: reviewer.coauthor || false,
+      coi_coauthor: reviewer.coi_coauthor || false,
       aff_match: reviewer.aff_match || 'no',
       country_match: reviewer.country_match || 'yes',
       
@@ -161,9 +173,18 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
       coauthor_condition: reviewer.coauthor_condition || 0,
       aff_condition: reviewer.aff_condition || 0,
       country_match_condition: reviewer.country_match_condition || 0,
-      retracted_condition: reviewer.retracted_condition || 0
+      retracted_condition: reviewer.retracted_condition || 0,
+      coi_condition: reviewer.coi_condition || 0
     };
   }) : rawReviewers;
+  
+  // Debug logging for reviewer data
+  console.log('🔍 [DEBUG] Reviewer data:', {
+    totalReviewers: allReviewers.length,
+    reviewerEmails: allReviewers.map(r => r.email),
+    duplicateEmails: allReviewers.map(r => r.email).filter((email, index, arr) => arr.indexOf(email) !== index),
+    sampleReviewer: allReviewers[0]
+  });
   
   const totalCount = validationData ? allReviewers.length : (apiResponse?.total_count || 0);
   const validationSummary = validationData ? {
@@ -208,9 +229,9 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
 
   // Get color for conditions_met score badge
   const getConditionsMetColor = (score: number) => {
-    if (score >= 7) return "bg-green-500 text-white";
-    if (score >= 5) return "bg-blue-500 text-white";
-    if (score >= 3) return "bg-yellow-500 text-white";
+    if (score >= 8) return "bg-green-500 text-white";
+    if (score >= 6) return "bg-blue-500 text-white";
+    if (score >= 4) return "bg-yellow-500 text-white";
     return "bg-gray-500 text-white";
   };
 
@@ -224,22 +245,84 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
   };
 
   const handleSelectReviewer = useCallback((reviewerEmail: string, checked: boolean) => {
-    const newSelectedIds = new Set(selectedReviewerIds);
-    if (checked) {
-      newSelectedIds.add(reviewerEmail);
-    } else {
-      newSelectedIds.delete(reviewerEmail);
+    console.log('🔍 [DEBUG] handleSelectReviewer called:', { 
+      reviewerEmail, 
+      checked, 
+      currentSelectedCount: selectedReviewerIds.size,
+      selectionInProgress: selectionInProgressRef.current 
+    });
+    
+    // Prevent race conditions
+    if (selectionInProgressRef.current) {
+      console.log('🚫 [DEBUG] Selection in progress, ignoring call');
+      return;
     }
-    setSelectedReviewerIds(newSelectedIds);
-  }, [selectedReviewerIds]);
+    
+    selectionInProgressRef.current = true;
+    
+    setSelectedReviewerIds(prevSelected => {
+      console.log('🔄 [DEBUG] State update function called:', {
+        prevSelectedSize: prevSelected.size,
+        prevSelectedEmails: Array.from(prevSelected),
+        reviewerEmail,
+        checked
+      });
+      
+      const newSelectedIds = new Set(prevSelected);
+      if (checked) {
+        newSelectedIds.add(reviewerEmail);
+        console.log('✅ [DEBUG] Added reviewer:', reviewerEmail);
+      } else {
+        newSelectedIds.delete(reviewerEmail);
+        console.log('❌ [DEBUG] Removed reviewer:', reviewerEmail);
+      }
+      
+      console.log('📊 [DEBUG] New selection state:', {
+        newSelectedSize: newSelectedIds.size,
+        newSelectedEmails: Array.from(newSelectedIds)
+      });
+      
+      // Reset the flag after a short delay
+      setTimeout(() => {
+        selectionInProgressRef.current = false;
+        console.log('🔓 [DEBUG] Selection flag reset');
+      }, 100);
+      
+      return newSelectedIds;
+    });
+  }, [selectedReviewerIds.size]);
 
   const handleSelectAll = useCallback((checked: boolean) => {
+    console.log('🔍 [DEBUG] handleSelectAll called:', { 
+      checked, 
+      filteredCount: filteredReviewers.length,
+      currentSelectedCount: selectedReviewerIds.size,
+      selectionInProgress: selectionInProgressRef.current 
+    });
+    
+    // Prevent race conditions
+    if (selectionInProgressRef.current) {
+      console.log('🚫 [DEBUG] Select All - Selection in progress, ignoring call');
+      return;
+    }
+    
+    selectionInProgressRef.current = true;
+    
     if (checked) {
-      setSelectedReviewerIds(new Set(filteredReviewers.map(r => r.email)));
+      const allEmails = filteredReviewers.map(r => r.email);
+      console.log('✅ [DEBUG] Selecting all reviewers:', allEmails);
+      setSelectedReviewerIds(new Set(allEmails));
     } else {
+      console.log('❌ [DEBUG] Deselecting all reviewers');
       setSelectedReviewerIds(new Set());
     }
-  }, [filteredReviewers]);
+    
+    // Reset the flag after a short delay
+    setTimeout(() => {
+      selectionInProgressRef.current = false;
+      console.log('🔓 [DEBUG] Select All flag reset');
+    }, 100);
+  }, [filteredReviewers, selectedReviewerIds.size]);
 
   const handleOpenExportDialog = () => {
     const selectedReviewers = filteredReviewers.filter(r => selectedReviewerIds.has(r.email));
@@ -285,6 +368,28 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
       throw error;
     }
   };
+
+  // COI click handler
+  const handleCOIClick = useCallback((reviewer: any) => {
+    // Extract author ID from coi_coauthor field
+    const extractAuthorId = (coiValue: any): string | null => {
+      if (typeof coiValue === 'string') {
+        // Look for author ID pattern (A followed by numbers)
+        const match = coiValue.match(/A\d+/);
+        return match ? match[0] : null;
+      }
+      return null;
+    };
+    
+    const authorId = extractAuthorId(reviewer.coi_coauthor);
+    if (authorId) {
+      setSelectedCOIAuthor({
+        authorId,
+        authorName: reviewer.reviewer
+      });
+      setCOIModalOpen(true);
+    }
+  }, []);
 
   const handleAddToShortlist = () => {
     const selectedReviewers = filteredReviewers.filter(r => selectedReviewerIds.has(r.email));
@@ -418,7 +523,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
                 Showing {filteredReviewers.length} of {totalCount} validated reviewers
                 {validationSummary && (
                   <span className="ml-2">
-                    • Average score: {validationSummary.average_conditions_met.toFixed(1)}/8
+                    • Average score: {validationSummary.average_conditions_met.toFixed(1)}/9
                   </span>
                 )}
               </CardDescription>
@@ -490,18 +595,18 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
                 <div className="space-y-4">
                   {/* Minimum Conditions Met Filter */}
                   <div className="space-y-2">
-                    <Label>Minimum Validation Score: {minConditionsMet}/8</Label>
+                    <Label>Minimum Validation Score: {minConditionsMet}/9</Label>
                     <div className="px-3">
                       <Slider
                         value={[minConditionsMet]}
                         onValueChange={([value]) => setMinConditionsMet(value)}
-                        max={8}
+                        max={9}
                         step={1}
                         className="w-full"
                       />
                       <div className="flex justify-between text-xs text-muted-foreground mt-1">
                         <span>0 (All)</span>
-                        <span>8 (Perfect)</span>
+                        <span>9 (Perfect)</span>
                       </div>
                     </div>
                   </div>
@@ -514,7 +619,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
                         <div>Total Authors: {validationSummary.total_authors}</div>
                         <div>Validated: {validationSummary.authors_validated}</div>
                         <div className="col-span-2">
-                          Average Score: {validationSummary.average_conditions_met.toFixed(2)}/8
+                          Average Score: {validationSummary.average_conditions_met.toFixed(2)}/9
                         </div>
                       </div>
                     </div>
@@ -548,8 +653,26 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="select-all"
-                  checked={filteredReviewers.every(r => selectedReviewerIds.has(r.email))}
-                  onCheckedChange={handleSelectAll}
+                  checked={
+                    selectedReviewerIds.size > 0 && 
+                    filteredReviewers.every(r => selectedReviewerIds.has(r.email))
+                  }
+                  ref={(el) => {
+                    if (el) {
+                      const someSelected = selectedReviewerIds.size > 0 && 
+                        !filteredReviewers.every(r => selectedReviewerIds.has(r.email));
+                      el.indeterminate = someSelected;
+                    }
+                  }}
+                  onCheckedChange={(checked) => {
+                    console.log('🔍 [DEBUG] Select All checkbox changed:', { checked, typeof: typeof checked });
+                    // Prevent automatic triggering by ensuring this is a user action
+                    if (typeof checked === 'boolean') {
+                      handleSelectAll(checked);
+                    } else {
+                      console.log('🚫 [DEBUG] Select All - Non-boolean value ignored:', checked);
+                    }
+                  }}
                 />
                 <label
                   htmlFor="select-all"
@@ -563,22 +686,37 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
 
           {/* Reviewers List */}
           <div className="space-y-4">
-            {filteredReviewers.map((reviewer) => (
-              <Card key={reviewer.email} className="border-l-4 border-l-primary/30" role="article" aria-label={`Reviewer: ${reviewer.reviewer}`}>
+            {filteredReviewers.map((reviewer, index) => (
+              <Card key={`reviewer-card-${reviewer.email}-${index}`} className="border-l-4 border-l-primary/30" role="article" aria-label={`Reviewer: ${reviewer.reviewer}`}>
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-start space-x-3 flex-1">
                       <Checkbox
-                        id={`reviewer-${reviewer.email}`}
+                        id={`reviewer-checkbox-${reviewer.email}-${index}`}
                         checked={selectedReviewerIds.has(reviewer.email)}
-                        onCheckedChange={(checked) => handleSelectReviewer(reviewer.email, checked as boolean)}
+                        onCheckedChange={(checked) => {
+                          console.log('🔍 [DEBUG] Individual checkbox changed:', { 
+                            reviewerEmail: reviewer.email, 
+                            reviewerName: reviewer.reviewer,
+                            index,
+                            checked, 
+                            typeof: typeof checked,
+                            currentSelected: Array.from(selectedReviewerIds)
+                          });
+                          // Ensure we only handle boolean values to prevent unintended triggers
+                          if (typeof checked === 'boolean') {
+                            handleSelectReviewer(reviewer.email, checked);
+                          } else {
+                            console.log('🚫 [DEBUG] Individual - Non-boolean value ignored:', checked);
+                          }
+                        }}
                         aria-label={`Select reviewer ${reviewer.reviewer}`}
                       />
                       <div className="flex-1">
                         <div className="flex items-center space-x-3 mb-2">
                           <h3 className="font-semibold text-lg">{reviewer.reviewer}</h3>
-                          <Badge className={getConditionsMetColor(reviewer.conditions_met)} aria-label={`Validation score: ${reviewer.conditions_met} out of 8 criteria met`}>
-                            {reviewer.conditions_met}/8 criteria met
+                          <Badge className={getConditionsMetColor(reviewer.conditions_met)} aria-label={`Validation score: ${reviewer.conditions_met} out of 9 criteria met`}>
+                            {reviewer.conditions_met}/9 criteria met
                           </Badge>
                         </div>
                         
@@ -818,6 +956,50 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
                           </div>
                         </div>
                       </div>
+
+                      {/* Study Type Distribution */}
+                      <div className="mt-6">
+                        <div className="flex items-center mb-3">
+                          <div className="w-2 h-2 bg-orange-500 rounded-full mr-2"></div>
+                          <h5 className="text-sm font-medium text-gray-700">Study Type Distribution</h5>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                          {(() => {
+                            // Parse the study_type JSON string
+                            let studyTypeCounts = { in_vivo: 0, in_vitro: 0, in_silico: 0 };
+                            try {
+                              if (reviewer.study_type) {
+                                const parsedStudyType = JSON.parse(reviewer.study_type.replace(/'/g, '"'));
+                                studyTypeCounts = parsedStudyType.study_type_counts || studyTypeCounts;
+                              }
+                            } catch (error) {
+                              console.log('Error parsing study_type for reviewer:', reviewer.reviewer, error);
+                            }
+                            
+                            return (
+                              <>
+                                <div className="p-3 bg-gradient-to-br from-green-50 to-green-100 rounded-lg border border-green-200 text-center">
+                                  <div className="text-xs font-medium text-green-700 mb-1">In Vivo</div>
+                                  <div className="text-lg font-bold text-green-900">{studyTypeCounts.in_vivo}</div>
+                                  <div className="text-xs text-green-600">Animal studies</div>
+                                </div>
+                                
+                                <div className="p-3 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200 text-center">
+                                  <div className="text-xs font-medium text-blue-700 mb-1">In Vitro</div>
+                                  <div className="text-lg font-bold text-blue-900">{studyTypeCounts.in_vitro}</div>
+                                  <div className="text-xs text-blue-600">Lab studies</div>
+                                </div>
+                                
+                                <div className="p-3 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200 text-center">
+                                  <div className="text-xs font-medium text-purple-700 mb-1">In Silico</div>
+                                  <div className="text-lg font-bold text-purple-900">{studyTypeCounts.in_silico}</div>
+                                  <div className="text-xs text-purple-600">Computational</div>
+                                </div>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
                     </div>
 
                     {/* Validation Criteria */}
@@ -858,7 +1040,78 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
                           {getValidationIcon(reviewer.Retracted_Pubs_no <= 1)}
                           <span>No Retracted Publications</span>
                         </div>
+                        <div className="flex items-center space-x-2">
+                          {getValidationIcon((() => {
+                            const hasAuthorId = (value: any) => {
+                              if (typeof value === 'string') {
+                                // Check if string contains author ID pattern: A followed by numbers
+                                return /A\d+/.test(value);
+                              }
+                              return false;
+                            };
+                            // No COI if FALSE/False or if no author ID detected
+                            return (reviewer.coi_coauthor === false || reviewer.coi_coauthor === 'FALSE' || reviewer.coi_coauthor === 'False') || !hasAuthorId(reviewer.coi_coauthor);
+                          })())}
+                          <span>No Conflict of Interest</span>
+                        </div>
                       </div>
+                    </div>
+
+                    {/* COI Container for this reviewer */}
+                    <div role="region" aria-label="Conflict of Interest details">
+                      {(() => {
+                        // Determine COI status based on coi_coauthor column
+                        // COI is "No" if coi_coauthor is FALSE or False
+                        // COI is "Yes" only when coi_coauthor contains author ID format (A followed by numbers)
+                        const hasAuthorId = (value: any) => {
+                          if (typeof value === 'string') {
+                            // Check if string contains author ID pattern: A followed by numbers
+                            return /A\d+/.test(value);
+                          }
+                          return false;
+                        };
+                        
+                        const coiStatus = (reviewer.coi_coauthor === false || reviewer.coi_coauthor === 'FALSE' || reviewer.coi_coauthor === 'False') 
+                          ? 'No' 
+                          : hasAuthorId(reviewer.coi_coauthor) 
+                            ? 'Yes' 
+                            : 'No';
+                        const coiColor = coiStatus === 'No' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200';
+                        const coiTextColor = coiStatus === 'No' ? 'text-green-800' : 'text-red-800';
+                        const coiBadgeColor = coiStatus === 'No' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+                        const coiIcon = coiStatus === 'No' ? '✓' : '⚠';
+                        
+                        return (
+                          <div className={`p-4 rounded-lg border ${coiColor} text-center`}>
+                            {coiStatus === 'Yes' ? (
+                              <button
+                                onClick={() => handleCOIClick(reviewer)}
+                                className={`flex items-center justify-center gap-3 w-full hover:opacity-80 transition-opacity cursor-pointer`}
+                              >
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${coiStatus === 'No' ? 'bg-green-100' : 'bg-red-100'}`}>
+                                  <span className={`text-sm font-bold ${coiTextColor}`}>{coiIcon}</span>
+                                </div>
+                                <div>
+                                  <h4 className={`text-sm font-medium ${coiTextColor} underline`}>
+                                    Conflict of Interest: {coiStatus}
+                                  </h4>
+                                </div>
+                              </button>
+                            ) : (
+                              <div className="flex items-center justify-center gap-3">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${coiStatus === 'No' ? 'bg-green-100' : 'bg-red-100'}`}>
+                                  <span className={`text-sm font-bold ${coiTextColor}`}>{coiIcon}</span>
+                                </div>
+                                <div>
+                                  <h4 className={`text-sm font-medium ${coiTextColor}`}>
+                                    Conflict of Interest: {coiStatus}
+                                  </h4>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 </CardContent>
@@ -919,7 +1172,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
                       <div className="font-medium">{reviewer.reviewer}</div>
                       <div className="text-xs text-muted-foreground">{reviewer.email}</div>
                       <div className="text-xs text-muted-foreground">
-                        Score: {reviewer.conditions_met}/8 • {reviewer.aff}
+                        Score: {reviewer.conditions_met}/9 • {reviewer.aff}
                       </div>
                     </div>
                   ))}
@@ -953,6 +1206,19 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
         reviewers={filteredReviewers.filter(r => selectedReviewerIds.has(r.email))}
         onExport={handleExport}
       />
+      {/* COI Publications Modal */}
+      {selectedCOIAuthor && (
+        <COIPublicationsModal
+          isOpen={coiModalOpen}
+          onClose={() => {
+            setCOIModalOpen(false);
+            setSelectedCOIAuthor(null);
+          }}
+          authorId={selectedCOIAuthor.authorId}
+          authorName={selectedCOIAuthor.authorName}
+          processId={processId}
+        />
+      )}
     </div>
   );
 };

@@ -235,6 +235,9 @@ class FileService {
     return response;
   }
 
+  // Track ongoing manual author searches to prevent duplicates
+  private ongoingManualAuthorSearches = new Map<string, Promise<any>>();
+
   /**
    * Add manual author - uses ScholarFinder API
    */
@@ -250,14 +253,36 @@ class FileService {
       throw new Error('No job ID found for this process. Please upload a file first.');
     }
 
-    console.log('[fileService.addManualAuthor] 🚀 Calling scholarFinderApiService.addManualAuthor');
-    const response = await scholarFinderApiService.addManualAuthor(jobId, authorName);
-    console.log('[fileService.addManualAuthor] ✅ Response received:', response);
-    console.log('[fileService.addManualAuthor] 📊 Response type:', typeof response);
-    console.log('[fileService.addManualAuthor] 📊 Response keys:', response ? Object.keys(response) : 'response is null/undefined');
+    // Create a unique key for this search to prevent duplicates
+    const searchKey = `${jobId}-${authorName.trim().toLowerCase()}`;
     
-    // The API returns the data directly, not wrapped in a .data property
-    return response;
+    // Check if this exact search is already in progress
+    if (this.ongoingManualAuthorSearches.has(searchKey)) {
+      console.log('[fileService.addManualAuthor] 🚫 Duplicate search detected, returning existing promise');
+      console.log('[fileService.addManualAuthor] 🔑 Search key:', searchKey);
+      return this.ongoingManualAuthorSearches.get(searchKey)!;
+    }
+
+    console.log('[fileService.addManualAuthor] 🚀 Starting new search, calling scholarFinderApiService.addManualAuthor');
+    
+    // Create the search promise
+    const searchPromise = scholarFinderApiService.addManualAuthor(jobId, authorName)
+      .then(response => {
+        console.log('[fileService.addManualAuthor] ✅ Response received:', response);
+        console.log('[fileService.addManualAuthor] 📊 Response type:', typeof response);
+        console.log('[fileService.addManualAuthor] 📊 Response keys:', response ? Object.keys(response) : 'response is null/undefined');
+        return response;
+      })
+      .finally(() => {
+        // Remove from ongoing searches when complete
+        this.ongoingManualAuthorSearches.delete(searchKey);
+        console.log('[fileService.addManualAuthor] 🧹 Cleaned up search key:', searchKey);
+      });
+    
+    // Store the promise to prevent duplicates
+    this.ongoingManualAuthorSearches.set(searchKey, searchPromise);
+    
+    return searchPromise;
   }
 
   /**

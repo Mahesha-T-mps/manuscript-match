@@ -285,7 +285,7 @@ localStorage.getItem('process_YOUR_PROCESS_ID_jobId')
 - ✅ Progress percentage updates regularly
 - ✅ Estimated completion time is displayed
 - ✅ Number of authors processed is shown
-- ✅ Validation criteria are listed (8 criteria):
+- ✅ Validation criteria are listed (9 criteria):
   1. Publications (last 10 years) ≥ 8
   2. Relevant Publications (last 5 years) ≥ 3
   3. Publications (last 2 years) ≥ 1

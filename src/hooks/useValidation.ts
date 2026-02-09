@@ -3,6 +3,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef } from 'react';
 import { validationService } from '@/services/validationService';
 import { fileService } from '@/services/fileService';
 import { useErrorHandling } from './useErrorHandling';
@@ -57,14 +58,54 @@ export const useAddManualAuthor = (processId: string) => {
   const queryClient = useQueryClient();
   const { handleError } = useErrorHandling();
   const { toast } = useToast();
+  
+  // Ref to prevent duplicate calls at the hook level
+  const mutationInProgressRef = useRef(false);
+  // Additional protection with last call tracking
+  const lastCallRef = useRef<{ authorName: string; timestamp: number } | null>(null);
 
   return useMutation({
-    mutationFn: (authorName: string) => {
-      console.log('[useAddManualAuthor] 🔍 Mutation called with author:', authorName);
-      console.log('[useAddManualAuthor] 📋 Process ID:', processId);
-      console.log('[useAddManualAuthor] ⏰ Timestamp:', new Date().toISOString());
-      console.log('[useAddManualAuthor] 📊 Stack trace:', new Error().stack);
-      return fileService.addManualAuthor(processId, authorName);
+    mutationFn: async (authorName: string) => {
+      const now = Date.now();
+      const trimmedName = authorName.trim();
+      
+      // Check if this is a duplicate call within 2 seconds
+      if (lastCallRef.current && 
+          lastCallRef.current.authorName === trimmedName && 
+          (now - lastCallRef.current.timestamp) < 2000) {
+        console.log('[useAddManualAuthor] 🚫 Duplicate call detected within 2 seconds, rejecting');
+        console.log('[useAddManualAuthor] 📊 Last call:', lastCallRef.current);
+        console.log('[useAddManualAuthor] 📊 Current call:', { authorName: trimmedName, timestamp: now });
+        throw new Error('Duplicate search request detected');
+      }
+      
+      // Additional protection against duplicate calls at the hook level
+      if (mutationInProgressRef.current) {
+        console.log('[useAddManualAuthor] 🚫 Mutation already in progress, rejecting duplicate call');
+        throw new Error('Search already in progress');
+      }
+      
+      // Record this call
+      lastCallRef.current = { authorName: trimmedName, timestamp: now };
+      mutationInProgressRef.current = true;
+      
+      try {
+        console.log('[useAddManualAuthor] 🔍 Mutation called with author:', trimmedName);
+        console.log('[useAddManualAuthor] 📋 Process ID:', processId);
+        console.log('[useAddManualAuthor] ⏰ Timestamp:', new Date().toISOString());
+        console.log('[useAddManualAuthor] 📊 Stack trace:', new Error().stack);
+        
+        const result = await fileService.addManualAuthor(processId, trimmedName);
+        return result;
+      } finally {
+        mutationInProgressRef.current = false;
+        // Clear the last call after 5 seconds to allow legitimate retries
+        setTimeout(() => {
+          if (lastCallRef.current && lastCallRef.current.timestamp === now) {
+            lastCallRef.current = null;
+          }
+        }, 5000);
+      }
     },
     // Disable automatic retries for manual author search
     // Users should manually retry with different search terms if needed

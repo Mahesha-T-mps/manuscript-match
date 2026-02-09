@@ -4,8 +4,9 @@
  */
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { ArrowLeft, User, Mail, MapPin, BookOpen, Award } from 'lucide-react';
+import { ArrowLeft, User, Mail, MapPin, BookOpen, Award, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useProcess, useUpdateProcessStep } from '@/hooks/useProcesses';
@@ -24,6 +25,7 @@ import { ReviewerSearch } from '@/components/search/ReviewerSearch';
 import { ReviewerResults } from '@/components/results/ReviewerResults';
 import { AuthorValidation } from '@/components/validation/AuthorValidation';
 import { ShortlistManager } from '@/components/shortlist/ShortlistManager';
+import { COIPublicationsModal } from '@/components/coi/COIPublicationsModal';
 import type { Reviewer } from '@/types/api';
 import type { EnhancedKeywords } from '@/services/keywordService';
 
@@ -107,88 +109,138 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   });
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
   
+  // COI Publications Modal state
+  const [coiModalOpen, setCOIModalOpen] = useState(false);
+  const [selectedCOIAuthor, setSelectedCOIAuthor] = useState<{
+    authorId: string;
+    authorName: string;
+  } | null>(null);
+  
   // Validation progress polling with proper completion tracking
   const pollValidationProgress = useCallback(async (jobId: string): Promise<boolean> => {
     try {
       console.log('[ProcessWorkflow] Polling validation progress for jobId:', jobId);
-      const statusResponse = await scholarFinderApiService.getValidationStatus(jobId);
       
-      console.log('[ProcessWorkflow] Validation status response:', statusResponse);
+      // First, try to get validation status
+      let statusResponse;
+      let statusAvailable = true;
       
-      // Update progress state with more comprehensive tracking
-      setValidationProgress(prev => {
-        const newProgress = {
-          ...prev,
-          percentage: statusResponse.data.progress_percentage || 0,
-          processed: statusResponse.data.total_authors_processed || 0,
-          total: Math.max(statusResponse.data.total_authors_processed || 0, prev.total),
-          criteria: statusResponse.data.validation_criteria || prev.criteria,
-          status: statusResponse.data.validation_status,
-          estimatedCompletion: statusResponse.data.estimated_completion_time || null
-        };
-        
-        console.log('[ProcessWorkflow] Updated validation progress:', newProgress);
-        return newProgress;
-      });
-      
-      // Handle completion
-      if (statusResponse.data.validation_status === 'completed') {
-        console.log('[ProcessWorkflow] Validation completed!');
-        setValidationCompleted(true);
-        
-        // Show enhanced completion notification with detailed stats
-        const processedCount = statusResponse.data.total_authors_processed || 0;
-        const criteriaCount = statusResponse.data.validation_criteria?.length || 0;
-        const summary = statusResponse.data.summary;
-        
-        let description = `Processed ${processedCount} authors against ${criteriaCount} validation criteria.`;
-        if (summary) {
-          description += ` Found ${summary.authors_validated} validated authors with average score of ${summary.average_conditions_met.toFixed(1)}.`;
-        }
-        description += ' Results are now available.';
-        
-        toast({
-          title: 'Validation Completed Successfully! 🎉',
-          description,
-          duration: 8000, // Show longer for important completion notification
-        });
-        
-        return true; // Stop polling
+      try {
+        statusResponse = await scholarFinderApiService.getValidationStatus(jobId);
+        console.log('[ProcessWorkflow] Validation status response:', statusResponse);
+      } catch (statusError) {
+        console.log('[ProcessWorkflow] Validation status API not available, will check recommendations directly');
+        statusAvailable = false;
       }
       
-      // Handle failure
-      if (statusResponse.data.validation_status === 'failed') {
-        console.error('[ProcessWorkflow] Validation failed');
-        setValidationProgress(prev => ({ ...prev, status: 'failed' }));
-        
-        toast({
-          title: 'Validation Failed',
-          description: 'Author validation process encountered an error. Please try again.',
-          variant: 'destructive',
-          duration: 8000,
+      // If status API is available, use it
+      if (statusAvailable && statusResponse) {
+        // Update progress state with more comprehensive tracking
+        setValidationProgress(prev => {
+          const newProgress = {
+            ...prev,
+            percentage: statusResponse.data.progress_percentage || 0,
+            processed: statusResponse.data.total_authors_processed || 0,
+            total: Math.max(statusResponse.data.total_authors_processed || 0, prev.total),
+            criteria: statusResponse.data.validation_criteria || prev.criteria,
+            status: statusResponse.data.validation_status,
+            estimatedCompletion: statusResponse.data.estimated_completion_time || null
+          };
+          
+          console.log('[ProcessWorkflow] Updated validation progress:', newProgress);
+          return newProgress;
         });
         
-        return true; // Stop polling
-      }
-      
-      // Still in progress - show progress update for larger batches
-      if (statusResponse.data.total_authors_processed > 0) {
-        const processed = statusResponse.data.total_authors_processed;
-        const percentage = statusResponse.data.progress_percentage || 0;
-        
-        // Show progress notifications for every 25% completion or every 100 authors processed
-        const shouldShowProgress = (
-          percentage > 0 && percentage % 25 === 0 && percentage !== validationProgress.percentage
-        ) || (
-          processed > 0 && processed % 100 === 0 && processed !== validationProgress.processed
-        );
-        
-        if (shouldShowProgress) {
+        // Handle completion
+        if (statusResponse.data.validation_status === 'completed') {
+          console.log('[ProcessWorkflow] Validation completed via status API!');
+          setValidationCompleted(true);
+          
+          // Show enhanced completion notification with detailed stats
+          const processedCount = statusResponse.data.total_authors_processed || 0;
+          const criteriaCount = statusResponse.data.validation_criteria?.length || 0;
+          const summary = statusResponse.data.summary;
+          
+          let description = `Processed ${processedCount} authors against ${criteriaCount} validation criteria.`;
+          if (summary) {
+            description += ` Found ${summary.authors_validated} validated authors with average score of ${summary.average_conditions_met.toFixed(1)}.`;
+          }
+          description += ' Results are now available.';
+          
           toast({
-            title: 'Validation Progress Update',
-            description: `Processed ${processed} authors (${percentage}% complete). ${statusResponse.data.estimated_completion_time || 'Continuing...'}`,
-            duration: 4000,
+            title: 'Validation Completed Successfully! 🎉',
+            description,
+            duration: 8000,
           });
+          
+          return true; // Stop polling
+        }
+        
+        // Handle failure
+        if (statusResponse.data.validation_status === 'failed') {
+          console.error('[ProcessWorkflow] Validation failed');
+          setValidationProgress(prev => ({ ...prev, status: 'failed' }));
+          
+          toast({
+            title: 'Validation Failed',
+            description: 'Author validation process encountered an error. Please try again.',
+            variant: 'destructive',
+            duration: 8000,
+          });
+          
+          return true; // Stop polling
+        }
+        
+        // Still in progress - show progress update for larger batches
+        if (statusResponse.data.total_authors_processed > 0) {
+          const processed = statusResponse.data.total_authors_processed;
+          const percentage = statusResponse.data.progress_percentage || 0;
+          
+          // Show progress notifications for every 25% completion or every 100 authors processed
+          const shouldShowProgress = (
+            percentage > 0 && percentage % 25 === 0 && percentage !== validationProgress.percentage
+          ) || (
+            processed > 0 && processed % 100 === 0 && processed !== validationProgress.processed
+          );
+          
+          if (shouldShowProgress) {
+            toast({
+              title: 'Validation Progress Update',
+              description: `Processed ${processed} authors (${percentage}% complete). ${statusResponse.data.estimated_completion_time || 'Continuing...'}`,
+              duration: 4000,
+            });
+          }
+        }
+      }
+      
+      // Always check recommendations as a fallback or primary method
+      // Do this check more frequently to catch completion quickly
+      console.log('[ProcessWorkflow] Checking recommendations to verify completion status');
+      try {
+        const recommendations = await scholarFinderApiService.getRecommendations(jobId);
+        if (recommendations.data?.reviewers && recommendations.data.reviewers.length > 0) {
+          console.log('[ProcessWorkflow] Found recommendations - validation is complete!');
+          setValidationCompleted(true);
+          setValidationProgress(prev => ({ ...prev, status: 'completed', percentage: 100 }));
+          
+          toast({
+            title: 'Validation Completed Successfully! 🎉',
+            description: `Found ${recommendations.data.reviewers.length} recommended reviewers. Results are now available.`,
+            duration: 8000,
+          });
+          
+          return true; // Stop polling
+        } else if (recommendations.message?.includes('not ready')) {
+          console.log('[ProcessWorkflow] Recommendations explicitly not ready, validation still in progress');
+        } else {
+          console.log('[ProcessWorkflow] No recommendations yet, validation still in progress');
+        }
+      } catch (recError) {
+        // Check if it's a 404 (not ready) vs other errors
+        if (recError?.response?.status === 404) {
+          console.log('[ProcessWorkflow] Recommendations not ready yet (404), continuing to poll');
+        } else {
+          console.log('[ProcessWorkflow] Error checking recommendations:', recError?.message);
         }
       }
       
@@ -204,7 +256,12 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   
   // Validation polling state and control
   const validationPollingRef = useRef<NodeJS.Timeout | null>(null);
+  const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isPollingValidation, setIsPollingValidation] = useState(false);
+  const [pollingStartTime, setPollingStartTime] = useState<number | null>(null);
+  
+  // Ref to prevent duplicate validation calls
+  const validationInProgressRef = useRef(false);
 
   // Start validation polling
   const startValidationPolling = useCallback(async (jobId: string) => {
@@ -214,8 +271,25 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     if (validationPollingRef.current) {
       clearTimeout(validationPollingRef.current);
     }
+    if (validationTimeoutRef.current) {
+      clearTimeout(validationTimeoutRef.current);
+    }
     
     setIsPollingValidation(true);
+    setPollingStartTime(Date.now());
+    
+    // Set a timeout to stop polling after 30 minutes and suggest manual check
+    validationTimeoutRef.current = setTimeout(() => {
+      console.log('[ProcessWorkflow] Polling timeout reached - stopping automatic polling');
+      setIsPollingValidation(false);
+      validationPollingRef.current = null;
+      
+      toast({
+        title: 'Validation Taking Longer Than Expected',
+        description: 'The validation process is taking longer than usual. You can check results manually or wait for completion.',
+        duration: 10000,
+      });
+    }, 30 * 60 * 1000); // 30 minutes
     
     const poll = async () => {
       try {
@@ -225,11 +299,18 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
           console.log('[ProcessWorkflow] Stopping validation polling - process completed or failed');
           setIsPollingValidation(false);
           validationPollingRef.current = null;
+          if (validationTimeoutRef.current) {
+            clearTimeout(validationTimeoutRef.current);
+            validationTimeoutRef.current = null;
+          }
           return;
         }
         
-        // Continue polling every 15 seconds for validation (longer interval for long-running process)
-        validationPollingRef.current = setTimeout(poll, 15000);
+        // Use more frequent polling initially (every 10 seconds for first 5 minutes, then 15 seconds)
+        const elapsedTime = Date.now() - (pollingStartTime || Date.now());
+        const pollInterval = elapsedTime < 5 * 60 * 1000 ? 10000 : 15000; // 10s for first 5 minutes, then 15s
+        
+        validationPollingRef.current = setTimeout(poll, pollInterval);
       } catch (error) {
         console.error('[ProcessWorkflow] Validation polling error:', error);
         // Continue polling even on error - validation might still be running
@@ -237,9 +318,9 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       }
     };
     
-    // Start first poll after 5 seconds
-    validationPollingRef.current = setTimeout(poll, 5000);
-  }, [pollValidationProgress]);
+    // Start first poll immediately
+    validationPollingRef.current = setTimeout(poll, 1000);
+  }, [pollValidationProgress, toast]);
 
   // Stop validation polling
   const stopValidationPolling = useCallback(() => {
@@ -247,6 +328,10 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     if (validationPollingRef.current) {
       clearTimeout(validationPollingRef.current);
       validationPollingRef.current = null;
+    }
+    if (validationTimeoutRef.current) {
+      clearTimeout(validationTimeoutRef.current);
+      validationTimeoutRef.current = null;
     }
     setIsPollingValidation(false);
   }, []);
@@ -257,6 +342,11 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       if (validationPollingRef.current) {
         clearTimeout(validationPollingRef.current);
       }
+      if (validationTimeoutRef.current) {
+        clearTimeout(validationTimeoutRef.current);
+      }
+      // Reset validation in progress flag on unmount
+      validationInProgressRef.current = false;
     };
   }, []);
 
@@ -279,6 +369,18 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       }
     }
   }, [process?.currentStep, validationProgress.status, validationCompleted, isPollingValidation, processId, startValidationPolling]);
+
+  // Track the current step for navigation direction detection
+  useEffect(() => {
+    if (process?.currentStep) {
+      // Only set initial previous step if none exists (first load)
+      const existingPreviousStep = localStorage.getItem(`process_${processId}_previousStep`);
+      if (!existingPreviousStep) {
+        console.log('[ProcessWorkflow] Setting initial previous step to current step:', process.currentStep);
+        localStorage.setItem(`process_${processId}_previousStep`, process.currentStep);
+      }
+    }
+  }, [process?.currentStep, processId]);
 
   // Auto-save workflow state to localStorage
   useEffect(() => {
@@ -331,17 +433,207 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     };
   }, [processId]);
 
+  // Helper function to reset all workflow state
+  const resetWorkflowState = useCallback(() => {
+    console.log('[ProcessWorkflow] Resetting all workflow state');
+    
+    // Reset all state variables
+    setEnhancedKeywords(null);
+    setPrimaryKeywords([]);
+    setSecondaryKeywords([]);
+    setKeywordString('');
+    setSearchCompleted(false);
+    setValidationCompleted(false);
+    setValidationProgress({
+      percentage: 0,
+      processed: 0,
+      total: 0,
+      criteria: [],
+      status: 'pending',
+      estimatedCompletion: null
+    });
+    setValidationRecommendations(null);
+    
+    // Stop any ongoing polling
+    stopValidationPolling();
+    
+    // Clear localStorage for this process
+    const keys = [
+      'primaryKeywords', 'secondaryKeywords', 'keywordString', 
+      'searchCompleted', 'validationCompleted', 'validationProgress', 'validationRecommendations'
+    ];
+    keys.forEach(key => localStorage.removeItem(getStorageKey(key)));
+  }, [stopValidationPolling, getStorageKey]);
+
+  // Memoize the validation handler to prevent recreation on every render
+  const handleValidateAuthors = useCallback(async () => {
+    // Prevent duplicate calls
+    if (validationInProgressRef.current || isValidating || isPollingValidation) {
+      console.log('[ProcessWorkflow] Validation already in progress, ignoring duplicate call');
+      console.log('[ProcessWorkflow] State check:', {
+        validationInProgressRef: validationInProgressRef.current,
+        isValidating,
+        isPollingValidation,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+    
+    console.log('[ProcessWorkflow] Starting validation - setting flags');
+    console.log('[ProcessWorkflow] Pre-validation state:', {
+      validationInProgressRef: validationInProgressRef.current,
+      isValidating,
+      isPollingValidation,
+      timestamp: new Date().toISOString()
+    });
+    
+    try {
+      validationInProgressRef.current = true;
+      setIsValidating(true);
+      
+      // Get the job ID for this process
+      const jobId = fileService.getJobId(processId);
+      if (!jobId) {
+        toast({
+          title: 'Error',
+          description: 'No job ID found. Please upload a file first.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      console.log('[ProcessWorkflow] Starting validation for jobId:', jobId);
+
+      // Call the validate authors API
+      const response = await scholarFinderApiService.validateAuthors(jobId);
+      
+      console.log('[ProcessWorkflow] Validation API response:', response);
+      
+      // Initialize progress tracking
+      setValidationProgress({
+        percentage: response.data?.progress_percentage || 0,
+        processed: response.data?.total_authors_processed || 0,
+        total: response.data?.total_authors_processed || 0,
+        criteria: response.data?.validation_criteria || [],
+        status: response.data?.validation_status || 'in_progress',
+        estimatedCompletion: response.data?.estimated_completion_time || null
+      });
+      
+      // Check if validation completed immediately (small number of authors)
+      if (response.data?.validation_status === 'completed') {
+        console.log('[ProcessWorkflow] Validation completed immediately');
+        setValidationCompleted(true);
+        
+        const processedCount = response.data.total_authors_processed || 0;
+        const criteriaCount = response.data.validation_criteria?.length || 0;
+        const summary = response.data.summary;
+        
+        let description = `Processed ${processedCount} authors against ${criteriaCount} validation criteria.`;
+        if (summary) {
+          description += ` Found ${summary.authors_validated} validated authors with average score of ${summary.average_conditions_met.toFixed(1)}.`;
+        }
+        description += ' Results are now available.';
+        
+        toast({
+          title: 'Validation Completed Successfully! 🎉',
+          description,
+          duration: 8000,
+        });
+      } else {
+        // Validation is running in background - start polling for completion
+        console.log('[ProcessWorkflow] Validation started, beginning polling');
+        
+        const processedCount = response.data?.total_authors_processed || 0;
+        const estimatedTime = response.data?.estimated_completion_time;
+        
+        let description = 'Author validation has been initiated successfully and is running in the background.';
+        if (processedCount > 0) {
+          description += ` Processing ${processedCount} authors.`;
+        }
+        if (estimatedTime) {
+          description += ` ${estimatedTime}`;
+        }
+        
+        toast({
+          title: 'Validation Started & Saved',
+          description,
+          duration: 6000,
+        });
+        
+        // Start polling for validation completion
+        await startValidationPolling(jobId);
+        
+        // Also do an immediate check after a short delay in case validation completes quickly
+        setTimeout(async () => {
+          try {
+            console.log('[ProcessWorkflow] Doing immediate completion check after validation start');
+            const recommendations = await scholarFinderApiService.getRecommendations(jobId);
+            if (recommendations.data?.reviewers && recommendations.data.reviewers.length > 0) {
+              console.log('[ProcessWorkflow] Validation completed quickly - found recommendations immediately!');
+              setValidationCompleted(true);
+              setValidationProgress(prev => ({ ...prev, status: 'completed', percentage: 100 }));
+              stopValidationPolling();
+              
+              toast({
+                title: 'Validation Completed Successfully! 🎉',
+                description: `Found ${recommendations.data.reviewers.length} recommended reviewers. Results are now available.`,
+                duration: 8000,
+              });
+            }
+          } catch (immediateCheckError) {
+            console.log('[ProcessWorkflow] Immediate check - validation still in progress');
+          }
+        }, 3000); // Check after 3 seconds
+      }
+      
+    } catch (error: any) {
+      console.error('[ProcessWorkflow] Validation error:', error);
+      
+      // Stop any ongoing polling
+      stopValidationPolling();
+      
+      toast({
+        title: 'Validation Failed',
+        description: error.message || 'Failed to start author validation. Please try again.',
+        variant: 'destructive',
+        duration: 8000,
+      });
+    } finally {
+      setIsValidating(false);
+      validationInProgressRef.current = false;
+    }
+  }, [processId, isValidating, isPollingValidation, toast, startValidationPolling, stopValidationPolling]);
+
   // Memoize callbacks to prevent unnecessary re-renders
   const handleStepChange = useCallback(async (newStep: string) => {
     if (!process) return;
 
     try {
+      // Store the current step as the previous step before changing
+      const previousStep = process.currentStep;
+      localStorage.setItem(`process_${processId}_previousStep`, previousStep);
+      console.log('[ProcessWorkflow] Storing previous step:', previousStep, 'before moving to:', newStep);
+      
       // Clear enhanced keywords when going back to upload or metadata extraction step
       if (newStep === 'UPLOAD' || newStep === 'METADATA_EXTRACTION') {
-        setEnhancedKeywords(null);
-        setPrimaryKeywords([]);
-        setSecondaryKeywords([]);
-        setKeywordString('');
+        resetWorkflowState();
+      }
+      
+      // Reset validation state when moving from MANUAL_SEARCH back to VALIDATION
+      // This ensures the user can start a fresh validation if needed
+      if (previousStep === 'MANUAL_SEARCH' && newStep === 'VALIDATION') {
+        console.log('[ProcessWorkflow] Moving from MANUAL_SEARCH to VALIDATION - resetting validation state');
+        setValidationCompleted(false);
+        setValidationProgress({
+          percentage: 0,
+          processed: 0,
+          total: 0,
+          criteria: [],
+          status: 'pending',
+          estimatedCompletion: null
+        });
+        // Stop any ongoing polling
+        stopValidationPolling();
       }
       
       await updateStepMutation.mutateAsync({
@@ -361,18 +653,15 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         variant: 'destructive',
       });
     }
-  }, [process, updateStepMutation, toast]);
+  }, [process, processId, updateStepMutation, toast, stopValidationPolling]);
 
   const handleFileUpload = useCallback(async (uploadResponse: any) => {
     // Handle file removal (when uploadResponse is null)
     if (!uploadResponse) {
       setUploadResponse(null);
       setUploadedFile(null);
-      // Clear enhanced keywords when file is removed
-      setEnhancedKeywords(null);
-      setPrimaryKeywords([]);
-      setSecondaryKeywords([]);
-      setKeywordString('');
+      // Reset all workflow state when file is removed
+      resetWorkflowState();
       // Reset to upload step when file is removed
       await handleStepChange('UPLOAD');
       return;
@@ -382,15 +671,21 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     setUploadResponse(uploadResponse);
     setUploadedFile({ name: uploadResponse.fileName, size: uploadResponse.fileSize } as File);
     
-    // Clear enhanced keywords when a new file is uploaded
-    setEnhancedKeywords(null);
-    setPrimaryKeywords([]);
-    setSecondaryKeywords([]);
-    setKeywordString('');
+    // Reset all workflow state when a new file is uploaded
+    // This ensures fresh validation for the new file
+    console.log('[ProcessWorkflow] New file uploaded - resetting workflow state for fresh start');
+    resetWorkflowState();
+    
+    // Show notification about workflow reset
+    toast({
+      title: 'File Uploaded Successfully',
+      description: 'Workflow has been reset for the new file. You can now proceed with metadata extraction.',
+      duration: 5000,
+    });
     
     // Don't automatically move to next step - wait for user to click Next
     // await handleStepChange('METADATA_EXTRACTION');
-  }, [handleStepChange]);
+  }, [handleStepChange, resetWorkflowState, toast]);
 
   const handleKeywordEnhancement = useCallback((keywords: any) => {
     setEnhancedKeywords(keywords);
@@ -405,6 +700,28 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
 
   const handleKeywordStringChange = useCallback((newKeywordString: string) => {
     setKeywordString(newKeywordString);
+  }, []);
+  
+  // COI click handler
+  const handleCOIClick = useCallback((reviewer: any) => {
+    // Extract author ID from coi_coauthor field
+    const extractAuthorId = (coiValue: any): string | null => {
+      if (typeof coiValue === 'string') {
+        // Look for author ID pattern (A followed by numbers)
+        const match = coiValue.match(/A\d+/);
+        return match ? match[0] : null;
+      }
+      return null;
+    };
+    
+    const authorId = extractAuthorId(reviewer.coi_coauthor);
+    if (authorId) {
+      setSelectedCOIAuthor({
+        authorId,
+        authorName: reviewer.name || 'Unknown Author'
+      });
+      setCOIModalOpen(true);
+    }
   }, []);
   
   // Manual keyword enhancement trigger function
@@ -729,6 +1046,12 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                         <span className="font-medium">Estimated Completion:</span> {validationProgress.estimatedCompletion}
                       </div>
                     )}
+                    
+                    {pollingStartTime && (
+                      <div className="text-blue-700 md:col-span-2">
+                        <span className="font-medium">Running for:</span> {Math.floor((Date.now() - pollingStartTime) / 60000)} minutes
+                      </div>
+                    )}
                   </div>
                   
                   {/* Status Message */}
@@ -739,9 +1062,54 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                     }
                   </div>
                   
-                  {/* Stop Polling Button */}
-                  {isPollingValidation && (
-                    <div className="flex justify-end">
+                  {/* Action Buttons */}
+                  <div className="flex justify-between items-center">
+                    {/* Check Results Button */}
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          const jobId = fileService.getJobId(processId);
+                          if (jobId) {
+                            console.log('[ProcessWorkflow] Manually checking validation results');
+                            const recommendations = await scholarFinderApiService.getRecommendations(jobId);
+                            if (recommendations.data?.reviewers && recommendations.data.reviewers.length > 0) {
+                              console.log('[ProcessWorkflow] Found recommendations - validation is complete!');
+                              setValidationCompleted(true);
+                              setValidationProgress(prev => ({ ...prev, status: 'completed', percentage: 100 }));
+                              stopValidationPolling();
+                              
+                              toast({
+                                title: 'Validation Completed! 🎉',
+                                description: `Found ${recommendations.data.reviewers.length} recommended reviewers. Results are now available.`,
+                                duration: 8000,
+                              });
+                            } else {
+                              toast({
+                                title: 'Still Processing',
+                                description: 'Validation is still in progress. Please wait a bit longer.',
+                                duration: 4000,
+                              });
+                            }
+                          }
+                        } catch (error) {
+                          console.error('[ProcessWorkflow] Error checking results:', error);
+                          toast({
+                            title: 'Check Failed',
+                            description: 'Unable to check validation results. Please try again.',
+                            variant: 'destructive',
+                            duration: 4000,
+                          });
+                        }
+                      }}
+                      className="text-blue-700 border-blue-300 hover:bg-blue-100"
+                    >
+                      Check Results
+                    </Button>
+                    
+                    {/* Stop Polling Button */}
+                    {isPollingValidation && (
                       <Button 
                         variant="outline" 
                         size="sm"
@@ -750,8 +1118,8 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                       >
                         Stop Checking Progress
                       </Button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -762,102 +1130,10 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                     <p className="text-sm">This process may take several minutes to complete.</p>
                   </div>
                   <Button 
-                    onClick={async () => {
-                      try {
-                        setIsValidating(true);
-                        
-                        // Get the job ID for this process
-                        const jobId = fileService.getJobId(processId);
-                        if (!jobId) {
-                          toast({
-                            title: 'Error',
-                            description: 'No job ID found. Please upload a file first.',
-                            variant: 'destructive',
-                          });
-                          return;
-                        }
-
-                        console.log('[ProcessWorkflow] Starting validation for jobId:', jobId);
-
-                        // Call the validate authors API
-                        const response = await scholarFinderApiService.validateAuthors(jobId);
-                        
-                        console.log('[ProcessWorkflow] Validation API response:', response);
-                        
-                        // Initialize progress tracking
-                        setValidationProgress({
-                          percentage: response.data?.progress_percentage || 0,
-                          processed: response.data?.total_authors_processed || 0,
-                          total: response.data?.total_authors_processed || 0,
-                          criteria: response.data?.validation_criteria || [],
-                          status: response.data?.validation_status || 'in_progress',
-                          estimatedCompletion: response.data?.estimated_completion_time || null
-                        });
-                        
-                        // Check if validation completed immediately (small number of authors)
-                        if (response.data?.validation_status === 'completed') {
-                          console.log('[ProcessWorkflow] Validation completed immediately');
-                          setValidationCompleted(true);
-                          
-                          const processedCount = response.data.total_authors_processed || 0;
-                          const criteriaCount = response.data.validation_criteria?.length || 0;
-                          const summary = response.data.summary;
-                          
-                          let description = `Processed ${processedCount} authors against ${criteriaCount} validation criteria.`;
-                          if (summary) {
-                            description += ` Found ${summary.authors_validated} validated authors with average score of ${summary.average_conditions_met.toFixed(1)}.`;
-                          }
-                          description += ' Results are now available.';
-                          
-                          toast({
-                            title: 'Validation Completed Successfully! 🎉',
-                            description,
-                            duration: 8000,
-                          });
-                        } else {
-                          // Validation is running in background - start polling for completion
-                          console.log('[ProcessWorkflow] Validation started, beginning polling');
-                          
-                          const processedCount = response.data?.total_authors_processed || 0;
-                          const estimatedTime = response.data?.estimated_completion_time;
-                          
-                          let description = 'Author validation has been initiated successfully and is running in the background.';
-                          if (processedCount > 0) {
-                            description += ` Processing ${processedCount} authors.`;
-                          }
-                          if (estimatedTime) {
-                            description += ` ${estimatedTime}`;
-                          }
-                          
-                          toast({
-                            title: 'Validation Started & Saved',
-                            description,
-                            duration: 6000,
-                          });
-                          
-                          // Start polling for validation completion
-                          await startValidationPolling(jobId);
-                        }
-                        
-                      } catch (error: any) {
-                        console.error('[ProcessWorkflow] Validation error:', error);
-                        
-                        // Stop any ongoing polling
-                        stopValidationPolling();
-                        
-                        toast({
-                          title: 'Validation Failed',
-                          description: error.message || 'Failed to start author validation. Please try again.',
-                          variant: 'destructive',
-                          duration: 8000,
-                        });
-                      } finally {
-                        setIsValidating(false);
-                      }
-                    }}
+                    onClick={handleValidateAuthors}
                     size="lg"
                     className="px-8"
-                    disabled={isValidating || isPollingValidation}
+                    disabled={isValidating || isPollingValidation || validationInProgressRef.current}
                   >
                     {isValidating ? (
                       <>
@@ -942,6 +1218,37 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                         </div>
                       </div>
                     )}
+                    
+                    {/* Re-validate option */}
+                    <div className="mt-4 pt-4 border-t border-green-200">
+                      <p className="text-sm text-green-700 mb-3">
+                        Need to run validation again with updated criteria?
+                      </p>
+                      <Button 
+                        onClick={() => {
+                          console.log('[ProcessWorkflow] User requested re-validation');
+                          setValidationCompleted(false);
+                          setValidationProgress({
+                            percentage: 0,
+                            processed: 0,
+                            total: 0,
+                            criteria: [],
+                            status: 'pending',
+                            estimatedCompletion: null
+                          });
+                          stopValidationPolling();
+                          toast({
+                            title: 'Validation Reset',
+                            description: 'You can now start a new validation process.',
+                          });
+                        }}
+                        variant="outline"
+                        size="sm"
+                        className="text-green-700 border-green-300 hover:bg-green-100"
+                      >
+                        Re-validate Authors
+                      </Button>
+                    </div>
                   </div>
                   
                   {/* Show recommendations if loaded */}
@@ -955,42 +1262,133 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                         </span>
                       </div>
                       <div className="space-y-3 max-h-96 overflow-y-auto">
-                        {validationRecommendations.data?.reviewers?.map((reviewer: any, index: number) => (
-                          <div key={index} className="p-4 border rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-                            <div className="flex justify-between items-start">
-                              <div className="space-y-2 flex-1">
-                                <h4 className="font-medium text-lg">{reviewer.name || 'Unknown Author'}</h4>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-muted-foreground">
-                                  <div className="flex items-center gap-2">
-                                    <BookOpen className="h-4 w-4" />
-                                    <span><span className="font-medium">Affiliation:</span> {reviewer.affiliation || 'Not available'}</span>
+                        {validationRecommendations.data?.reviewers?.map((reviewer: any, index: number) => {
+                          // Determine COI status based on coi_coauthor column
+                          // COI is "No" if coi_coauthor is FALSE or False
+                          // COI is "Yes" only when coi_coauthor contains author ID format (A followed by numbers)
+                          const hasAuthorId = (value: any) => {
+                            if (typeof value === 'string') {
+                              // Check if string contains author ID pattern: A followed by numbers
+                              return /A\d+/.test(value);
+                            }
+                            return false;
+                          };
+                          
+                          const coiStatus = (reviewer.coi_coauthor === false || reviewer.coi_coauthor === 'FALSE' || reviewer.coi_coauthor === 'False') 
+                            ? 'No' 
+                            : hasAuthorId(reviewer.coi_coauthor) 
+                              ? 'Yes' 
+                              : 'No';
+                          const coiColor = coiStatus === 'No' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200';
+                          const coiTextColor = coiStatus === 'No' ? 'text-green-800' : 'text-red-800';
+                          const coiBadgeColor = coiStatus === 'No' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+                          
+                          return (
+                            <div key={index} className="p-4 border rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
+                              <div className="flex justify-between items-start">
+                                <div className="space-y-2 flex-1">
+                                  <div className="flex items-center gap-3">
+                                    <h4 className="font-medium text-lg">{reviewer.name || 'Unknown Author'}</h4>
+                                    {/* COI Container for this author */}
+                                    <div className={`px-3 py-1 rounded-full border ${coiColor}`}>
+                                      <div className="flex items-center gap-2">
+                                        <div className={`w-2 h-2 rounded-full ${coiStatus === 'No' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                                        <span className={`text-xs font-medium ${coiTextColor}`}>
+                                          COI: {coiStatus}
+                                        </span>
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    <Mail className="h-4 w-4" />
-                                    <span><span className="font-medium">Email:</span> {reviewer.email || 'Not available'}</span>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-muted-foreground">
+                                    <div className="flex items-center gap-2">
+                                      <BookOpen className="h-4 w-4" />
+                                      <span><span className="font-medium">Affiliation:</span> {reviewer.affiliation || 'Not available'}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Mail className="h-4 w-4" />
+                                      <span><span className="font-medium">Email:</span> {reviewer.email || 'Not available'}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <MapPin className="h-4 w-4" />
+                                      <span><span className="font-medium">Country:</span> {reviewer.country || 'Not available'}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <BookOpen className="h-4 w-4" />
+                                      <span><span className="font-medium">Publications:</span> {reviewer.publications || 'Not available'}</span>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    <MapPin className="h-4 w-4" />
-                                    <span><span className="font-medium">Country:</span> {reviewer.country || 'Not available'}</span>
+                                  
+                                  {/* Study Type Distribution for this reviewer */}
+                                  <div className="mt-3 p-3 bg-gray-50 rounded-lg border">
+                                    <h5 className="text-sm font-medium text-gray-700 mb-2">Study Type Distribution</h5>
+                                    <div className="grid grid-cols-3 gap-2">
+                                      {(() => {
+                                        // Parse the study_type JSON string
+                                        let studyTypeCounts = { in_vivo: 0, in_vitro: 0, in_silico: 0 };
+                                        try {
+                                          if (reviewer.study_type) {
+                                            const parsedStudyType = JSON.parse(reviewer.study_type.replace(/'/g, '"'));
+                                            studyTypeCounts = parsedStudyType.study_type_counts || studyTypeCounts;
+                                          }
+                                        } catch (error) {
+                                          console.log('Error parsing study_type for reviewer:', reviewer.name, error);
+                                        }
+                                        
+                                        return (
+                                          <>
+                                            <div className="text-center p-2 bg-green-100 rounded border border-green-200">
+                                              <div className="text-xs font-medium text-green-700">In Vivo</div>
+                                              <div className="text-sm font-bold text-green-900">{studyTypeCounts.in_vivo}</div>
+                                            </div>
+                                            <div className="text-center p-2 bg-blue-100 rounded border border-blue-200">
+                                              <div className="text-xs font-medium text-blue-700">In Vitro</div>
+                                              <div className="text-sm font-bold text-blue-900">{studyTypeCounts.in_vitro}</div>
+                                            </div>
+                                            <div className="text-center p-2 bg-purple-100 rounded border border-purple-200">
+                                              <div className="text-xs font-medium text-purple-700">In Silico</div>
+                                              <div className="text-sm font-bold text-purple-900">{studyTypeCounts.in_silico}</div>
+                                            </div>
+                                          </>
+                                        );
+                                      })()}
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    <BookOpen className="h-4 w-4" />
-                                    <span><span className="font-medium">Publications:</span> {reviewer.publications || 'Not available'}</span>
+                                  
+                                  {/* Clickable COI Display */}
+                                  <div className={`mt-3 p-3 rounded-lg border ${coiColor} text-center`}>
+                                    {coiStatus === 'Yes' ? (
+                                      <button
+                                        onClick={() => handleCOIClick(reviewer)}
+                                        className={`flex items-center justify-center gap-2 w-full hover:opacity-80 transition-opacity cursor-pointer`}
+                                      >
+                                        <AlertCircle className="h-4 w-4" />
+                                        <span className={`text-sm font-medium ${coiTextColor} underline`}>
+                                          Conflict of Interest: {coiStatus}
+                                        </span>
+                                      </button>
+                                    ) : (
+                                      <div className="flex items-center justify-center gap-2">
+                                        <AlertCircle className="h-4 w-4" />
+                                        <span className={`text-sm font-medium ${coiTextColor}`}>
+                                          Conflict of Interest: {coiStatus}
+                                        </span>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
-                              </div>
-                              <div className="text-right ml-4">
-                                <div className="flex items-center gap-1 text-sm font-medium text-green-600">
-                                  <Award className="h-4 w-4" />
-                                  <span>{reviewer.conditions_met || 0}</span>
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  Conditions Met
+                                <div className="text-right ml-4">
+                                  <div className="flex items-center gap-1 text-sm font-medium text-green-600">
+                                    <Award className="h-4 w-4" />
+                                    <span>{reviewer.conditions_met || 0}</span>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    Conditions Met
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -1247,6 +1645,20 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
           {renderCurrentStep()}
         </div>
       </div>
+
+      {/* COI Publications Modal */}
+      {selectedCOIAuthor && (
+        <COIPublicationsModal
+          isOpen={coiModalOpen}
+          onClose={() => {
+            setCOIModalOpen(false);
+            setSelectedCOIAuthor(null);
+          }}
+          authorId={selectedCOIAuthor.authorId}
+          authorName={selectedCOIAuthor.authorName}
+          processId={processId}
+        />
+      )}
     </div>
   );
 };

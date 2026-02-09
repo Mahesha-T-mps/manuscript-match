@@ -296,7 +296,7 @@ describe('ScholarFinder Workflow Integration: Steps 6-7 (Validation)', () => {
       expect(response.data.estimated_completion_time).toBeDefined();
       expect(response.data.total_authors_processed).toBe(0);
       expect(response.data.validation_criteria).toBeDefined();
-      expect(response.data.validation_criteria.length).toBe(8);
+      expect(response.data.validation_criteria.length).toBe(9);
     });
 
     it('should include all 8 validation criteria', async () => {

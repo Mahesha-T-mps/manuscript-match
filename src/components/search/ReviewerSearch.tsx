@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -80,6 +80,126 @@ export const ReviewerSearch = ({
   ]);
 
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  
+  // Editable keyword string state
+  const [isEditingKeywordString, setIsEditingKeywordString] = useState(false);
+  const [editableKeywordString, setEditableKeywordString] = useState('');
+  const [savedKeywordString, setSavedKeywordString] = useState<string | null>(null);
+  
+  // Track if search was performed in current session
+  const [searchPerformedInSession, setSearchPerformedInSession] = useState(false);
+
+  // Load cached search results on component mount, but only if coming from later steps
+  useEffect(() => {
+    const loadCachedResults = () => {
+      try {
+        // Check all localStorage keys for this process
+        const allKeys = Object.keys(localStorage);
+        const processKeys = allKeys.filter(key => key.includes(processId));
+        console.log('[ReviewerSearch] All localStorage keys for this process:', processKeys);
+        
+        // Get the previous step from localStorage to determine navigation direction
+        const previousStep = localStorage.getItem(`process_${processId}_previousStep`);
+        console.log('[ReviewerSearch] Previous step:', previousStep);
+        
+        // Define step order for comparison
+        const stepOrder = [
+          'UPLOAD',
+          'METADATA_EXTRACTION', 
+          'KEYWORD_ENHANCEMENT',
+          'DATABASE_SEARCH',
+          'MANUAL_SEARCH',
+          'VALIDATION',
+          'RECOMMENDATIONS',
+          'SHORTLIST'
+        ];
+        
+        const currentStepIndex = stepOrder.indexOf('DATABASE_SEARCH');
+        const previousStepIndex = previousStep ? stepOrder.indexOf(previousStep) : -1;
+        
+        console.log('[ReviewerSearch] Step indices - Current:', currentStepIndex, 'Previous:', previousStepIndex);
+        
+        // Only load cached results if coming from a later step (higher index)
+        // or if no previous step is recorded (first visit)
+        const shouldLoadResults = previousStepIndex === -1 || previousStepIndex > currentStepIndex;
+        
+        console.log('[ReviewerSearch] Should load results:', shouldLoadResults);
+        
+        if (!shouldLoadResults) {
+          console.log('[ReviewerSearch] Coming from earlier step, clearing any cached results');
+          // Clear the cached results since we're coming from an earlier step
+          localStorage.removeItem(`process_${processId}_searchResults`);
+          setSearchResults([]);
+          setSearchPerformedInSession(false);
+          return;
+        }
+        
+        const cachedResults = localStorage.getItem(`process_${processId}_searchResults`);
+        console.log('[ReviewerSearch] Checking for cached results, processId:', processId);
+        console.log('[ReviewerSearch] Raw cached data:', cachedResults);
+        
+        if (cachedResults) {
+          const results = JSON.parse(cachedResults);
+          console.log('[ReviewerSearch] Parsed cached results:', results);
+          console.log('[ReviewerSearch] Available keys in results:', Object.keys(results || {}));
+          
+          // Check if we have author_email_affiliation_preview in cached results
+          if (results.author_email_affiliation_preview && Array.isArray(results.author_email_affiliation_preview)) {
+            console.log('[ReviewerSearch] Setting cached search results, count:', results.author_email_affiliation_preview.length);
+            console.log('[ReviewerSearch] Sample result:', results.author_email_affiliation_preview[0]);
+            setSearchResults(results.author_email_affiliation_preview);
+          } else {
+            console.log('[ReviewerSearch] No author_email_affiliation_preview found in cached results');
+            
+            // Check for alternative result formats
+            if (results.reviewers && Array.isArray(results.reviewers)) {
+              console.log('[ReviewerSearch] Found results.reviewers, count:', results.reviewers.length);
+              setSearchResults(results.reviewers);
+            } else if (results.data && results.data.reviewers && Array.isArray(results.data.reviewers)) {
+              console.log('[ReviewerSearch] Found results.data.reviewers, count:', results.data.reviewers.length);
+              setSearchResults(results.data.reviewers);
+            } else if (results.data && results.data.preview_reviewers && Array.isArray(results.data.preview_reviewers)) {
+              console.log('[ReviewerSearch] Found results.data.preview_reviewers, count:', results.data.preview_reviewers.length);
+              // Transform the data to match our SearchResult interface
+              const transformedResults = results.data.preview_reviewers.map(reviewer => ({
+                author: reviewer.reviewer || reviewer.author || 'Unknown',
+                email: reviewer.email || '',
+                aff: reviewer.aff || reviewer.affiliation || '',
+                city: reviewer.city || '',
+                country: reviewer.country || ''
+              }));
+              setSearchResults(transformedResults);
+              // Don't set searchPerformedInSession when loading from cache
+              console.log('[ReviewerSearch] Loaded cached results, not setting search completion status');
+            } else if (results.data && results.data.author_email_affiliation_preview && Array.isArray(results.data.author_email_affiliation_preview)) {
+              console.log('[ReviewerSearch] Found results.data.author_email_affiliation_preview, count:', results.data.author_email_affiliation_preview.length);
+              setSearchResults(results.data.author_email_affiliation_preview);
+              // Don't set searchPerformedInSession when loading from cache
+              console.log('[ReviewerSearch] Loaded cached results, not setting search completion status');
+            } else {
+              console.log('[ReviewerSearch] No recognizable results format found');
+              console.log('[ReviewerSearch] Full results structure:', JSON.stringify(results, null, 2));
+              
+              // If we have a valid response structure but no results, set empty array
+              // This indicates search was completed but no authors were found
+              if (results.message && results.job_id && results.data) {
+                console.log('[ReviewerSearch] Valid response structure but no results - search completed with no authors');
+                setSearchResults([]);
+                // Don't set searchPerformedInSession when loading from cache
+                console.log('[ReviewerSearch] Loaded cached empty results, not setting search completion status');
+              }
+            }
+          }
+        } else {
+          console.log('[ReviewerSearch] No cached search results found for processId:', processId);
+        }
+      } catch (error) {
+        console.error('[ReviewerSearch] Error loading cached search results:', error);
+      }
+    };
+
+    loadCachedResults();
+  }, [processId]);
 
   const toggleDatabase = (databaseId: string) => {
     setDatabases(prev => 
@@ -90,6 +210,45 @@ export const ReviewerSearch = ({
       )
     );
   };
+
+  // Handle starting edit of keyword string
+  const handleStartEditKeywordString = useCallback(() => {
+    const currentString = savedKeywordString || keywordString || '';
+    setEditableKeywordString(currentString);
+    setIsEditingKeywordString(true);
+  }, [keywordString, savedKeywordString]);
+
+  // Handle saving edited keyword string
+  const handleSaveKeywordString = useCallback(() => {
+    const trimmedString = editableKeywordString.trim();
+    
+    if (!trimmedString) {
+      toast({
+        title: 'Invalid Keyword String',
+        description: 'Keyword string cannot be empty',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    // Save the edited string to local state
+    setSavedKeywordString(trimmedString);
+    setIsEditingKeywordString(false);
+    
+    toast({
+      title: 'Keyword String Updated',
+      description: 'Search query has been updated successfully',
+    });
+    
+    console.log('[ReviewerSearch] Updated keyword string:', trimmedString);
+  }, [editableKeywordString, toast]);
+
+  // Handle canceling edit
+  const handleCancelEditKeywordString = useCallback(() => {
+    const currentString = savedKeywordString || keywordString || '';
+    setEditableKeywordString(currentString);
+    setIsEditingKeywordString(false);
+  }, [keywordString, savedKeywordString]);
 
   const handleSearch = async () => {
     const enabledDatabases = databases.filter(db => db.enabled).map(db => db.id);
@@ -103,7 +262,10 @@ export const ReviewerSearch = ({
       return;
     }
 
-    if (!keywordString) {
+    // Get the current keyword string (saved edit or original prop)
+    const currentKeywordString = savedKeywordString || keywordString;
+
+    if (!currentKeywordString && !editableKeywordString) {
       toast({
         title: "No keyword string",
         description: "Please generate a keyword string in the previous step before searching.",
@@ -112,6 +274,9 @@ export const ReviewerSearch = ({
       return;
     }
 
+    // Use edited keyword string if in edit mode, otherwise use the current string
+    const searchKeywordString = isEditingKeywordString ? editableKeywordString.trim() : currentKeywordString;
+
     try {
       // First, save the keyword string to the API
       // Parse the keyword string to extract primary and secondary keywords
@@ -119,31 +284,34 @@ export const ReviewerSearch = ({
       
       // Extract keywords from the generated string
       // Format: (keyword1 OR keyword2) AND (keyword3 OR keyword4)
-      const primaryMatch = keywordString.match(/^\(([^)]+)\)/);
-      const secondaryMatch = keywordString.match(/AND \(([^)]+)\)$/);
+      const primaryMatch = searchKeywordString.match(/^\(([^)]+)\)/);
+      const secondaryMatch = searchKeywordString.match(/AND \(([^)]+)\)$/);
       
       const primaryKeywordsStr = primaryMatch ? primaryMatch[1].replace(/ OR /g, ', ') : '';
       const secondaryKeywordsStr = secondaryMatch ? secondaryMatch[1].replace(/ OR /g, ', ') : '';
       
-      console.log('[ReviewerSearch] Keyword string:', keywordString);
+      console.log('[ReviewerSearch] Keyword string:', searchKeywordString);
       console.log('[ReviewerSearch] Parsed primary keywords:', primaryKeywordsStr);
       console.log('[ReviewerSearch] Parsed secondary keywords:', secondaryKeywordsStr);
       
       // Validate that we have at least some keywords
       if (!primaryKeywordsStr && !secondaryKeywordsStr) {
-        toast({
-          title: "Invalid keyword string",
-          description: "Could not parse keywords from the search string. Please regenerate the keyword string.",
-          variant: "destructive",
+        // If parsing fails, use the entire string as primary keywords
+        console.log('[ReviewerSearch] Parsing failed, using entire string as primary keywords');
+        const fallbackKeywords = searchKeywordString.replace(/[()]/g, '').replace(/ AND | OR /g, ', ');
+        
+        // Save keyword string to API first
+        await fileService.generateKeywordString(processId, {
+          primary_keywords_input: fallbackKeywords,
+          secondary_keywords_input: ''
         });
-        return;
+      } else {
+        // Save keyword string to API first
+        await fileService.generateKeywordString(processId, {
+          primary_keywords_input: primaryKeywordsStr,
+          secondary_keywords_input: secondaryKeywordsStr
+        });
       }
-      
-      // Save keyword string to API first
-      await fileService.generateKeywordString(processId, {
-        primary_keywords_input: primaryKeywordsStr,
-        secondary_keywords_input: secondaryKeywordsStr
-      });
       
       // Then initiate the database search
       const searchResponse = await initiateSearchMutation.mutateAsync({
@@ -159,11 +327,42 @@ export const ReviewerSearch = ({
       
       // Save the search results to display in the table
       if (searchResponse?.author_email_affiliation_preview && Array.isArray(searchResponse.author_email_affiliation_preview)) {
-        console.log('[ReviewerSearch] Setting search results, count:', searchResponse.author_email_affiliation_preview.length);
+        console.log('[ReviewerSearch] Setting search results from author_email_affiliation_preview, count:', searchResponse.author_email_affiliation_preview.length);
         setSearchResults(searchResponse.author_email_affiliation_preview);
+        
+        // Also cache the results for persistence
+        localStorage.setItem(`process_${processId}_searchResults`, JSON.stringify(searchResponse));
+        console.log('[ReviewerSearch] Cached search results to localStorage');
+      } else if (searchResponse?.data?.preview_reviewers && Array.isArray(searchResponse.data.preview_reviewers)) {
+        console.log('[ReviewerSearch] Setting search results from data.preview_reviewers, count:', searchResponse.data.preview_reviewers.length);
+        // Transform the data to match our SearchResult interface
+        const transformedResults = searchResponse.data.preview_reviewers.map(reviewer => ({
+          author: reviewer.reviewer || reviewer.author || 'Unknown',
+          email: reviewer.email || '',
+          aff: reviewer.aff || reviewer.affiliation || '',
+          city: reviewer.city || '',
+          country: reviewer.country || ''
+        }));
+        setSearchResults(transformedResults);
+        
+        // Also cache the results for persistence
+        localStorage.setItem(`process_${processId}_searchResults`, JSON.stringify(searchResponse));
+        console.log('[ReviewerSearch] Cached search results to localStorage');
       } else {
-        console.log('[ReviewerSearch] No author_email_affiliation_preview found in response');
+        console.log('[ReviewerSearch] No author_email_affiliation_preview or preview_reviewers found in response');
+        console.log('[ReviewerSearch] Available response keys:', Object.keys(searchResponse || {}));
+        
+        // Set empty results array to indicate search completed with no results
+        setSearchResults([]);
+        
+        // Still cache the response for status tracking
+        localStorage.setItem(`process_${processId}_searchResults`, JSON.stringify(searchResponse));
+        console.log('[ReviewerSearch] Cached empty search results to localStorage');
       }
+      
+      // Mark that search was performed in this session
+      setSearchPerformedInSession(true);
+      console.log('[ReviewerSearch] Search performed in current session, setting completion status');
       
       toast({
         title: "Search completed",
@@ -192,20 +391,98 @@ export const ReviewerSearch = ({
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Search className="w-5 h-5 text-primary" />
-            <span>Search Query</span>
-          </CardTitle>
-          <CardDescription>
-            Keyword string generated from your selected keywords
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center space-x-2">
+                <Search className="w-5 h-5 text-primary" />
+                <span>Search Query</span>
+              </CardTitle>
+              <CardDescription>
+                Keyword string generated from your selected keywords
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              {!isEditingKeywordString && (savedKeywordString || keywordString) && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleStartEditKeywordString}
+                    className="h-8 px-2 text-purple-700 hover:text-purple-900"
+                    aria-label="Edit keyword string"
+                  >
+                    Edit
+                  </Button>
+                  {savedKeywordString && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSavedKeywordString(null);
+                        toast({
+                          title: 'Reset to Original',
+                          description: 'Search query has been reset to the original keyword string',
+                        });
+                      }}
+                      className="h-8 px-2 text-gray-600 hover:text-gray-800"
+                      aria-label="Reset to original keyword string"
+                    >
+                      Reset
+                    </Button>
+                  )}
+                </>
+              )}
+              {isEditingKeywordString && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleSaveKeywordString}
+                    className="h-8 px-2 text-green-700 hover:text-green-900"
+                    aria-label="Save keyword string"
+                  >
+                    Save
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleCancelEditKeywordString}
+                    className="h-8 px-2 text-gray-700 hover:text-gray-900"
+                    aria-label="Cancel edit"
+                  >
+                    Cancel
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-            <code className="text-sm text-purple-900 font-mono break-all">
-              {keywordString || 'No keyword string provided'}
-            </code>
-          </div>
+          {isEditingKeywordString ? (
+            <div className="space-y-3">
+              <textarea
+                value={editableKeywordString}
+                onChange={(e) => setEditableKeywordString(e.target.value)}
+                className="w-full p-4 text-sm font-mono bg-white border border-purple-200 rounded resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+                rows={3}
+                placeholder="Enter your search query..."
+              />
+              <div className="text-xs text-purple-700">
+                <strong>Tip:</strong> Use Boolean operators like AND, OR, and parentheses for complex queries
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+              <code className="text-sm text-purple-900 font-mono break-all">
+                {savedKeywordString || keywordString || 'No keyword string provided'}
+              </code>
+              {savedKeywordString && (
+                <div className="mt-2 text-xs text-purple-600">
+                  <span className="font-medium">✓ Edited</span> - Using custom search query
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -265,6 +542,33 @@ export const ReviewerSearch = ({
 
 
 
+      {/* No results message when search is completed but no authors found */}
+      {searchPerformedInSession && searchResults.length === 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <AlertCircle className="w-5 h-5 text-amber-500" />
+              <span>Search Completed</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                <div className="text-center py-4">
+                  <p className="text-lg font-medium text-muted-foreground mb-2">
+                    No authors data found
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    The database search completed successfully, but no potential reviewers were found matching your search criteria.
+                  </p>
+                </div>
+              </AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Search Results Table */}
       {searchResults.length > 0 && (
         <Card>
@@ -272,7 +576,13 @@ export const ReviewerSearch = ({
             <CardTitle className="flex items-center space-x-2">
               <CheckCircle className="w-5 h-5 text-green-500" />
               <span>Potential Reviewers</span>
+              <Badge variant="secondary" className="ml-2">
+                {searchResults.length} found
+              </Badge>
             </CardTitle>
+            <CardDescription>
+              Preview of potential reviewers found in the selected databases
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-auto max-h-[600px]">
@@ -289,15 +599,18 @@ export const ReviewerSearch = ({
                 <tbody>
                   {searchResults.map((result, index) => (
                     <tr key={index} className="border-b hover:bg-muted/30 transition-colors">
-                      <td className="p-3">{result.author}</td>
-                      <td className="p-3 text-sm text-muted-foreground">{result.email}</td>
-                      <td className="p-3 text-sm">{result.aff}</td>
+                      <td className="p-3 font-medium">{result.author}</td>
+                      <td className="p-3 text-sm text-muted-foreground">{result.email || '-'}</td>
+                      <td className="p-3 text-sm">{result.aff || '-'}</td>
                       <td className="p-3 text-sm">{result.city || '-'}</td>
                       <td className="p-3 text-sm">{result.country || '-'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="mt-4 text-sm text-muted-foreground">
+              Showing preview of {searchResults.length} potential reviewers. Complete results will be available in the validation step.
             </div>
           </CardContent>
         </Card>

@@ -202,6 +202,11 @@ const RecommendationsResponseSchema = z.object({
 export class ScholarFinderApiService {
   private apiService: ApiService;
   private config: ScholarFinderApiConfig;
+  
+  // Global singleton pattern to prevent duplicate manual author searches
+  private static ongoingManualAuthorSearches = new Map<string, Promise<any>>();
+  // Synchronous lock to prevent race conditions
+  private static searchLocks = new Set<string>();
 
   constructor(apiConfig?: Partial<ScholarFinderApiConfig>) {
     // Use external API configuration pointing to the ScholarFinder Lambda API
@@ -754,6 +759,38 @@ export class ScholarFinderApiService {
       } as ScholarFinderError;
     }
 
+    // Create a unique key for this search to prevent global duplicates
+    const searchKey = `${jobId}-${authorName.trim().toLowerCase()}`;
+    
+    // SYNCHRONOUS LOCK CHECK - This happens immediately, no async operations
+    if (ScholarFinderApiService.searchLocks.has(searchKey)) {
+      console.log('[ScholarFinderApiService.addManualAuthor] 🚫 SYNCHRONOUS LOCK detected, rejecting immediately');
+      console.log('[ScholarFinderApiService.addManualAuthor] 🔑 Locked key:', searchKey);
+      console.log('[ScholarFinderApiService.addManualAuthor] 📊 All locks:', Array.from(ScholarFinderApiService.searchLocks));
+      throw {
+        type: ScholarFinderErrorType.SEARCH_ERROR,
+        message: 'Duplicate search request blocked by synchronous lock',
+        retryable: false
+      } as ScholarFinderError;
+    }
+    
+    // SET SYNCHRONOUS LOCK IMMEDIATELY
+    ScholarFinderApiService.searchLocks.add(searchKey);
+    console.log('[ScholarFinderApiService.addManualAuthor] 🔒 SYNCHRONOUS LOCK set for key:', searchKey);
+    
+    // Check if this exact search is already in progress globally
+    if (ScholarFinderApiService.ongoingManualAuthorSearches.has(searchKey)) {
+      console.log('[ScholarFinderApiService.addManualAuthor] 🚫 GLOBAL duplicate search detected, returning existing promise');
+      console.log('[ScholarFinderApiService.addManualAuthor] 🔑 Search key:', searchKey);
+      console.log('[ScholarFinderApiService.addManualAuthor] 📊 Ongoing searches:', Array.from(ScholarFinderApiService.ongoingManualAuthorSearches.keys()));
+      // Remove the lock since we're returning existing promise
+      ScholarFinderApiService.searchLocks.delete(searchKey);
+      return ScholarFinderApiService.ongoingManualAuthorSearches.get(searchKey)!;
+    }
+
+    console.log('[ScholarFinderApiService.addManualAuthor] 🚀 Starting new GLOBAL search');
+    console.log('[ScholarFinderApiService.addManualAuthor] 🔑 Search key:', searchKey);
+
     // The API expects application/x-www-form-urlencoded format
     const formData = new URLSearchParams();
     formData.append('author_name', authorName.trim());
@@ -761,24 +798,38 @@ export class ScholarFinderApiService {
     console.log('[ScholarFinderApiService.addManualAuthor] 📤 Making API request to /manual_authors');
     console.log('[ScholarFinderApiService.addManualAuthor] 🔗 URL:', `/manual_authors?job_id=${encodeURIComponent(jobId)}`);
     
-    try {
-      const response = await this.apiService.request<ManualAuthorResponse>({
-        method: 'POST',
-        url: `/manual_authors?job_id=${encodeURIComponent(jobId)}`,
-        data: formData.toString(),
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
-      });
-      
+    // Create the search promise
+    const searchPromise = this.apiService.request<ManualAuthorResponse>({
+      method: 'POST',
+      url: `/manual_authors?job_id=${encodeURIComponent(jobId)}`,
+      data: formData.toString(),
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
+    }).then(response => {
       console.log('[ScholarFinderApiService.addManualAuthor] ✅ API request successful:', response);
       return response as any;
-    } catch (error) {
+    }).catch(error => {
       console.error('[ScholarFinderApiService.addManualAuthor] ❌ API request failed:', error);
       const scholarFinderError = this.handleApiError(error, 'manual author search');
       console.error('[ScholarFinderApiService.addManualAuthor] 🔥 Throwing error:', scholarFinderError);
       throw scholarFinderError;
-    }
+    }).finally(() => {
+      // Remove from global ongoing searches when complete
+      ScholarFinderApiService.ongoingManualAuthorSearches.delete(searchKey);
+      // Remove synchronous lock
+      ScholarFinderApiService.searchLocks.delete(searchKey);
+      console.log('[ScholarFinderApiService.addManualAuthor] 🧹 Cleaned up GLOBAL search key:', searchKey);
+      console.log('[ScholarFinderApiService.addManualAuthor] 🔓 Released SYNCHRONOUS LOCK for key:', searchKey);
+      console.log('[ScholarFinderApiService.addManualAuthor] 📊 Remaining searches:', Array.from(ScholarFinderApiService.ongoingManualAuthorSearches.keys()));
+      console.log('[ScholarFinderApiService.addManualAuthor] 📊 Remaining locks:', Array.from(ScholarFinderApiService.searchLocks));
+    });
+    
+    // Store the promise globally to prevent duplicates
+    ScholarFinderApiService.ongoingManualAuthorSearches.set(searchKey, searchPromise);
+    console.log('[ScholarFinderApiService.addManualAuthor] 💾 Stored GLOBAL search promise for key:', searchKey);
+    
+    return searchPromise;
   }
 
   /**
@@ -937,7 +988,7 @@ export class ScholarFinderApiService {
             progress_percentage: 0,
             estimated_completion_time: 'Processing may take up to 1 hour',
             total_authors_processed: 0,
-            validation_criteria: ['Publications (10 years)', 'English publications', 'No coauthorship', 'Different affiliation', 'Same country', 'Relevant publications (5 years)', 'Recent publications (2 years)', 'Low retracted publications']
+            validation_criteria: ['Publications (10 years)', 'English publications', 'No coauthorship', 'Different affiliation', 'Same country', 'Relevant publications (5 years)', 'Recent publications (2 years)', 'Low retracted publications', 'Conflict of Interest']
           }
         } as ValidationResponse;
       }
@@ -1115,6 +1166,124 @@ export class ScholarFinderApiService {
       timeout: this.config.timeout,
       retries: this.config.retries
     });
+  }
+
+  /**
+   * Clear all ongoing manual author searches (for debugging/cleanup)
+   */
+  static clearOngoingSearches(): void {
+    console.log('[ScholarFinderApiService] 🧹 Clearing all ongoing manual author searches');
+    console.log('[ScholarFinderApiService] 📊 Clearing searches:', Array.from(ScholarFinderApiService.ongoingManualAuthorSearches.keys()));
+    console.log('[ScholarFinderApiService] 📊 Clearing locks:', Array.from(ScholarFinderApiService.searchLocks));
+    ScholarFinderApiService.ongoingManualAuthorSearches.clear();
+    ScholarFinderApiService.searchLocks.clear();
+  }
+
+  /**
+   * Get ongoing manual author searches (for debugging)
+   */
+  static getOngoingSearches(): string[] {
+    return Array.from(ScholarFinderApiService.ongoingManualAuthorSearches.keys());
+  }
+
+  /**
+   * Get active search locks (for debugging)
+   */
+  static getSearchLocks(): string[] {
+    return Array.from(ScholarFinderApiService.searchLocks);
+  }
+
+  /**
+   * Get COI Publications for a specific author
+   * Fetches publication data from COI_Report.xlsx for the given author ID using FastAPI
+   */
+  async getCOIPublications(processId: string, authorId: string): Promise<{
+    data: {
+      publications: Array<{
+        title: string;
+        authors: string;
+        affiliation: string;
+        publication_date: string;
+        searched_author: string;
+        author_id: string;
+      }>;
+    };
+  }> {
+    if (!processId || !authorId) {
+      throw {
+        type: ScholarFinderErrorType.EXTERNAL_API_ERROR,
+        message: 'Process ID and Author ID are required to fetch COI publications',
+        retryable: false
+      } as ScholarFinderError;
+    }
+
+    try {
+      console.log('[ScholarFinderApiService.getCOIPublications] 🔍 Fetching COI publications for:', { processId, authorId });
+      
+      // Get the job ID for this process
+      const { fileService } = await import('../../../services/fileService');
+      const jobId = fileService.getJobId(processId);
+      
+      if (!jobId) {
+        throw {
+          type: ScholarFinderErrorType.EXTERNAL_API_ERROR,
+          message: 'No job ID found for this process. Please upload a file first.',
+          retryable: false
+        } as ScholarFinderError;
+      }
+      
+      // Call the FastAPI endpoint
+      const response = await this.makeRequest<{
+        job_id: string;
+        author_id: string;
+        coi_count: number;
+        publications: Array<{
+          title: string;
+          authors: string;
+          affiliations: string;
+          publication_date: string;
+          searched_author: string;
+        }>;
+      }>(
+        'GET',
+        `/coi_author_publications?job_id=${encodeURIComponent(jobId)}&author_id=${encodeURIComponent(authorId)}`,
+        undefined,
+        undefined,
+        'COI publications retrieval'
+      );
+      
+      console.log('[ScholarFinderApiService.getCOIPublications] ✅ COI publications retrieved successfully');
+      
+      // Transform the response to match the expected format
+      const transformedPublications = response.publications.map(pub => ({
+        title: pub.title,
+        authors: pub.authors,
+        affiliation: pub.affiliations, // Note: FastAPI returns 'affiliations', frontend expects 'affiliation'
+        publication_date: pub.publication_date,
+        searched_author: pub.searched_author,
+        author_id: authorId
+      }));
+      
+      return {
+        data: {
+          publications: transformedPublications
+        }
+      };
+    } catch (error) {
+      console.error('[ScholarFinderApiService.getCOIPublications] ❌ Error:', error);
+      
+      // Return empty publications array on error
+      if (error.type === ScholarFinderErrorType.EXTERNAL_API_ERROR && error.details?.status === 404) {
+        return {
+          data: {
+            publications: []
+          }
+        };
+      }
+      
+      const scholarFinderError = this.handleApiError(error, 'COI publications retrieval');
+      throw scholarFinderError;
+    }
   }
 }
 

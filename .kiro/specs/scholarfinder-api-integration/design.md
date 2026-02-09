@@ -447,8 +447,8 @@ GET https://192.168.61.60:8000/recommended_reviewers?job_id=job_20250115_1430_a1
         "coauthor": false,
         "country_match": "yes",
         "aff_match": "no",
-        "conditions_met": 8,
-        "conditions_satisfied": "8 of 8"
+        "conditions_met": 9,
+        "conditions_satisfied": "9 of 9"
       }
     ],
     "total_count": 150,
@@ -1085,7 +1085,7 @@ interface Reviewer {
 }
 ```
 
-### Validation Criteria (8 Conditions)
+### Validation Criteria (9 Conditions)
 
 The system validates reviewers against 8 criteria:
 

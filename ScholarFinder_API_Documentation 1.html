@@ -210,7 +210,7 @@
         <pre>curl -X POST "http://your-api-domain.com/validate_authors?job_id=job_20250115_1430_a1b2c3"</pre>
 
         <div class="criteria">
-            <h4>⚖️ Validation Criteria (8 Conditions):</h4>
+            <h4>⚖️ Validation Criteria (9 Conditions):</h4>
             <ol>
                 <li><strong>Publications (last 10 years) ≥ 8</strong> - Substantial recent research output</li>
                 <li><strong>Relevant Publications (last 5 years) ≥ 3</strong> - Recent work in the field</li>
@@ -220,13 +220,14 @@
                 <li><strong>Different Affiliation</strong> - Not from same institution</li>
                 <li><strong>Same Country</strong> - From same country (geographic diversity)</li>
                 <li><strong>No Retracted Publications</strong> - ≤ 1 retracted publication</li>
+                <li><strong>Conflict of Interest</strong> - Conflict of interest detected (coi_coauthor = True)</li>
             </ol>
         </div>
 
         <h4>Response Fields:</h4>
         <ul>
-            <li><code>conditions_met</code> - Score from 0 to 8</li>
-            <li><code>conditions_satisfied</code> - Display string (e.g., "8 of 8")</li>
+            <li><code>conditions_met</code> - Score from 0 to 9</li>
+            <li><code>conditions_satisfied</code> - Display string (e.g., "9 of 9")</li>
             <li>Individual condition flags (0 or 1 for each criterion)</li>
         </ul>
     </div>
@@ -265,8 +266,9 @@
         <tr><td>Publications (last 10 years)</td><td>integer</td><td>Recent publications</td></tr>
         <tr><td>Relevant Publications (last 5 years)</td><td>integer</td><td>Field-specific recent work</td></tr>
         <tr><td>coauthor</td><td>boolean</td><td>Has coauthored with manuscript authors</td></tr>
-        <tr><td>conditions_met</td><td>integer</td><td>Validation score (0-8)</td></tr>
-        <tr><td>conditions_satisfied</td><td>string</td><td>Display string (e.g., "8 of 8")</td></tr>
+        <tr><td>coi_coauthor</td><td>boolean</td><td>Has conflict of interest detected</td></tr>
+        <tr><td>conditions_met</td><td>integer</td><td>Validation score (0-9)</td></tr>
+        <tr><td>conditions_satisfied</td><td>string</td><td>Display string (e.g., "9 of 9")</td></tr>
     </table>
 
     <h2>⚠️ Error Responses</h2>

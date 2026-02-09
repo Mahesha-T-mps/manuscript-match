@@ -1010,16 +1010,23 @@ def validate_authors(
     author_email_df['aff_condition'] = author_email_df['aff_match'].apply(lambda x: 1 if x == "NO" else 0)
     author_email_df['country_match_condition'] = author_email_df['country_match'].apply(lambda x: 1 if x == "YES" else 0)
     author_email_df['retracted_condition'] = author_email_df['Retracted_Pubs_no'].apply(lambda x: 1 if x > 1 else 0)
+    
+    # Add coi_coauthor field (default to False for existing data)
+    if 'coi_coauthor' not in author_email_df.columns:
+        author_email_df['coi_coauthor'] = False
+    
+    # Conflict of Interest condition: 1 point if coi_coauthor is True (conflict detected), 0 if False (no conflict)
+    author_email_df['coi_condition'] = author_email_df['coi_coauthor'].apply(lambda x: 1 if x else 0)
 
     # --- Scoring ---
     author_email_df['conditions_met'] = (
         author_email_df[
             ['no_of_pub_condition_10_years', 'english_condition', 'coauthor_condition', 'aff_condition',
              'country_match_condition', 'no_of_pub_condition_5_years', 'no_of_pub_condition_2_years',
-             'retracted_condition']
+             'retracted_condition', 'coi_condition']
         ].sum(axis=1)
     )
-    author_email_df['conditions_satisfied'] = author_email_df['conditions_met'].astype(str) + ' of 8'
+    author_email_df['conditions_satisfied'] = author_email_df['conditions_met'].astype(str) + ' of 9'
     author_email_df = author_email_df.sort_values(by='conditions_met', ascending=False)
 
     # --- Save results ---
@@ -1035,10 +1042,10 @@ def validate_authors(
         ['reviewer', 'email', 'aff', 'country', 'Total_Publications', 'English_Pubs',
          'Publications_10_years', 'Relevant_Publications_5_years',
          'Publications_2_years)', 'Publications_last_year', 'Clinical_Trials_no', 'Clinical_study_no',
-         'Case_reports_no', 'Retracted_Pubs_no', 'TF_Publications_last_year', 'coauthor',
+         'Case_reports_no', 'Retracted_Pubs_no', 'TF_Publications_last_year', 'coauthor', 'coi_coauthor',
          'country_match', 'aff_match', 'no_of_pub_condition_10_years', 'no_of_pub_condition_5_years',
          'no_of_pub_condition_2_years', 'english_condition', 'coauthor_condition', 'aff_condition',
-         'country_match_condition', 'retracted_condition', 'conditions_met', 'conditions_satisfied']
+         'country_match_condition', 'retracted_condition', 'coi_condition', 'conditions_met', 'conditions_satisfied']
     ]
     author_email_df_display.to_csv(display_path, index=False)
 

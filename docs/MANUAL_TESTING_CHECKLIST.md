@@ -101,7 +101,7 @@
   - [ ] Name, Email, Affiliation
   - [ ] City, Country
   - [ ] Publication metrics
-  - [ ] Validation score (0-8)
+  - [ ] Validation score (0-9)
   - [ ] Conditions satisfied
 
 ### Filtering & Search

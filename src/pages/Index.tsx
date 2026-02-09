@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from '@tanstack/react-query';
 import { AdminDashboard } from "@/components/admin/AdminDashboard";
 import { ProcessDashboard, ProcessWorkflow } from "@/components/process";
 import { Button } from "@/components/ui/button";
@@ -6,6 +7,7 @@ import { LogOut } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { ProfileButton } from "@/components/profile/ProfileButton";
+import { queryKeys } from "@/lib/queryClient";
 import logo from "@/assets/s3 2.png";
 import Reports from "./Reports";
 
@@ -20,6 +22,7 @@ const Index = () => {
   const [selectedProcess, setSelectedProcess] = useState<Process | null>(null);
   const { toast } = useToast();
   const { user, logout } = useAuth();
+  const queryClient = useQueryClient();
 
   const handleSelectProcess = (process: Process) => {
     setSelectedProcess(process);
@@ -29,6 +32,11 @@ const Index = () => {
   const handleBackToDashboard = () => {
     setSelectedProcess(null);
     setViewMode('dashboard');
+    
+    // Invalidate and refetch processes cache to ensure fresh data is loaded
+    queryClient.invalidateQueries({ queryKey: queryKeys.processes.list() });
+    queryClient.refetchQueries({ queryKey: queryKeys.processes.list() });
+    console.log('[Index] Invalidated and refetched processes cache when returning to dashboard');
   };
 
   const handleLogout = async () => {

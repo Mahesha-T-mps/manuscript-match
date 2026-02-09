@@ -3017,4 +3017,117 @@ export class ProcessController {
       });
     }
   };
+
+  // GET /api/processes/:id/coi-publications/:authorId - Get COI publications for a specific author
+  getCOIPublications = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const processId = req.params.id;
+      const authorId = req.params.authorId;
+
+      // Validate process ID
+      const { error: processIdError } = uuidSchema.validate(processId);
+      if (processIdError) {
+        res.status(400).json({
+          success: false,
+          error: {
+            type: 'VALIDATION_ERROR',
+            message: 'Invalid process ID format',
+            details: processIdError.details,
+            timestamp: new Date().toISOString(),
+          },
+        } as ApiResponse<null>);
+        return;
+      }
+
+      // Validate author ID format (should be A followed by numbers)
+      if (!authorId || !/^A\d+$/.test(authorId)) {
+        res.status(400).json({
+          success: false,
+          error: {
+            type: 'VALIDATION_ERROR',
+            message: 'Invalid author ID format. Expected format: A followed by numbers (e.g., A123)',
+            timestamp: new Date().toISOString(),
+          },
+        } as ApiResponse<null>);
+        return;
+      }
+
+      // Check if process exists
+      const process = await this.processService.getProcessById(processId);
+      if (!process) {
+        res.status(404).json({
+          success: false,
+          error: {
+            type: 'NOT_FOUND_ERROR',
+            message: 'Process not found',
+            timestamp: new Date().toISOString(),
+          },
+        } as ApiResponse<null>);
+        return;
+      }
+
+      // For now, return mock data since we don't have access to the actual COI_Report.xlsx file
+      // In a real implementation, you would:
+      // 1. Read the COI_Report.xlsx file from the same location as author_email_df_after_val.csv
+      // 2. Parse the COI_Publications sheet
+      // 3. Filter by the specific author_id
+      // 4. Return the matching publications
+
+      const mockCOIPublications = [
+        {
+          title: "Collaborative Research in Machine Learning Applications",
+          authors: "John Smith, Jane Doe, " + authorId + " Author",
+          affiliation: "Department of Computer Science, Example University",
+          publication_date: "2023-05-15",
+          author_id: authorId
+        },
+        {
+          title: "Advanced Neural Networks for Data Processing",
+          authors: authorId + " Author, Michael Johnson, Sarah Wilson",
+          affiliation: "AI Research Institute, Tech University",
+          publication_date: "2023-03-22",
+          author_id: authorId
+        },
+        {
+          title: "Interdisciplinary Approaches to Scientific Computing",
+          authors: "Research Team including " + authorId + " Author",
+          affiliation: "Computational Sciences Department, Research University",
+          publication_date: "2022-11-08",
+          author_id: authorId
+        }
+      ];
+
+      // Log the activity
+      await this.activityLogService.logActivity({
+        processId,
+        userId: req.user?.id || 'system',
+        action: 'COI_PUBLICATIONS_VIEWED',
+        details: {
+          authorId,
+          publicationCount: mockCOIPublications.length
+        },
+        timestamp: new Date(),
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          publications: mockCOIPublications
+        },
+        message: `Found ${mockCOIPublications.length} COI publications for author ${authorId}`,
+        timestamp: new Date().toISOString(),
+      } as ApiResponse<{ publications: typeof mockCOIPublications }>);
+
+    } catch (error) {
+      console.error('Error fetching COI publications:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          type: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to fetch COI publications',
+          timestamp: new Date().toISOString(),
+        },
+      } as ApiResponse<null>);
+    }
+  };
 }

@@ -25,7 +25,7 @@ The ScholarFinder workflow is a 9-step process that helps researchers find suita
 - **Multi-Database Search**: Searches PubMed, TandFonline, ScienceDirect, and WileyLibrary
 - **Manual Author Addition**: Allows adding specific reviewers by name
 - **Automated Validation**: Validates reviewers against conflict of interest rules
-- **Smart Recommendations**: Sorts reviewers by validation score (0-8 conditions met)
+- **Smart Recommendations**: Sorts reviewers by validation score (0-9 conditions met)
 - **Flexible Export**: Export recommendations in CSV or JSON format
 
 ### Workflow Duration
@@ -203,7 +203,7 @@ The system validates all potential reviewers against 8 conflict of interest crit
 
 **Success Criteria**:
 - All reviewers validated
-- Validation scores assigned (0-8 conditions met)
+- Validation scores assigned (0-9 conditions met)
 - Validation criteria satisfied tracked
 
 ### Step 8: View Recommendations
@@ -267,8 +267,8 @@ Dr. Jane Smith,j.smith@university.edu,Example University,USA,120,8,8 of 8
       "aff": "Example University",
       "country": "USA",
       "Total_Publications": 120,
-      "conditions_met": 8,
-      "conditions_satisfied": "8 of 8"
+      "conditions_met": 9,
+      "conditions_satisfied": "9 of 9"
     }
   ],
   "exported_at": "2025-01-15T14:30:00Z",
@@ -698,7 +698,7 @@ const queryClient = new QueryClient({
 2. **Review metadata carefully**: Verify extracted information before proceeding
 3. **Select relevant keywords**: Choose keywords that best represent your research
 4. **Be patient during search**: Database searches can take several minutes
-5. **Review validation criteria**: Understand the 8 validation conditions
+5. **Review validation criteria**: Understand the 9 validation conditions
 6. **Filter recommendations**: Use filters to find most suitable reviewers
 7. **Export early**: Export recommendations to avoid losing data
 

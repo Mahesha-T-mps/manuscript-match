@@ -128,10 +128,14 @@ export const useUpdateProcessStep = () => {
       // Update process in the list cache
       queryClient.setQueryData<Process[]>(
         queryKeys.processes.list(),
-        (oldData) => 
-          oldData?.map(process => 
+        (oldData) => {
+          console.log('DEBUG: Updating processes list cache, oldData:', oldData);
+          const newData = oldData?.map(process => 
             process.id === updatedProcess.id ? updatedProcess : process
-          ) || []
+          ) || [];
+          console.log('DEBUG: New processes list data:', newData);
+          return newData;
+        }
       );
       
       // Update process details cache
@@ -139,6 +143,10 @@ export const useUpdateProcessStep = () => {
         queryKeys.processes.detail(updatedProcess.id),
         updatedProcess
       );
+      
+      // Also invalidate the processes list to ensure it's marked as fresh
+      queryClient.invalidateQueries({ queryKey: queryKeys.processes.list() });
+      console.log('DEBUG: Invalidated processes list cache after step update');
     },
     onError: (error) => {
       console.error('Failed to update process step:', error);

@@ -237,7 +237,7 @@ describe('exportUtils', () => {
       const metadata = createExportMetadata(mockReviewers, 'report');
       const report = generateReport(mockReviewers, metadata);
 
-      expect(report).toContain('**Average Validation Score:** 7.5/8');
+      expect(report).toContain('**Average Validation Score:** 7.5/9');
       expect(report).toContain('**Countries Represented:** 2');
       expect(report).toContain('**Total Combined Publications:** 350');
     });

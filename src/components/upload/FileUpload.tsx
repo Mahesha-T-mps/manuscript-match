@@ -129,14 +129,27 @@ export const FileUpload = ({ processId, onFileUpload, uploadedFile }: FileUpload
         processId,
         file,
         onProgress: (progress) => {
-          setUploadProgress(progress);
+          // Cap upload progress at 90% to leave room for processing
+          const adjustedProgress = Math.min(progress * 0.9, 90);
+          setUploadProgress(adjustedProgress);
+          
+          // Only switch to processing when upload is complete (original progress >= 100)
           if (progress >= 100) {
             setUploadStatus('processing');
+            setUploadProgress(95); // Show 95% during processing
+            
+            // If processing takes too long, gradually increase to 98%
+            setTimeout(() => {
+              if (uploadStatus === 'processing') {
+                setUploadProgress(98);
+              }
+            }, 5000);
           }
         }
       });
 
       setUploadStatus('completed');
+      setUploadProgress(100); // Set to 100% only when completely done
       setUploadResponseData(uploadResponse);
       onFileUpload(uploadResponse);
 
@@ -302,10 +315,18 @@ export const FileUpload = ({ processId, onFileUpload, uploadedFile }: FileUpload
             {isUploading ? (
               <div className="space-y-3 w-full max-w-xs">
                 <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-                <p className="text-sm font-medium">Uploading manuscript...</p>
+                <p className="text-sm font-medium">
+                  {uploadStatus === 'uploading' ? 'Uploading manuscript...' : 
+                   uploadStatus === 'processing' ? 'Processing and extracting metadata...' : 
+                   'Uploading manuscript...'}
+                </p>
                 <div className="space-y-2">
                   <Progress value={uploadProgress} className="w-full" />
-                  <p className="text-xs text-muted-foreground">{uploadProgress}% complete</p>
+                  <p className="text-xs text-muted-foreground">
+                    {uploadStatus === 'uploading' ? `${Math.round(uploadProgress)}% uploaded` :
+                     uploadStatus === 'processing' ? 'Processing document...' :
+                     `${Math.round(uploadProgress)}% complete`}
+                  </p>
                 </div>
               </div>
             ) : (

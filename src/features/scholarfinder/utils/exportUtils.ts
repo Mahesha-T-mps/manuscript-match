@@ -201,7 +201,7 @@ export const generateReport = (reviewers: Reviewer[], metadata: ExportMetadata):
 This report contains a curated list of ${metadata.totalReviewers} potential peer reviewers identified through systematic database searches and validation processes. All reviewers have been screened against conflict of interest criteria and publication requirements.
 
 ### Key Statistics
-- **Average Validation Score:** ${(reviewers.reduce((sum, r) => sum + r.conditions_met, 0) / reviewers.length).toFixed(1)}/8
+- **Average Validation Score:** ${(reviewers.reduce((sum, r) => sum + r.conditions_met, 0) / reviewers.length).toFixed(1)}/9
 - **Countries Represented:** ${[...new Set(reviewers.map(r => r.country))].length}
 - **Total Combined Publications:** ${reviewers.reduce((sum, r) => sum + r.Total_Publications, 0).toLocaleString()}
 - **Recent Publications (Last 2 Years):** ${reviewers.reduce((sum, r) => sum + r['Publications (last 2 years)'], 0).toLocaleString()}

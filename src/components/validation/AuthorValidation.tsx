@@ -3,13 +3,21 @@
  * Main component for author validation with configurable rules
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, AlertTriangle, Search, UserPlus, Info } from 'lucide-react';
 import { useValidation, useAddManualAuthor } from '@/hooks/useValidation';
+
+// Global synchronous lock to prevent any duplicate calls at the entry point
+let globalFormSubmissionLock = false;
+let globalFormSubmissionTimestamp = 0;
+
+// Global flag to prevent immediate duplicate calls at the component level
+let globalSearchInProgress = false;
+let globalLastSearch: { authorName: string; timestamp: number } | null = null;
 
 interface ManualAuthor {
   name: string;
@@ -38,6 +46,11 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
   } = useValidation(processId);
 
   const addManualAuthorMutation = useAddManualAuthor(processId);
+
+  // Ref to prevent duplicate manual author search calls
+  const searchInProgressRef = useRef(false);
+  // Debounce timer ref
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
 
 
@@ -74,6 +87,19 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
     }
   }, [isValidationComplete, onValidationComplete]);
 
+  // Cleanup effect to reset search progress ref and clear timers
+  React.useEffect(() => {
+    return () => {
+      searchInProgressRef.current = false;
+      globalSearchInProgress = false;
+      globalFormSubmissionLock = false;
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const handleAuthorNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setAuthorName(value);
@@ -86,13 +112,74 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
     }
   };
 
-  const handleSearchAuthor = async () => {
+  // Memoized handler to prevent duplicate manual author search calls
+  const handleSearchAuthor = React.useCallback(async () => {
+    const now = Date.now();
+    const trimmedName = authorName.trim();
+    
+    console.log('[AuthorValidation] 🔍 handleSearchAuthor called at:', now);
+    console.log('[AuthorValidation] 📊 Entry state check:', {
+      globalFormSubmissionLock,
+      globalSearchInProgress,
+      searchInProgressRef: searchInProgressRef.current,
+      isPending: addManualAuthorMutation.isPending
+    });
+    
+    // IMMEDIATE global check to prevent any duplicate calls
+    if (globalSearchInProgress) {
+      console.log('[AuthorValidation] 🚫 GLOBAL search already in progress, blocking immediately');
+      return;
+    }
+    
+    // Check for duplicate within 3 seconds globally
+    if (globalLastSearch && 
+        globalLastSearch.authorName === trimmedName && 
+        (now - globalLastSearch.timestamp) < 3000) {
+      console.log('[AuthorValidation] 🚫 GLOBAL duplicate search within 3 seconds, blocking');
+      console.log('[AuthorValidation] 📊 Last search:', globalLastSearch);
+      console.log('[AuthorValidation] 📊 Current attempt:', { authorName: trimmedName, timestamp: now });
+      return;
+    }
+    
+    // Clear any existing debounce timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    
+    // Prevent duplicate calls
+    if (searchInProgressRef.current || addManualAuthorMutation.isPending) {
+      console.log('[AuthorValidation] Manual author search already in progress, ignoring duplicate call');
+      console.log('[AuthorValidation] State check:', {
+        searchInProgressRef: searchInProgressRef.current,
+        isPending: addManualAuthorMutation.isPending,
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
     if (authorName.trim().length < 2) {
       setAuthorNameError('Author name must be at least 2 characters');
       return;
     }
     
+    console.log('[AuthorValidation] Starting manual author search for:', authorName.trim());
+    console.log('[AuthorValidation] Pre-search state:', {
+      searchInProgressRef: searchInProgressRef.current,
+      isPending: addManualAuthorMutation.isPending,
+      globalSearchInProgress,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Set global flags immediately
+    globalSearchInProgress = true;
+    globalLastSearch = { authorName: trimmedName, timestamp: now };
+    
+    // NO DEBOUNCE - Execute immediately to prevent race conditions
     try {
+      searchInProgressRef.current = true;
+      
+      console.log('[AuthorValidation] 🚀 About to call addManualAuthorMutation.mutateAsync');
       const result = await addManualAuthorMutation.mutateAsync(authorName.trim());
       console.log('[AuthorValidation] Search result:', result);
       
@@ -131,8 +218,17 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
       
       // Clear the search input
       setAuthorName('');
+    } finally {
+      searchInProgressRef.current = false;
+      globalSearchInProgress = false;
+      // Clear global last search after 5 seconds
+      setTimeout(() => {
+        if (globalLastSearch && globalLastSearch.timestamp === now) {
+          globalLastSearch = null;
+        }
+      }, 5000);
     }
-  };
+  }, [authorName, addManualAuthorMutation]);
 
 
 
@@ -150,37 +246,94 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <Input
-                type="text"
-                placeholder="Enter author name (minimum 2 characters)"
-                value={authorName}
-                onChange={handleAuthorNameChange}
-                className={authorNameError ? 'border-red-500' : ''}
-                disabled={addManualAuthorMutation.isPending}
-                aria-label="Author name"
-                aria-describedby={authorNameError ? "author-name-error" : undefined}
-                aria-invalid={!!authorNameError}
-              />
-              {authorNameError && (
-                <p id="author-name-error" className="text-sm text-red-500 mt-1" role="alert">{authorNameError}</p>
-              )}
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const now = Date.now();
+            
+            // IMMEDIATE SYNCHRONOUS LOCK CHECK - This happens before ANY async operations
+            if (globalFormSubmissionLock) {
+              console.log('[AuthorValidation] 🚫 SYNCHRONOUS FORM LOCK active, blocking submission immediately');
+              console.log('[AuthorValidation] ⏰ Lock timestamp:', globalFormSubmissionTimestamp);
+              console.log('[AuthorValidation] ⏰ Current timestamp:', now);
+              console.log('[AuthorValidation] ⏰ Time diff:', now - globalFormSubmissionTimestamp);
+              return;
+            }
+            
+            // Check for rapid successive submissions (within 1 second)
+            if (now - globalFormSubmissionTimestamp < 1000) {
+              console.log('[AuthorValidation] 🚫 RAPID FORM SUBMISSION detected, blocking');
+              console.log('[AuthorValidation] ⏰ Last submission:', globalFormSubmissionTimestamp);
+              console.log('[AuthorValidation] ⏰ Current submission:', now);
+              console.log('[AuthorValidation] ⏰ Time diff:', now - globalFormSubmissionTimestamp);
+              return;
+            }
+            
+            // SET SYNCHRONOUS LOCK IMMEDIATELY
+            globalFormSubmissionLock = true;
+            globalFormSubmissionTimestamp = now;
+            console.log('[AuthorValidation] 🔒 SYNCHRONOUS FORM LOCK set at:', now);
+            
+            // Additional form-level validation
+            if (!authorName.trim() || 
+                authorName.trim().length < 2 || 
+                !!authorNameError || 
+                addManualAuthorMutation.isPending || 
+                searchInProgressRef.current) {
+              console.log('[AuthorValidation] Form submission blocked by validation:', {
+                authorName: authorName.trim(),
+                authorNameLength: authorName.trim().length,
+                authorNameError,
+                isPending: addManualAuthorMutation.isPending,
+                searchInProgress: searchInProgressRef.current
+              });
+              // Release lock if validation fails
+              globalFormSubmissionLock = false;
+              console.log('[AuthorValidation] 🔓 SYNCHRONOUS FORM LOCK released due to validation failure');
+              return;
+            }
+            
+            console.log('[AuthorValidation] Form submitted, calling handleSearchAuthor');
+            
+            // Call handleSearchAuthor and ensure lock is released
+            handleSearchAuthor().finally(() => {
+              globalFormSubmissionLock = false;
+              console.log('[AuthorValidation] 🔓 SYNCHRONOUS FORM LOCK released after handleSearchAuthor completion');
+            });
+          }}>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <Input
+                  type="text"
+                  placeholder="Enter author name (minimum 2 characters)"
+                  value={authorName}
+                  onChange={handleAuthorNameChange}
+                  className={authorNameError ? 'border-red-500' : ''}
+                  disabled={addManualAuthorMutation.isPending}
+                  aria-label="Author name"
+                  aria-describedby={authorNameError ? "author-name-error" : undefined}
+                  aria-invalid={!!authorNameError}
+                />
+                {authorNameError && (
+                  <p id="author-name-error" className="text-sm text-red-500 mt-1" role="alert">{authorNameError}</p>
+                )}
+              </div>
+              <Button
+                type="submit"
+                disabled={!authorName.trim() || authorName.trim().length < 2 || !!authorNameError || addManualAuthorMutation.isPending || searchInProgressRef.current}
+                className="flex items-center gap-2"
+                aria-label="Search for author"
+              >
+                {addManualAuthorMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Search className="h-4 w-4" aria-hidden="true" />
+                )}
+                Search Author
+              </Button>
             </div>
-            <Button
-              onClick={handleSearchAuthor}
-              disabled={!authorName.trim() || authorName.trim().length < 2 || !!authorNameError || addManualAuthorMutation.isPending}
-              className="flex items-center gap-2"
-              aria-label="Search for author"
-            >
-              {addManualAuthorMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <Search className="h-4 w-4" aria-hidden="true" />
-              )}
-              Search Author
-            </Button>
-          </div>
+          </form>
 
           {/* Loading state */}
           {addManualAuthorMutation.isPending && (

@@ -38,7 +38,7 @@ This directory contains comprehensive integration tests for the complete Scholar
 - Manual author search by name
 - Author validation initiation
 - Validation progress polling
-- Validation criteria verification (8 conditions)
+- Validation criteria verification (9 conditions)
 - Validation completion with summary
 - Error handling for invalid inputs
 

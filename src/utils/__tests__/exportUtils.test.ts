@@ -157,8 +157,8 @@ describe('Export Utils - Unit Tests', () => {
       expect(validation.coauthor).toBe(false);
       expect(validation.countryMatch).toBe('yes');
       expect(validation.affiliationMatch).toBe('no');
-      expect(validation.conditionsMet).toBe(8);
-      expect(validation.conditionsSatisfied).toBe('8 of 8');
+      expect(validation.conditionsMet).toBe(9);
+      expect(validation.conditionsSatisfied).toBe('9 of 9');
     });
 
     it('should handle multiple reviewers', () => {
