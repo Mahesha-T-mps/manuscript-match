@@ -126,7 +126,7 @@ export function useReports(options: UseReportsOptions = {}) {
     queryKey: ['reports', 'users'],
     queryFn: async () => {
       try {
-        console.log('[useReports] Fetching users list for admin...');
+        console.log('[useReports] Fetching users list for admin...', { isAdmin });
         
         // Check if adminService and getUsers method exist
         if (!adminService || typeof adminService.getUsers !== 'function') {
@@ -135,16 +135,30 @@ export function useReports(options: UseReportsOptions = {}) {
         }
         
         const response = await adminService.getUsers({ limit: 1000 });
+        console.log('[useReports] Users API response:', response);
         console.log('[useReports] Users fetched successfully:', response.data?.length || 0, 'users');
-        console.log('[useReports] Users data:', response.data);
-        return response.data || [];
-      } catch (error) {
-        console.error('Error fetching users for reports:', error);
-        console.error('Error details:', {
+        console.log('[useReports] Users data array:', response.data);
+        
+        // Ensure we return an array
+        if (!response || !response.data) {
+          console.warn('[useReports] No data in response, returning empty array');
+          return [];
+        }
+        
+        if (!Array.isArray(response.data)) {
+          console.error('[useReports] Response data is not an array:', typeof response.data, response.data);
+          return [];
+        }
+        
+        return response.data;
+      } catch (error: any) {
+        console.error('[useReports] Error fetching users for reports:', error);
+        console.error('[useReports] Error details:', {
           message: error?.message,
           status: error?.response?.status,
           statusText: error?.response?.statusText,
-          data: error?.response?.data
+          data: error?.response?.data,
+          stack: error?.stack
         });
         // Return empty array on error so the UI doesn't break
         return [];

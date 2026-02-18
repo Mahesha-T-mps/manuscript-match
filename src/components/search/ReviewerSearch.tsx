@@ -88,6 +88,52 @@ export const ReviewerSearch = ({
   
   // Track if search was performed in current session
   const [searchPerformedInSession, setSearchPerformedInSession] = useState(false);
+  
+  // Persistent search loading state - read from localStorage on every render
+  const isSearchingFromStorage = (() => {
+    try {
+      const stored = localStorage.getItem(`process_${processId}_isSearching`);
+      return stored ? JSON.parse(stored) : false;
+    } catch {
+      return false;
+    }
+  })();
+  
+  // Combined search loading state
+  const isActuallySearching = isSearching || initiateSearchMutation.isPending || isSearchingFromStorage;
+  
+  // Read search results from localStorage on every render to ensure fresh data
+  const searchResultsFromStorage = (() => {
+    try {
+      const cachedResults = localStorage.getItem(`process_${processId}_searchResults`);
+      if (!cachedResults) return [];
+      
+      const results = JSON.parse(cachedResults);
+      
+      // Extract results based on available format
+      if (results.author_email_affiliation_preview && Array.isArray(results.author_email_affiliation_preview)) {
+        return results.author_email_affiliation_preview;
+      } else if (results.data?.preview_reviewers && Array.isArray(results.data.preview_reviewers)) {
+        return results.data.preview_reviewers.map(reviewer => ({
+          author: reviewer.reviewer || reviewer.author || 'Unknown',
+          email: reviewer.email || '',
+          aff: reviewer.aff || reviewer.affiliation || '',
+          city: reviewer.city || '',
+          country: reviewer.country || ''
+        }));
+      } else if (results.data?.author_email_affiliation_preview && Array.isArray(results.data.author_email_affiliation_preview)) {
+        return results.data.author_email_affiliation_preview;
+      }
+      
+      return [];
+    } catch {
+      return [];
+    }
+  })();
+  
+  // Use storage results as fallback if state is empty
+  const effectiveSearchResults = searchResults.length > 0 ? searchResults : searchResultsFromStorage;
+  const hasSearchResults = effectiveSearchResults.length > 0;
 
   // Load cached search results on component mount, but only if coming from later steps
   useEffect(() => {
@@ -97,6 +143,11 @@ export const ReviewerSearch = ({
         const allKeys = Object.keys(localStorage);
         const processKeys = allKeys.filter(key => key.includes(processId));
         console.log('[ReviewerSearch] All localStorage keys for this process:', processKeys);
+        
+        // Check if search was completed (from ProcessWorkflow state)
+        const searchCompletedStr = localStorage.getItem(`process_${processId}_searchCompleted`);
+        const searchCompleted = searchCompletedStr ? JSON.parse(searchCompletedStr) : false;
+        console.log('[ReviewerSearch] Search completed from localStorage:', searchCompleted);
         
         // Get the previous step from localStorage to determine navigation direction
         const previousStep = localStorage.getItem(`process_${processId}_previousStep`);
@@ -119,9 +170,15 @@ export const ReviewerSearch = ({
         
         console.log('[ReviewerSearch] Step indices - Current:', currentStepIndex, 'Previous:', previousStepIndex);
         
-        // Only load cached results if coming from a later step (higher index)
-        // or if no previous step is recorded (first visit)
-        const shouldLoadResults = previousStepIndex === -1 || previousStepIndex > currentStepIndex;
+        // Load results if:
+        // 1. Search was completed (searchCompleted is true)
+        // 2. Coming from a later step (higher index)
+        // 3. No previous step recorded (first visit)
+        // 4. Returning to the same step
+        const shouldLoadResults = searchCompleted || 
+                                 previousStepIndex === -1 || 
+                                 previousStepIndex > currentStepIndex || 
+                                 previousStep === 'DATABASE_SEARCH';
         
         console.log('[ReviewerSearch] Should load results:', shouldLoadResults);
         
@@ -148,6 +205,7 @@ export const ReviewerSearch = ({
             console.log('[ReviewerSearch] Setting cached search results, count:', results.author_email_affiliation_preview.length);
             console.log('[ReviewerSearch] Sample result:', results.author_email_affiliation_preview[0]);
             setSearchResults(results.author_email_affiliation_preview);
+            setSearchPerformedInSession(true); // Mark as performed to show results
           } else {
             console.log('[ReviewerSearch] No author_email_affiliation_preview found in cached results');
             
@@ -155,9 +213,11 @@ export const ReviewerSearch = ({
             if (results.reviewers && Array.isArray(results.reviewers)) {
               console.log('[ReviewerSearch] Found results.reviewers, count:', results.reviewers.length);
               setSearchResults(results.reviewers);
+              setSearchPerformedInSession(true); // Mark as performed to show results
             } else if (results.data && results.data.reviewers && Array.isArray(results.data.reviewers)) {
               console.log('[ReviewerSearch] Found results.data.reviewers, count:', results.data.reviewers.length);
               setSearchResults(results.data.reviewers);
+              setSearchPerformedInSession(true); // Mark as performed to show results
             } else if (results.data && results.data.preview_reviewers && Array.isArray(results.data.preview_reviewers)) {
               console.log('[ReviewerSearch] Found results.data.preview_reviewers, count:', results.data.preview_reviewers.length);
               // Transform the data to match our SearchResult interface
@@ -169,13 +229,13 @@ export const ReviewerSearch = ({
                 country: reviewer.country || ''
               }));
               setSearchResults(transformedResults);
-              // Don't set searchPerformedInSession when loading from cache
-              console.log('[ReviewerSearch] Loaded cached results, not setting search completion status');
+              setSearchPerformedInSession(true); // Mark as performed to show results
+              console.log('[ReviewerSearch] Loaded cached results and set search completion status');
             } else if (results.data && results.data.author_email_affiliation_preview && Array.isArray(results.data.author_email_affiliation_preview)) {
               console.log('[ReviewerSearch] Found results.data.author_email_affiliation_preview, count:', results.data.author_email_affiliation_preview.length);
               setSearchResults(results.data.author_email_affiliation_preview);
-              // Don't set searchPerformedInSession when loading from cache
-              console.log('[ReviewerSearch] Loaded cached results, not setting search completion status');
+              setSearchPerformedInSession(true); // Mark as performed to show results
+              console.log('[ReviewerSearch] Loaded cached results and set search completion status');
             } else {
               console.log('[ReviewerSearch] No recognizable results format found');
               console.log('[ReviewerSearch] Full results structure:', JSON.stringify(results, null, 2));
@@ -185,8 +245,8 @@ export const ReviewerSearch = ({
               if (results.message && results.job_id && results.data) {
                 console.log('[ReviewerSearch] Valid response structure but no results - search completed with no authors');
                 setSearchResults([]);
-                // Don't set searchPerformedInSession when loading from cache
-                console.log('[ReviewerSearch] Loaded cached empty results, not setting search completion status');
+                setSearchPerformedInSession(true); // Mark as performed even with no results
+                console.log('[ReviewerSearch] Loaded cached empty results and set search completion status');
               }
             }
           }
@@ -200,6 +260,68 @@ export const ReviewerSearch = ({
 
     loadCachedResults();
   }, [processId]);
+  
+  // Monitor for search completion when navigating back
+  useEffect(() => {
+    // Check if search is marked as searching but results are now available
+    const checkSearchCompletion = () => {
+      const isSearchingStored = localStorage.getItem(`process_${processId}_isSearching`);
+      const currentSearchId = localStorage.getItem(`process_${processId}_searchId`);
+      const cachedResults = localStorage.getItem(`process_${processId}_searchResults`);
+      
+      if (isSearchingStored && JSON.parse(isSearchingStored) && cachedResults) {
+        console.log('[ReviewerSearch] Checking search completion, currentSearchId:', currentSearchId);
+        
+        try {
+          const results = JSON.parse(cachedResults);
+          
+          // Check if the results match the current search ID
+          // If searchId doesn't match or doesn't exist in results, don't clear the searching flag
+          if (results.searchId && currentSearchId && results.searchId !== currentSearchId) {
+            console.log('[ReviewerSearch] Results are from a different search, keeping searching flag');
+            return;
+          }
+          
+          console.log('[ReviewerSearch] Search completed while away, loading results');
+          
+          // Load results based on available format
+          if (results.author_email_affiliation_preview && Array.isArray(results.author_email_affiliation_preview)) {
+            setSearchResults(results.author_email_affiliation_preview);
+            setSearchPerformedInSession(true);
+          } else if (results.data?.preview_reviewers && Array.isArray(results.data.preview_reviewers)) {
+            const transformedResults = results.data.preview_reviewers.map(reviewer => ({
+              author: reviewer.reviewer || reviewer.author || 'Unknown',
+              email: reviewer.email || '',
+              aff: reviewer.aff || reviewer.affiliation || '',
+              city: reviewer.city || '',
+              country: reviewer.country || ''
+            }));
+            setSearchResults(transformedResults);
+            setSearchPerformedInSession(true);
+          } else if (results.data?.author_email_affiliation_preview && Array.isArray(results.data.author_email_affiliation_preview)) {
+            setSearchResults(results.data.author_email_affiliation_preview);
+            setSearchPerformedInSession(true);
+          }
+          
+          // Clear the searching flag only if search IDs match
+          localStorage.setItem(`process_${processId}_isSearching`, JSON.stringify(false));
+          console.log('[ReviewerSearch] Cleared isSearching flag after loading results');
+        } catch (error) {
+          console.error('[ReviewerSearch] Error loading results after navigation:', error);
+        }
+      }
+    };
+    
+    // Check immediately on mount
+    checkSearchCompletion();
+    
+    // Also check periodically while the component is mounted and searching
+    const interval = isSearchingFromStorage ? setInterval(checkSearchCompletion, 2000) : null;
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [processId, isSearchingFromStorage]);
 
   const toggleDatabase = (databaseId: string) => {
     setDatabases(prev => 
@@ -278,6 +400,14 @@ export const ReviewerSearch = ({
     const searchKeywordString = isEditingKeywordString ? editableKeywordString.trim() : currentKeywordString;
 
     try {
+      // Generate a unique search ID for this search operation
+      const searchId = Date.now().toString();
+      
+      // Set searching state in localStorage before starting with search ID
+      localStorage.setItem(`process_${processId}_isSearching`, JSON.stringify(true));
+      localStorage.setItem(`process_${processId}_searchId`, searchId);
+      console.log('[ReviewerSearch] Set isSearching to true in localStorage with searchId:', searchId);
+      
       // First, save the keyword string to the API
       // Parse the keyword string to extract primary and secondary keywords
       const { fileService } = await import('@/services/fileService');
@@ -325,13 +455,20 @@ export const ReviewerSearch = ({
       console.log('[ReviewerSearch] Response keys:', Object.keys(searchResponse || {}));
       console.log('[ReviewerSearch] author_email_affiliation_preview:', searchResponse?.author_email_affiliation_preview);
       
+      // Save the search results to display in the table with search ID
+      const resultsWithMetadata = {
+        ...searchResponse,
+        searchId, // Add search ID to results
+        timestamp: Date.now()
+      };
+      
       // Save the search results to display in the table
       if (searchResponse?.author_email_affiliation_preview && Array.isArray(searchResponse.author_email_affiliation_preview)) {
         console.log('[ReviewerSearch] Setting search results from author_email_affiliation_preview, count:', searchResponse.author_email_affiliation_preview.length);
         setSearchResults(searchResponse.author_email_affiliation_preview);
         
         // Also cache the results for persistence
-        localStorage.setItem(`process_${processId}_searchResults`, JSON.stringify(searchResponse));
+        localStorage.setItem(`process_${processId}_searchResults`, JSON.stringify(resultsWithMetadata));
         console.log('[ReviewerSearch] Cached search results to localStorage');
       } else if (searchResponse?.data?.preview_reviewers && Array.isArray(searchResponse.data.preview_reviewers)) {
         console.log('[ReviewerSearch] Setting search results from data.preview_reviewers, count:', searchResponse.data.preview_reviewers.length);
@@ -346,7 +483,7 @@ export const ReviewerSearch = ({
         setSearchResults(transformedResults);
         
         // Also cache the results for persistence
-        localStorage.setItem(`process_${processId}_searchResults`, JSON.stringify(searchResponse));
+        localStorage.setItem(`process_${processId}_searchResults`, JSON.stringify(resultsWithMetadata));
         console.log('[ReviewerSearch] Cached search results to localStorage');
       } else {
         console.log('[ReviewerSearch] No author_email_affiliation_preview or preview_reviewers found in response');
@@ -356,9 +493,13 @@ export const ReviewerSearch = ({
         setSearchResults([]);
         
         // Still cache the response for status tracking
-        localStorage.setItem(`process_${processId}_searchResults`, JSON.stringify(searchResponse));
+        localStorage.setItem(`process_${processId}_searchResults`, JSON.stringify(resultsWithMetadata));
         console.log('[ReviewerSearch] Cached empty search results to localStorage');
       }
+      
+      // Clear searching state in localStorage after completion
+      localStorage.setItem(`process_${processId}_isSearching`, JSON.stringify(false));
+      console.log('[ReviewerSearch] Set isSearching to false in localStorage');
       
       // Mark that search was performed in this session
       setSearchPerformedInSession(true);
@@ -370,6 +511,11 @@ export const ReviewerSearch = ({
       });
     } catch (error: any) {
       console.error('[ReviewerSearch] Search error:', error);
+      
+      // Clear searching state in localStorage on error
+      localStorage.setItem(`process_${processId}_isSearching`, JSON.stringify(false));
+      console.log('[ReviewerSearch] Set isSearching to false in localStorage after error');
+      
       toast({
         title: "Search failed",
         description: error.message || "There was an error initiating the search. Please try again.",
@@ -522,13 +668,13 @@ export const ReviewerSearch = ({
           <Button 
             onClick={handleSearch} 
             className="w-full" 
-            disabled={isSearching || initiateSearchMutation.isPending}
+            disabled={isActuallySearching}
             size="lg"
           >
-            {isSearching || initiateSearchMutation.isPending ? (
+            {isActuallySearching ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                {isSearching ? "Searching databases..." : "Initiating search..."}
+                Searching databases...
               </>
             ) : (
               <>
@@ -543,7 +689,7 @@ export const ReviewerSearch = ({
 
 
       {/* No results message when search is completed but no authors found */}
-      {searchPerformedInSession && searchResults.length === 0 && (
+      {searchPerformedInSession && !hasSearchResults && !isActuallySearching && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
@@ -570,14 +716,14 @@ export const ReviewerSearch = ({
       )}
 
       {/* Search Results Table */}
-      {searchResults.length > 0 && (
+      {hasSearchResults && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <CheckCircle className="w-5 h-5 text-green-500" />
               <span>Potential Reviewers</span>
               <Badge variant="secondary" className="ml-2">
-                {searchResults.length} found
+                {effectiveSearchResults.length} found
               </Badge>
             </CardTitle>
             <CardDescription>
@@ -597,7 +743,7 @@ export const ReviewerSearch = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {searchResults.map((result, index) => (
+                  {effectiveSearchResults.map((result, index) => (
                     <tr key={index} className="border-b hover:bg-muted/30 transition-colors">
                       <td className="p-3 font-medium">{result.author}</td>
                       <td className="p-3 text-sm text-muted-foreground">{result.email || '-'}</td>
@@ -610,7 +756,7 @@ export const ReviewerSearch = ({
               </table>
             </div>
             <div className="mt-4 text-sm text-muted-foreground">
-              Showing preview of {searchResults.length} potential reviewers. Complete results will be available in the validation step.
+              Showing preview of {effectiveSearchResults.length} potential reviewers. Complete results will be available in the validation step.
             </div>
           </CardContent>
         </Card>

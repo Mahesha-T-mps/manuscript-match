@@ -18,7 +18,7 @@ interface ProcessTableProps {
   isAdmin: boolean;
 }
 
-type SortField = 'title' | 'status' | 'currentStep' | 'createdAt' | 'updatedAt' | 'userEmail';
+type SortField = 'title' | 'status' | 'currentStep' | 'createdAt' | 'updatedAt';
 type SortOrder = 'asc' | 'desc';
 
 const statusColors: Record<string, string> = {
@@ -78,11 +78,8 @@ export function ProcessTable({ processes, isAdmin }: ProcessTableProps) {
         const matchesStatus = p.status.toLowerCase().includes(searchLower);
         const matchesStep = p.currentStep.toLowerCase().includes(searchLower) ||
           (stepLabels[p.currentStep] || '').toLowerCase().includes(searchLower);
-        const matchesUser = isAdmin && 'userEmail' in p 
-          ? p.userEmail.toLowerCase().includes(searchLower)
-          : false;
         
-        return matchesTitle || matchesStatus || matchesStep || matchesUser;
+        return matchesTitle || matchesStatus || matchesStep;
       });
     }
 
@@ -111,14 +108,6 @@ export function ProcessTable({ processes, isAdmin }: ProcessTableProps) {
         case 'updatedAt':
           aValue = new Date(a.updatedAt).getTime();
           bValue = new Date(b.updatedAt).getTime();
-          break;
-        case 'userEmail':
-          if (isAdmin && 'userEmail' in a && 'userEmail' in b) {
-            aValue = a.userEmail.toLowerCase();
-            bValue = b.userEmail.toLowerCase();
-          } else {
-            return 0;
-          }
           break;
         default:
           return 0;
@@ -185,19 +174,6 @@ export function ProcessTable({ processes, isAdmin }: ProcessTableProps) {
                   <ArrowUpDown className="ml-2 h-3 w-3" />
                 </Button>
               </TableHead>
-              {isAdmin && (
-                <TableHead>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleSort('userEmail')}
-                    className="h-8 px-2"
-                  >
-                    User
-                    <ArrowUpDown className="ml-2 h-3 w-3" />
-                  </Button>
-                </TableHead>
-              )}
               <TableHead>
                 <Button
                   variant="ghost"
@@ -226,7 +202,7 @@ export function ProcessTable({ processes, isAdmin }: ProcessTableProps) {
             {filteredAndSortedProcesses.length === 0 ? (
               <TableRow>
                 <TableCell 
-                  colSpan={isAdmin ? 6 : 5} 
+                  colSpan={5} 
                   className="text-center text-muted-foreground"
                 >
                   No processes found
@@ -253,13 +229,6 @@ export function ProcessTable({ processes, isAdmin }: ProcessTableProps) {
                       {statusLabels[process.status] || process.status}
                     </Badge>
                   </TableCell>
-                  {isAdmin && 'userEmail' in process && (
-                    <TableCell>
-                      <div className="max-w-[200px] truncate" title={process.userEmail}>
-                        {process.userEmail}
-                      </div>
-                    </TableCell>
-                  )}
                   <TableCell className="text-sm text-muted-foreground">
                     {new Date(process.createdAt).toLocaleDateString('en-US', {
                       year: 'numeric',

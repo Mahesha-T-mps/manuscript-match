@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { ArrowLeft, User, Mail, MapPin, BookOpen, Award, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -38,8 +39,26 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   processId,
   onBack,
 }) => {
+  console.log('[ProcessWorkflow] Component rendered with processId:', processId);
+  
+  // Track mount/unmount
+  useEffect(() => {
+    const storageKey = `process_${processId}_uploadResponse`;
+    const savedOnMount = localStorage.getItem(storageKey);
+    console.log('[ProcessWorkflow] ===== COMPONENT MOUNTED =====');
+    console.log('[ProcessWorkflow] localStorage on mount:', savedOnMount);
+    return () => {
+      const savedOnUnmount = localStorage.getItem(storageKey);
+      console.log('[ProcessWorkflow] ===== COMPONENT UNMOUNTING =====');
+      console.log('[ProcessWorkflow] localStorage on unmount:', savedOnUnmount);
+    };
+  }, [processId]);
+  
   const { toast } = useToast();
   const { data: process, isLoading, error } = useProcess(processId);
+  
+  console.log('[ProcessWorkflow] Process data:', process);
+  
   const updateStepMutation = useUpdateProcessStep();
   
   // API hooks for search and recommendations
@@ -65,35 +84,270 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   // Local state for workflow data with localStorage persistence
   const getStorageKey = (key: string) => `process_${processId}_${key}`;
   
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(() => {
+    // Initialize uploadedFile from localStorage if available
+    const storageKey = `process_${processId}_uploadResponse`;
+    const saved = localStorage.getItem(storageKey);
+    console.log('[ProcessWorkflow] Initializing uploadedFile - checking localStorage key:', storageKey);
+    console.log('[ProcessWorkflow] localStorage value:', saved);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed?.fileName && parsed?.fileSize) {
+          console.log('[ProcessWorkflow] Initializing uploadedFile from localStorage:', parsed.fileName);
+          return { name: parsed.fileName, size: parsed.fileSize } as File;
+        }
+      } catch (e) {
+        console.warn('[ProcessWorkflow] Failed to parse uploadResponse for uploadedFile:', e);
+      }
+    }
+    console.log('[ProcessWorkflow] No uploadedFile data in localStorage, initializing as null');
+    return null;
+  });
+  
   const [uploadResponse, setUploadResponse] = useState<any>(() => {
-    const saved = localStorage.getItem(getStorageKey('uploadResponse'));
+    const storageKey = `process_${processId}_uploadResponse`;
+    const saved = localStorage.getItem(storageKey);
+    console.log('[ProcessWorkflow] Initializing uploadResponse from localStorage:', saved);
     return saved ? JSON.parse(saved) : null;
   });
-  const [enhancedKeywords, setEnhancedKeywords] = useState<EnhancedKeywords | null>(null);
+
+  // Derive uploadedFile - always check localStorage to handle rapid re-renders
+  // Don't use useMemo since we need to read fresh localStorage on every render
+  const getUploadedFileFromStorage = () => {
+    try {
+      const saved = localStorage.getItem(`process_${processId}_uploadResponse`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.fileName && parsed?.fileSize) {
+          return { name: parsed.fileName, size: parsed.fileSize } as File;
+        }
+      }
+    } catch (e) {
+      console.warn('[ProcessWorkflow] Failed to read from localStorage:', e);
+    }
+    return null;
+  };
+
+  const getUploadResponseFromStorage = () => {
+    try {
+      const saved = localStorage.getItem(`process_${processId}_uploadResponse`);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.warn('[ProcessWorkflow] Failed to read uploadResponse from localStorage:', e);
+    }
+    return null;
+  };
+
+  const memoizedUploadedFile = uploadedFile || 
+    (uploadResponse?.fileName && uploadResponse?.fileSize 
+      ? { name: uploadResponse.fileName, size: uploadResponse.fileSize } as File 
+      : null) ||
+    getUploadedFileFromStorage();
+  
+  const effectiveUploadResponse = uploadResponse || getUploadResponseFromStorage();
+  
+  console.log('[ProcessWorkflow] memoizedUploadedFile:', memoizedUploadedFile ? memoizedUploadedFile.name : 'null');
+  console.log('[ProcessWorkflow] effectiveUploadResponse:', effectiveUploadResponse ? 'present' : 'null');
+  
+  // Restore state when processId changes (switching between processes)
+  useEffect(() => {
+    console.log('[ProcessWorkflow] ProcessId changed, restoring state for:', processId);
+    
+    // Restore uploadResponse
+    const savedUploadResponse = localStorage.getItem(`process_${processId}_uploadResponse`);
+    if (savedUploadResponse) {
+      try {
+        const parsed = JSON.parse(savedUploadResponse);
+        console.log('[ProcessWorkflow] Restoring uploadResponse for new processId:', parsed);
+        setUploadResponse(parsed);
+        
+        // Also restore uploadedFile
+        if (parsed?.fileName && parsed?.fileSize) {
+          setUploadedFile({ 
+            name: parsed.fileName, 
+            size: parsed.fileSize 
+          } as File);
+        }
+      } catch (e) {
+        console.warn('[ProcessWorkflow] Failed to parse saved uploadResponse:', e);
+      }
+    }
+    // Note: Don't clear state if no data found - it might be in the process of being set
+    // The state will be cleared explicitly when needed (e.g., file removal, step changes)
+    
+    // Restore other workflow state
+    const savedKeywords = localStorage.getItem(`process_${processId}_keywords`);
+    if (savedKeywords) {
+      try {
+        const parsed = JSON.parse(savedKeywords);
+        console.log('[ProcessWorkflow] Restoring enhancedKeywords for new processId:', parsed);
+        setEnhancedKeywords(parsed);
+      } catch (e) {
+        console.warn('[ProcessWorkflow] Failed to parse saved keywords:', e);
+      }
+    }
+    
+    const savedPrimaryKeywords = localStorage.getItem(`process_${processId}_primaryKeywords`);
+    if (savedPrimaryKeywords) {
+      try {
+        setPrimaryKeywords(JSON.parse(savedPrimaryKeywords));
+      } catch (e) {
+        console.warn('[ProcessWorkflow] Failed to parse saved primaryKeywords:', e);
+      }
+    }
+    
+    const savedSecondaryKeywords = localStorage.getItem(`process_${processId}_secondaryKeywords`);
+    if (savedSecondaryKeywords) {
+      try {
+        setSecondaryKeywords(JSON.parse(savedSecondaryKeywords));
+      } catch (e) {
+        console.warn('[ProcessWorkflow] Failed to parse saved secondaryKeywords:', e);
+      }
+    }
+    
+    const savedKeywordString = localStorage.getItem(`process_${processId}_keywordString`);
+    if (savedKeywordString) {
+      setKeywordString(savedKeywordString);
+    }
+    
+    const savedSearchCompleted = localStorage.getItem(`process_${processId}_searchCompleted`);
+    if (savedSearchCompleted) {
+      try {
+        setSearchCompleted(JSON.parse(savedSearchCompleted));
+      } catch (e) {
+        console.warn('[ProcessWorkflow] Failed to parse saved searchCompleted:', e);
+      }
+    }
+    
+    const savedValidationCompleted = localStorage.getItem(`process_${processId}_validationCompleted`);
+    if (savedValidationCompleted) {
+      try {
+        setValidationCompleted(JSON.parse(savedValidationCompleted));
+      } catch (e) {
+        console.warn('[ProcessWorkflow] Failed to parse saved validationCompleted:', e);
+      }
+    }
+    
+    const savedValidationProgress = localStorage.getItem(`process_${processId}_validationProgress`);
+    if (savedValidationProgress) {
+      try {
+        setValidationProgress(JSON.parse(savedValidationProgress));
+      } catch (e) {
+        console.warn('[ProcessWorkflow] Failed to parse saved validationProgress:', e);
+      }
+    }
+    
+    const savedValidationRecommendations = localStorage.getItem(`process_${processId}_validationRecommendations`);
+    if (savedValidationRecommendations) {
+      try {
+        setValidationRecommendations(JSON.parse(savedValidationRecommendations));
+      } catch (e) {
+        console.warn('[ProcessWorkflow] Failed to parse saved validationRecommendations:', e);
+      }
+    }
+  }, [processId]); // Only run when processId changes
+  
+  const [enhancedKeywords, setEnhancedKeywords] = useState<EnhancedKeywords | null>(() => {
+    const storageKey = `process_${processId}_keywords`;
+    const saved = localStorage.getItem(storageKey);
+    console.log('[ProcessWorkflow] Initializing enhancedKeywords from localStorage key:', storageKey, 'value:', saved ? 'present' : 'null');
+    return saved ? JSON.parse(saved) : null;
+  });
+  
+  // Always check localStorage on every render (don't use useMemo)
+  const getEnhancedKeywordsFromStorage = () => {
+    if (enhancedKeywords) return enhancedKeywords;
+    try {
+      const saved = localStorage.getItem(`process_${processId}_keywords`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        console.log('[ProcessWorkflow] Found enhancedKeywords in localStorage (fallback)');
+        return parsed;
+      }
+    } catch (e) {
+      console.warn('[ProcessWorkflow] Failed to read keywords from localStorage:', e);
+    }
+    return null;
+  };
+  
+  const enhancedKeywordsFromStorage = getEnhancedKeywordsFromStorage();
+  console.log('[ProcessWorkflow] enhancedKeywordsFromStorage:', enhancedKeywordsFromStorage ? 'present' : 'null');
+  
+  const [isEnhancingKeywords, setIsEnhancingKeywords] = useState(() => {
+    const saved = localStorage.getItem(`process_${processId}_isEnhancingKeywords`);
+    return saved ? JSON.parse(saved) : false;
+  });
+  
+  // Clear the enhancing flag if we already have enhanced keywords
+  useEffect(() => {
+    console.log('[ProcessWorkflow] Checking if should clear enhancing flag - enhancedKeywordsFromStorage:', enhancedKeywordsFromStorage ? 'present' : 'null', 'isEnhancingKeywords:', isEnhancingKeywords);
+    if (enhancedKeywordsFromStorage && isEnhancingKeywords) {
+      console.log('[ProcessWorkflow] Enhanced keywords exist, clearing enhancing flag');
+      setIsEnhancingKeywords(false);
+      localStorage.removeItem(`process_${processId}_isEnhancingKeywords`);
+    }
+  }, [enhancedKeywordsFromStorage, isEnhancingKeywords, processId]);
+  
   const [primaryKeywords, setPrimaryKeywords] = useState<string[]>(() => {
-    const saved = localStorage.getItem(getStorageKey('primaryKeywords'));
+    const saved = localStorage.getItem(`process_${processId}_primaryKeywords`);
     return saved ? JSON.parse(saved) : [];
   });
   const [secondaryKeywords, setSecondaryKeywords] = useState<string[]>(() => {
-    const saved = localStorage.getItem(getStorageKey('secondaryKeywords'));
+    const saved = localStorage.getItem(`process_${processId}_secondaryKeywords`);
     return saved ? JSON.parse(saved) : [];
   });
   const [keywordString, setKeywordString] = useState<string>(() => {
-    const saved = localStorage.getItem(getStorageKey('keywordString'));
+    const saved = localStorage.getItem(`process_${processId}_keywordString`);
     return saved || '';
   });
   const [searchCompleted, setSearchCompleted] = useState(() => {
-    const saved = localStorage.getItem(getStorageKey('searchCompleted'));
+    const saved = localStorage.getItem(`process_${processId}_searchCompleted`);
     return saved ? JSON.parse(saved) : false;
   });
   const [isValidating, setIsValidating] = useState(false);
   const [validationCompleted, setValidationCompleted] = useState(() => {
-    const saved = localStorage.getItem(getStorageKey('validationCompleted'));
+    const saved = localStorage.getItem(`process_${processId}_validationCompleted`);
     return saved ? JSON.parse(saved) : false;
   });
+  
+  // Persistent validation loading state - read from localStorage on every render
+  const isValidatingFromStorage = (() => {
+    try {
+      const stored = localStorage.getItem(`process_${processId}_isValidating`);
+      return stored ? JSON.parse(stored) : false;
+    } catch {
+      return false;
+    }
+  })();
+  
+  // Combined validation loading state
+  const isActuallyValidating = isValidating || isValidatingFromStorage;
+  
+  // Persistent validation completed state - read from localStorage on every render
+  // But only if it matches the current validation ID (to avoid showing old results)
+  const validationCompletedFromStorage = (() => {
+    try {
+      const stored = localStorage.getItem(`process_${processId}_validationCompleted`);
+      const storedId = localStorage.getItem(`process_${processId}_validationId`);
+      const isValidatingStored = localStorage.getItem(`process_${processId}_isValidating`);
+      
+      // If validation is currently in progress, don't show old completion state
+      if (isValidatingStored && JSON.parse(isValidatingStored)) {
+        return false;
+      }
+      
+      // Otherwise, return the stored completion state
+      return stored ? JSON.parse(stored) : false;
+    } catch {
+      return false;
+    }
+  })();
+  
   const [validationProgress, setValidationProgress] = useState(() => {
-    const saved = localStorage.getItem(getStorageKey('validationProgress'));
+    const saved = localStorage.getItem(`process_${processId}_validationProgress`);
     return saved ? JSON.parse(saved) : { 
       percentage: 0, 
       processed: 0, 
@@ -104,10 +358,13 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     };
   });
   const [validationRecommendations, setValidationRecommendations] = useState<any>(() => {
-    const saved = localStorage.getItem(getStorageKey('validationRecommendations'));
+    const saved = localStorage.getItem(`process_${processId}_validationRecommendations`);
     return saved ? JSON.parse(saved) : null;
   });
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
+  
+  // Ref to prevent auto-check after manual reset
+  const skipValidationCheckRef = useRef(false);
   
   // COI Publications Modal state
   const [coiModalOpen, setCOIModalOpen] = useState(false);
@@ -120,6 +377,17 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   const pollValidationProgress = useCallback(async (jobId: string): Promise<boolean> => {
     try {
       console.log('[ProcessWorkflow] Polling validation progress for jobId:', jobId);
+      
+      // Check if validation was started recently (within last 30 seconds)
+      // If so, skip recommendations check to avoid getting old cached results
+      const validationIdStored = localStorage.getItem(`process_${processId}_validationId`);
+      const validationStartTime = validationIdStored ? parseInt(validationIdStored) : 0;
+      const timeSinceStart = Date.now() - validationStartTime;
+      const skipRecommendationsCheck = timeSinceStart < 30000; // Skip for first 30 seconds
+      
+      if (skipRecommendationsCheck) {
+        console.log('[ProcessWorkflow] Validation started recently, skipping recommendations check to avoid old cache');
+      }
       
       // First, try to get validation status
       let statusResponse;
@@ -168,8 +436,8 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
           description += ' Results are now available.';
           
           toast({
-            title: 'Validation Completed Successfully! 🎉',
-            description,
+            title: process?.title || 'Process',
+            description: `Validation Completed Successfully! 🎉\n${description}`,
             duration: 8000,
           });
           
@@ -182,7 +450,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
           setValidationProgress(prev => ({ ...prev, status: 'failed' }));
           
           toast({
-            title: 'Validation Failed',
+            title: `${process?.title || 'Process'} - Validation Failed`,
             description: 'Author validation process encountered an error. Please try again.',
             variant: 'destructive',
             duration: 8000,
@@ -213,34 +481,41 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         }
       }
       
-      // Always check recommendations as a fallback or primary method
-      // Do this check more frequently to catch completion quickly
-      console.log('[ProcessWorkflow] Checking recommendations to verify completion status');
-      try {
-        const recommendations = await scholarFinderApiService.getRecommendations(jobId);
-        if (recommendations.data?.reviewers && recommendations.data.reviewers.length > 0) {
-          console.log('[ProcessWorkflow] Found recommendations - validation is complete!');
-          setValidationCompleted(true);
-          setValidationProgress(prev => ({ ...prev, status: 'completed', percentage: 100 }));
-          
-          toast({
-            title: 'Validation Completed Successfully! 🎉',
-            description: `Found ${recommendations.data.reviewers.length} recommended reviewers. Results are now available.`,
-            duration: 8000,
-          });
-          
-          return true; // Stop polling
-        } else if (recommendations.message?.includes('not ready')) {
-          console.log('[ProcessWorkflow] Recommendations explicitly not ready, validation still in progress');
-        } else {
-          console.log('[ProcessWorkflow] No recommendations yet, validation still in progress');
-        }
-      } catch (recError) {
-        // Check if it's a 404 (not ready) vs other errors
-        if (recError?.response?.status === 404) {
-          console.log('[ProcessWorkflow] Recommendations not ready yet (404), continuing to poll');
-        } else {
-          console.log('[ProcessWorkflow] Error checking recommendations:', recError?.message);
+      // Check recommendations only if enough time has passed since validation started
+      // This avoids getting old cached results from a previous validation
+      if (!skipRecommendationsCheck) {
+        console.log('[ProcessWorkflow] Checking recommendations to verify completion status');
+        try {
+          const recommendations = await scholarFinderApiService.getRecommendations(jobId);
+          if (recommendations.data?.reviewers && recommendations.data.reviewers.length > 0) {
+            console.log('[ProcessWorkflow] Found recommendations - validation is complete!');
+            setValidationCompleted(true);
+            setValidationProgress(prev => ({ ...prev, status: 'completed', percentage: 100 }));
+            
+            // Clear validating state and set completed flag in localStorage
+            localStorage.setItem(`process_${processId}_isValidating`, JSON.stringify(false));
+            localStorage.setItem(`process_${processId}_validationCompleted`, JSON.stringify(true));
+            console.log('[ProcessWorkflow] Set isValidating to false and validationCompleted to true in localStorage');
+            
+            toast({
+              title: `${process?.title || 'Process'} - Validation Completed Successfully! 🎉`,
+              description: `Found ${recommendations.data.reviewers.length} recommended reviewers. Results are now available.`,
+              duration: 8000,
+            });
+            
+            return true; // Stop polling
+          } else if (recommendations.message?.includes('not ready')) {
+            console.log('[ProcessWorkflow] Recommendations explicitly not ready, validation still in progress');
+          } else {
+            console.log('[ProcessWorkflow] No recommendations yet, validation still in progress');
+          }
+        } catch (recError) {
+          // Check if it's a 404 (not ready) vs other errors
+          if (recError?.response?.status === 404) {
+            console.log('[ProcessWorkflow] Recommendations not ready yet (404), continuing to poll');
+          } else {
+            console.log('[ProcessWorkflow] Error checking recommendations:', recError?.message);
+          }
         }
       }
       
@@ -252,7 +527,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       // Just log the error and continue polling
       return false; // Continue polling despite error
     }
-  }, [toast, validationProgress.percentage, validationProgress.processed]);
+  }, [toast, validationProgress.percentage, validationProgress.processed, processId]);
   
   // Validation polling state and control
   const validationPollingRef = useRef<NodeJS.Timeout | null>(null);
@@ -370,6 +645,125 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     }
   }, [process?.currentStep, validationProgress.status, validationCompleted, isPollingValidation, processId, startValidationPolling]);
 
+  // Check if validation completed while user was away
+  useEffect(() => {
+    const checkValidationCompletion = async () => {
+      // Skip check if we just manually reset
+      if (skipValidationCheckRef.current) {
+        console.log('[ProcessWorkflow] Skipping validation check after manual reset');
+        skipValidationCheckRef.current = false; // Reset the flag
+        return;
+      }
+      
+      // Only check if we're in VALIDATION step and validation is not marked as completed
+      if (
+        process?.currentStep === 'VALIDATION' &&
+        !validationCompleted &&
+        !isValidating &&
+        !isPollingValidation
+      ) {
+        const jobId = fileService.getJobId(processId);
+        if (jobId) {
+          // Check if validation was started recently
+          const validationIdStored = localStorage.getItem(`process_${processId}_validationId`);
+          const validationStartTime = validationIdStored ? parseInt(validationIdStored) : 0;
+          const timeSinceStart = Date.now() - validationStartTime;
+          
+          // If validation was started recently (within 30 seconds), don't check yet
+          if (timeSinceStart < 30000) {
+            console.log('[ProcessWorkflow] Validation started recently, will not check completion yet');
+            return;
+          }
+          
+          try {
+            console.log('[ProcessWorkflow] Checking if validation completed while user was away');
+            const recommendations = await scholarFinderApiService.getRecommendations(jobId);
+            
+            if (recommendations.data?.reviewers && recommendations.data.reviewers.length > 0) {
+              console.log('[ProcessWorkflow] Validation was completed while away - updating state');
+              setValidationCompleted(true);
+              setValidationProgress(prev => ({ ...prev, status: 'completed', percentage: 100 }));
+              
+              toast({
+                title: `${process?.title || 'Process'} - Validation Completed! 🎉`,
+                description: `Found ${recommendations.data.reviewers.length} recommended reviewers. Results are now available.`,
+                duration: 8000,
+              });
+            } else if (recommendations.message?.includes('not ready')) {
+              console.log('[ProcessWorkflow] Validation still in progress');
+              // If validation is still in progress, ensure we're polling
+              if (validationProgress.status === 'in_progress' && !isPollingValidation) {
+                console.log('[ProcessWorkflow] Resuming polling for in-progress validation');
+                startValidationPolling(jobId);
+              }
+            }
+          } catch (error) {
+            console.log('[ProcessWorkflow] Could not check validation completion:', error);
+            // If we get an error but validation was marked as in progress, resume polling
+            if (validationProgress.status === 'in_progress' && !isPollingValidation) {
+              console.log('[ProcessWorkflow] Error checking completion, resuming polling');
+              startValidationPolling(jobId);
+            }
+          }
+        }
+      }
+    };
+
+    checkValidationCompletion();
+  }, [process?.currentStep, validationCompleted, isValidating, isPollingValidation, validationProgress.status, processId, toast, startValidationPolling]);
+  
+  // Monitor for validation completion from localStorage when navigating back
+  useEffect(() => {
+    const checkValidationCompletionFromStorage = () => {
+      const isValidatingStored = localStorage.getItem(`process_${processId}_isValidating`);
+      const validationCompletedStored = localStorage.getItem(`process_${processId}_validationCompleted`);
+      const validationIdStored = localStorage.getItem(`process_${processId}_validationId`);
+      
+      // If validation is currently in progress, don't load old completion state
+      if (isValidatingStored && JSON.parse(isValidatingStored)) {
+        console.log('[ProcessWorkflow] Validation in progress from localStorage, restarting polling');
+        
+        // Clear any stale completion flag since we're validating again
+        if (validationCompleted) {
+          console.log('[ProcessWorkflow] Clearing stale validationCompleted state');
+          setValidationCompleted(false);
+        }
+        
+        // Restart polling if not already active
+        if (!isPollingValidation) {
+          const jobId = fileService.getJobId(processId);
+          if (jobId) {
+            // Check if this validation was started recently (within last 30 seconds)
+            // If so, don't check recommendations immediately - wait for polling
+            const validationStartTime = validationIdStored ? parseInt(validationIdStored) : 0;
+            const timeSinceStart = Date.now() - validationStartTime;
+            
+            if (timeSinceStart < 30000) {
+              console.log('[ProcessWorkflow] Validation started recently, will wait before checking recommendations');
+              // Just start polling, don't check recommendations yet
+              startValidationPolling(jobId);
+            } else {
+              // Validation has been running for a while, safe to check recommendations
+              startValidationPolling(jobId);
+            }
+          }
+        }
+        return;
+      }
+      
+      // If validation completed flag is set in storage and validation is NOT in progress, update state
+      if (validationCompletedStored && JSON.parse(validationCompletedStored) && !validationCompleted) {
+        console.log('[ProcessWorkflow] Validation completed flag found in localStorage, updating state');
+        setValidationCompleted(true);
+        setValidationProgress(prev => ({ ...prev, status: 'completed', percentage: 100 }));
+        return;
+      }
+    };
+    
+    // Check immediately on mount
+    checkValidationCompletionFromStorage();
+  }, [processId, validationCompleted, isPollingValidation, startValidationPolling]);
+
   // Track the current step for navigation direction detection
   useEffect(() => {
     if (process?.currentStep) {
@@ -382,12 +776,61 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     }
   }, [process?.currentStep, processId]);
 
+  // Restore uploadedFile state from uploadResponse when component loads or step changes
+  useEffect(() => {
+    console.log('[ProcessWorkflow] Restoration check - uploadedFile:', uploadedFile, 'currentStep:', process?.currentStep, 'uploadResponse:', uploadResponse);
+    
+    // Only restore if uploadedFile is not already set
+    if (!uploadedFile && process?.currentStep) {
+      // Try to restore from uploadResponse first (most reliable source)
+      if (uploadResponse?.fileName && uploadResponse?.fileSize) {
+        console.log('[ProcessWorkflow] Restoring uploadedFile from uploadResponse:', uploadResponse.fileName);
+        setUploadedFile({ 
+          name: uploadResponse.fileName, 
+          size: uploadResponse.fileSize 
+        } as File);
+      }
+      // Fallback: Try to get file info from localStorage if uploadResponse is missing
+      else {
+        const savedUploadResponse = localStorage.getItem(`process_${processId}_uploadResponse`);
+        console.log('[ProcessWorkflow] Checking localStorage for uploadResponse:', savedUploadResponse);
+        if (savedUploadResponse) {
+          try {
+            const parsed = JSON.parse(savedUploadResponse);
+            if (parsed?.fileName && parsed?.fileSize) {
+              console.log('[ProcessWorkflow] Restoring uploadedFile from localStorage:', parsed.fileName);
+              setUploadedFile({ 
+                name: parsed.fileName, 
+                size: parsed.fileSize 
+              } as File);
+              // Also restore uploadResponse state if it's missing
+              if (!uploadResponse) {
+                console.log('[ProcessWorkflow] Also restoring uploadResponse state from localStorage');
+                setUploadResponse(parsed);
+              }
+            }
+          } catch (e) {
+            console.warn('[ProcessWorkflow] Failed to parse saved uploadResponse:', e);
+          }
+        }
+      }
+    }
+  }, [uploadResponse, process?.currentStep, processId]);
+
   // Auto-save workflow state to localStorage
   useEffect(() => {
     if (uploadResponse) {
+      console.log('[ProcessWorkflow] Saving uploadResponse to localStorage:', uploadResponse);
       localStorage.setItem(getStorageKey('uploadResponse'), JSON.stringify(uploadResponse));
     }
   }, [uploadResponse, processId]);
+
+  useEffect(() => {
+    if (enhancedKeywords) {
+      console.log('[ProcessWorkflow] Saving enhancedKeywords to localStorage:', enhancedKeywords);
+      localStorage.setItem(getStorageKey('keywords'), JSON.stringify(enhancedKeywords));
+    }
+  }, [enhancedKeywords, processId]);
 
 
 
@@ -426,7 +869,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     return () => {
       // Optional: Clear localStorage when navigating away (uncomment if desired)
       // const keys = [
-      //   'uploadResponse', 'primaryKeywords', 'secondaryKeywords',
+      //   'uploadResponse', 'keywords', 'primaryKeywords', 'secondaryKeywords',
       //   'keywordString', 'searchCompleted', 'validationCompleted', 'validationRecommendations'
       // ];
       // keys.forEach(key => localStorage.removeItem(getStorageKey(key)));
@@ -459,7 +902,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     
     // Clear localStorage for this process
     const keys = [
-      'primaryKeywords', 'secondaryKeywords', 'keywordString', 
+      'keywords', 'primaryKeywords', 'secondaryKeywords', 'keywordString', 
       'searchCompleted', 'validationCompleted', 'validationProgress', 'validationRecommendations'
     ];
     keys.forEach(key => localStorage.removeItem(getStorageKey(key)));
@@ -490,6 +933,15 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     try {
       validationInProgressRef.current = true;
       setIsValidating(true);
+      
+      // Generate a unique validation ID for this validation run
+      const validationId = Date.now().toString();
+      
+      // Set validating state in localStorage before starting with validation ID
+      localStorage.setItem(`process_${processId}_isValidating`, JSON.stringify(true));
+      localStorage.setItem(`process_${processId}_validationCompleted`, JSON.stringify(false));
+      localStorage.setItem(`process_${processId}_validationId`, validationId);
+      console.log('[ProcessWorkflow] Set isValidating to true in localStorage with validationId:', validationId);
       
       // Get the job ID for this process
       const jobId = fileService.getJobId(processId);
@@ -524,6 +976,11 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         console.log('[ProcessWorkflow] Validation completed immediately');
         setValidationCompleted(true);
         
+        // Clear validating state and set completed flag in localStorage
+        localStorage.setItem(`process_${processId}_isValidating`, JSON.stringify(false));
+        localStorage.setItem(`process_${processId}_validationCompleted`, JSON.stringify(true));
+        console.log('[ProcessWorkflow] Set isValidating to false and validationCompleted to true in localStorage');
+        
         const processedCount = response.data.total_authors_processed || 0;
         const criteriaCount = response.data.validation_criteria?.length || 0;
         const summary = response.data.summary;
@@ -535,7 +992,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         description += ' Results are now available.';
         
         toast({
-          title: 'Validation Completed Successfully! 🎉',
+          title: `${process?.title || 'Process'} - Validation Completed Successfully! 🎉`,
           description,
           duration: 8000,
         });
@@ -555,35 +1012,13 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         }
         
         toast({
-          title: 'Validation Started & Saved',
+          title: `${process?.title || 'Process'} - Validation Started & Saved`,
           description,
           duration: 6000,
         });
         
         // Start polling for validation completion
         await startValidationPolling(jobId);
-        
-        // Also do an immediate check after a short delay in case validation completes quickly
-        setTimeout(async () => {
-          try {
-            console.log('[ProcessWorkflow] Doing immediate completion check after validation start');
-            const recommendations = await scholarFinderApiService.getRecommendations(jobId);
-            if (recommendations.data?.reviewers && recommendations.data.reviewers.length > 0) {
-              console.log('[ProcessWorkflow] Validation completed quickly - found recommendations immediately!');
-              setValidationCompleted(true);
-              setValidationProgress(prev => ({ ...prev, status: 'completed', percentage: 100 }));
-              stopValidationPolling();
-              
-              toast({
-                title: 'Validation Completed Successfully! 🎉',
-                description: `Found ${recommendations.data.reviewers.length} recommended reviewers. Results are now available.`,
-                duration: 8000,
-              });
-            }
-          } catch (immediateCheckError) {
-            console.log('[ProcessWorkflow] Immediate check - validation still in progress');
-          }
-        }, 3000); // Check after 3 seconds
       }
       
     } catch (error: any) {
@@ -592,8 +1027,12 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       // Stop any ongoing polling
       stopValidationPolling();
       
+      // Clear validating state in localStorage on error
+      localStorage.setItem(`process_${processId}_isValidating`, JSON.stringify(false));
+      console.log('[ProcessWorkflow] Set isValidating to false in localStorage after error');
+      
       toast({
-        title: 'Validation Failed',
+        title: `${process?.title || 'Process'} - Validation Failed`,
         description: error.message || 'Failed to start author validation. Please try again.',
         variant: 'destructive',
         duration: 8000,
@@ -643,8 +1082,8 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       
       // Show progress saved notification
       toast({
-        title: 'Progress Saved',
-        description: `Moved to ${newStep.replace('_', ' ').toLowerCase()} step.`,
+        title: process.title || 'Process',
+        description: `Progress Saved\nMoved to ${newStep.replace('_', ' ').toLowerCase()} step.`,
       });
     } catch (error) {
       toast({
@@ -660,6 +1099,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     if (!uploadResponse) {
       setUploadResponse(null);
       setUploadedFile(null);
+      localStorage.removeItem(getStorageKey('uploadResponse'));
       // Reset all workflow state when file is removed
       resetWorkflowState();
       // Reset to upload step when file is removed
@@ -668,33 +1108,73 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     }
     
     // Handle successful file upload
-    setUploadResponse(uploadResponse);
-    setUploadedFile({ name: uploadResponse.fileName, size: uploadResponse.fileSize } as File);
+    console.log('[ProcessWorkflow] File uploaded, saving to state and localStorage:', uploadResponse);
     
-    // Reset all workflow state when a new file is uploaded
-    // This ensures fresh validation for the new file
-    console.log('[ProcessWorkflow] New file uploaded - resetting workflow state for fresh start');
-    resetWorkflowState();
+    // Save to localStorage FIRST, before setting state
+    const storageKey = getStorageKey('uploadResponse');
+    console.log('[ProcessWorkflow] Saving to localStorage with key:', storageKey);
+    localStorage.setItem(storageKey, JSON.stringify(uploadResponse));
+    
+    // Verify it was saved
+    const saved = localStorage.getItem(storageKey);
+    console.log('[ProcessWorkflow] Verified localStorage save:', saved ? 'SUCCESS' : 'FAILED');
+    
+    // Use flushSync to force immediate state updates before any re-renders
+    // This prevents React Query refetches from causing renders with stale state
+    flushSync(() => {
+      console.log('[ProcessWorkflow] Setting uploadResponse state:', uploadResponse);
+      setUploadResponse(uploadResponse);
+      
+      console.log('[ProcessWorkflow] Setting uploadedFile state:', { name: uploadResponse.fileName, size: uploadResponse.fileSize });
+      setUploadedFile({ name: uploadResponse.fileName, size: uploadResponse.fileSize } as File);
+    });
+    
+    // Only reset workflow state for steps AFTER upload (keywords, search, validation)
+    // Don't clear the upload data itself
+    console.log('[ProcessWorkflow] New file uploaded - resetting downstream workflow state');
+    setEnhancedKeywords(null);
+    setPrimaryKeywords([]);
+    setSecondaryKeywords([]);
+    setKeywordString('');
+    setSearchCompleted(false);
+    setValidationCompleted(false);
+    setValidationProgress({
+      percentage: 0,
+      processed: 0,
+      total: 0,
+      criteria: [],
+      status: 'pending',
+      estimatedCompletion: null
+    });
+    setValidationRecommendations(null);
+    
+    // Clear localStorage for downstream steps only (not upload data)
+    const keys = [
+      'keywords', 'primaryKeywords', 'secondaryKeywords', 'keywordString', 
+      'searchCompleted', 'validationCompleted', 'validationProgress', 'validationRecommendations'
+    ];
+    keys.forEach(key => localStorage.removeItem(getStorageKey(key)));
     
     // Show notification about workflow reset
-    toast({
-      title: 'File Uploaded Successfully',
-      description: 'Workflow has been reset for the new file. You can now proceed with metadata extraction.',
-      duration: 5000,
-    });
+      toast({
+        title: process?.title || 'Process',
+        description: `File Uploaded Successfully\nYou can now proceed with metadata extraction.`,
+        duration: 5000,
+      });
     
     // Don't automatically move to next step - wait for user to click Next
     // await handleStepChange('METADATA_EXTRACTION');
-  }, [handleStepChange, resetWorkflowState, toast]);
+  }, [handleStepChange, toast, processId, resetWorkflowState, process]);
 
   const handleKeywordEnhancement = useCallback((keywords: any) => {
+    console.log('[ProcessWorkflow] handleKeywordEnhancement called with:', keywords);
     setEnhancedKeywords(keywords);
     // Don't set keywords here - let KeywordEnhancement component manage selections
     
     // Show progress saved notification
     toast({
-      title: 'Progress Saved',
-      description: 'Enhanced keywords have been saved automatically.',
+      title: process?.title || 'Process',
+      description: 'Progress Saved\nEnhanced keywords have been saved automatically.',
     });
   }, [toast]);
 
@@ -728,16 +1208,38 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   const triggerKeywordEnhancement = useCallback(async () => {
     console.log('[ProcessWorkflow] Triggering keyword enhancement for processId:', processId);
     
+    // Set flag and save to localStorage
+    setIsEnhancingKeywords(true);
+    localStorage.setItem(`process_${processId}_isEnhancingKeywords`, JSON.stringify(true));
+    
     try {
       const result = await enhanceKeywordsMutation.mutateAsync({ processId });
       console.log('[ProcessWorkflow] Keyword enhancement successful:', result);
-      handleKeywordEnhancement(result);
+      
+      // Save to localStorage immediately
+      const keywordsStorageKey = `process_${processId}_keywords`;
+      localStorage.setItem(keywordsStorageKey, JSON.stringify(result));
+      console.log('[ProcessWorkflow] Saved enhancedKeywords to localStorage with key:', keywordsStorageKey);
+      
+      // Set state to trigger memo recalculation and UI update
+      setEnhancedKeywords(result);
+      console.log('[ProcessWorkflow] Set enhancedKeywords state, this should trigger memo recalculation');
+      
+      // Clear the enhancing flag
+      setIsEnhancingKeywords(false);
+      localStorage.removeItem(`process_${processId}_isEnhancingKeywords`);
+      
       toast({
-        title: 'Keywords Enhanced',
-        description: `Generated ${result.enhanced.length} enhanced keywords and ${result.meshTerms.length} MeSH terms.`,
+        title: process?.title || 'Process',
+        description: `Keywords Enhanced\nGenerated ${result.enhanced.length} enhanced keywords and ${result.meshTerms.length} MeSH terms.`,
       });
     } catch (error: any) {
       console.error('[ProcessWorkflow] Keyword enhancement failed:', error);
+      
+      // Clear the enhancing flag on error
+      setIsEnhancingKeywords(false);
+      localStorage.removeItem(`process_${processId}_isEnhancingKeywords`);
+      
       toast({
         title: 'Enhancement Failed',
         description: error.message || 'Failed to enhance keywords. Please try again.',
@@ -813,8 +1315,8 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       
       setValidationRecommendations(response);
       toast({
-        title: 'Results Loaded & Saved',
-        description: `Found ${response.data?.reviewers?.length || 0} recommended reviewers. Progress saved automatically.`,
+        title: process?.title || 'Process',
+        description: `Results Loaded & Saved\nFound ${response.data?.reviewers?.length || 0} recommended reviewers.`,
       });
       
       console.log('Validation recommendations:', response);
@@ -835,14 +1337,17 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
 
     switch (process.currentStep) {
       case "UPLOAD":
+        console.log('[ProcessWorkflow] Rendering UPLOAD step with uploadedFile:', memoizedUploadedFile, 'uploadResponse:', effectiveUploadResponse);
+        console.log('[ProcessWorkflow] uploadedFile type:', typeof memoizedUploadedFile, 'is null?', memoizedUploadedFile === null);
         return (
           <div className="space-y-4">
             <FileUpload 
               processId={processId}
+              processTitle={process.title}
               onFileUpload={handleFileUpload}
-              uploadedFile={uploadedFile}
+              uploadedFile={memoizedUploadedFile}
             />
-            {uploadedFile && uploadResponse && (
+            {memoizedUploadedFile && effectiveUploadResponse && (
               <div className="flex justify-end">
                 <Button 
                   onClick={() => handleStepChange('METADATA_EXTRACTION')}
@@ -883,11 +1388,11 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
               onEnhancementComplete={handleKeywordEnhancement}
               onKeywordStringChange={handleKeywordStringChange}
               onTriggerEnhancement={triggerKeywordEnhancement}
-              isEnhancing={enhanceKeywordsMutation.isPending}
-              hasEnhanced={!!enhancedKeywords}
-              enhancedKeywords={enhancedKeywords}
+              isEnhancing={enhanceKeywordsMutation.isPending || isEnhancingKeywords}
+              hasEnhanced={!!enhancedKeywordsFromStorage}
+              enhancedKeywords={enhancedKeywordsFromStorage}
             />
-            {enhancedKeywords && (
+            {enhancedKeywordsFromStorage && (
               <div className="flex justify-end">
                 <Button 
                   onClick={() => handleStepChange('DATABASE_SEARCH')}
@@ -907,12 +1412,15 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
               processId={processId}
               keywordString={keywordString}
               onSearchComplete={() => {
-                console.log('[ProcessWorkflow] Search completed, setting searchCompleted to true');
-                setSearchCompleted(true);
-                toast({
-                  title: 'Search Completed & Saved',
-                  description: 'Database search results have been saved automatically.',
-                });
+                // Only update if not already completed to prevent infinite loop
+                if (!searchCompleted) {
+                  console.log('[ProcessWorkflow] Search completed, setting searchCompleted to true');
+                  setSearchCompleted(true);
+                  toast({
+                    title: process?.title || 'Process',
+                    description: 'Search Completed & Saved\nDatabase search results have been saved automatically.',
+                  });
+                }
               }}
             />
             {searchCompleted && (
@@ -1006,124 +1514,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Validation Progress Display */}
-              {(isPollingValidation || validationProgress.status === 'in_progress') && !validationCompleted && (
-                <div className="space-y-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-medium text-blue-900">Validation in Progress</h4>
-                    <span className="text-sm text-blue-700">
-                      {validationProgress.percentage > 0 ? `${validationProgress.percentage}%` : 'Processing...'}
-                    </span>
-                  </div>
-                  
-                  {/* Progress Bar */}
-                  {validationProgress.percentage > 0 && (
-                    <div className="w-full bg-blue-200 rounded-full h-2">
-                      <div 
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-500 ease-out"
-                        style={{ width: `${validationProgress.percentage}%` }}
-                      ></div>
-                    </div>
-                  )}
-                  
-                  {/* Progress Details */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                    {validationProgress.processed > 0 && (
-                      <div className="text-blue-700">
-                        <span className="font-medium">Authors Processed:</span> {validationProgress.processed}
-                        {validationProgress.total > validationProgress.processed && ` of ${validationProgress.total}`}
-                      </div>
-                    )}
-                    
-                    {validationProgress.criteria.length > 0 && (
-                      <div className="text-blue-700">
-                        <span className="font-medium">Validation Criteria:</span> {validationProgress.criteria.length} rules
-                      </div>
-                    )}
-                    
-                    {validationProgress.estimatedCompletion && (
-                      <div className="text-blue-700 md:col-span-2">
-                        <span className="font-medium">Estimated Completion:</span> {validationProgress.estimatedCompletion}
-                      </div>
-                    )}
-                    
-                    {pollingStartTime && (
-                      <div className="text-blue-700 md:col-span-2">
-                        <span className="font-medium">Running for:</span> {Math.floor((Date.now() - pollingStartTime) / 60000)} minutes
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Status Message */}
-                  <div className="text-sm text-blue-600">
-                    {validationProgress.status === 'in_progress' 
-                      ? 'Validation is running in the background. You can continue with other tasks while waiting.'
-                      : 'Checking validation status...'
-                    }
-                  </div>
-                  
-                  {/* Action Buttons */}
-                  <div className="flex justify-between items-center">
-                    {/* Check Results Button */}
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={async () => {
-                        try {
-                          const jobId = fileService.getJobId(processId);
-                          if (jobId) {
-                            console.log('[ProcessWorkflow] Manually checking validation results');
-                            const recommendations = await scholarFinderApiService.getRecommendations(jobId);
-                            if (recommendations.data?.reviewers && recommendations.data.reviewers.length > 0) {
-                              console.log('[ProcessWorkflow] Found recommendations - validation is complete!');
-                              setValidationCompleted(true);
-                              setValidationProgress(prev => ({ ...prev, status: 'completed', percentage: 100 }));
-                              stopValidationPolling();
-                              
-                              toast({
-                                title: 'Validation Completed! 🎉',
-                                description: `Found ${recommendations.data.reviewers.length} recommended reviewers. Results are now available.`,
-                                duration: 8000,
-                              });
-                            } else {
-                              toast({
-                                title: 'Still Processing',
-                                description: 'Validation is still in progress. Please wait a bit longer.',
-                                duration: 4000,
-                              });
-                            }
-                          }
-                        } catch (error) {
-                          console.error('[ProcessWorkflow] Error checking results:', error);
-                          toast({
-                            title: 'Check Failed',
-                            description: 'Unable to check validation results. Please try again.',
-                            variant: 'destructive',
-                            duration: 4000,
-                          });
-                        }
-                      }}
-                      className="text-blue-700 border-blue-300 hover:bg-blue-100"
-                    >
-                      Check Results
-                    </Button>
-                    
-                    {/* Stop Polling Button */}
-                    {isPollingValidation && (
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={stopValidationPolling}
-                        className="text-blue-700 border-blue-300 hover:bg-blue-100"
-                      >
-                        Stop Checking Progress
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {!validationCompleted && !isPollingValidation && validationProgress.status !== 'in_progress' ? (
+              {!validationCompleted && !validationCompletedFromStorage ? (
                 <div className="flex flex-col items-center space-y-4">
                   <div className="text-center text-muted-foreground">
                     <p>Click the button below to start author validation.</p>
@@ -1133,60 +1524,21 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                     onClick={handleValidateAuthors}
                     size="lg"
                     className="px-8"
-                    disabled={isValidating || isPollingValidation || validationInProgressRef.current}
+                    disabled={isActuallyValidating || isPollingValidation || validationInProgressRef.current || validationProgress.status === 'in_progress'}
                   >
-                    {isValidating ? (
+                    {isActuallyValidating || isPollingValidation || validationProgress.status === 'in_progress' ? (
                       <>
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Starting Validation...
-                      </>
-                    ) : isPollingValidation ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Validating Authors... ({validationProgress.percentage}%)
+                        Validating Authors...
                       </>
                     ) : (
                       'Validate Authors'
                     )}
                   </Button>
                 </div>
-              ) : validationProgress.status === 'in_progress' && !isPollingValidation ? (
-                // Show resume polling option if validation is in progress but polling stopped
-                <div className="space-y-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <div className="text-center">
-                    <h4 className="font-medium text-yellow-900 mb-2">Validation May Still Be Running</h4>
-                    <p className="text-sm text-yellow-700 mb-4">
-                      The validation process was started but progress checking was stopped. 
-                      Click below to check the current status.
-                    </p>
-                    <div className="flex gap-2 justify-center">
-                      <Button 
-                        onClick={async () => {
-                          const jobId = fileService.getJobId(processId);
-                          if (jobId) {
-                            await startValidationPolling(jobId);
-                          }
-                        }}
-                        size="sm"
-                        className="bg-yellow-600 hover:bg-yellow-700"
-                      >
-                        Check Progress
-                      </Button>
-                      <Button 
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setValidationProgress(prev => ({ ...prev, status: 'pending' }));
-                        }}
-                      >
-                        Reset Status
-                      </Button>
-                    </div>
-                  </div>
-                </div>
               ) : null}
               
-              {validationCompleted ? (
+              {(validationCompleted || validationCompletedFromStorage) ? (
                 <div className="space-y-6">
                   <div className="text-center p-6 bg-green-50 border border-green-200 rounded-lg">
                     <div className="text-green-600 mb-4">
@@ -1227,7 +1579,13 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                       <Button 
                         onClick={() => {
                           console.log('[ProcessWorkflow] User requested re-validation');
+                          
+                          // Set flag to skip auto-check
+                          skipValidationCheckRef.current = true;
+                          
+                          // Reset all validation states
                           setValidationCompleted(false);
+                          setIsValidating(false);
                           setValidationProgress({
                             percentage: 0,
                             processed: 0,
@@ -1236,10 +1594,24 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                             status: 'pending',
                             estimatedCompletion: null
                           });
+                          setValidationRecommendations(null);
                           stopValidationPolling();
+                          // Reset the validation in progress ref
+                          validationInProgressRef.current = false;
+                          
+                          // Clear from localStorage including validation flags
+                          localStorage.removeItem(getStorageKey('validationCompleted'));
+                          localStorage.removeItem(getStorageKey('validationProgress'));
+                          localStorage.removeItem(getStorageKey('validationRecommendations'));
+                          localStorage.removeItem(`process_${processId}_isValidating`);
+                          localStorage.removeItem(`process_${processId}_validationCompleted`);
+                          localStorage.removeItem(`process_${processId}_validationId`);
+                          
+                          console.log('[ProcessWorkflow] Validation state reset complete');
+                          
                           toast({
-                            title: 'Validation Reset',
-                            description: 'You can now start a new validation process.',
+                            title: process?.title || 'Process',
+                            description: 'Validation Reset\nYou can now start a new validation process.',
                           });
                         }}
                         variant="outline"

@@ -60,13 +60,81 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
   const [searchResults, setSearchResults] = useState<ManualAuthor[] | null>(null);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [lastSearchWarning, setLastSearchWarning] = useState<string | null>(null);
+  
+  // Persistent search loading state - read from localStorage on every render
+  const isSearchingFromStorage = (() => {
+    try {
+      const stored = localStorage.getItem(`process_${processId}_manualSearching`);
+      return stored ? JSON.parse(stored) : false;
+    } catch {
+      return false;
+    }
+  })();
+  
+  // Combined search loading state
+  const isActuallySearching = addManualAuthorMutation.isPending || searchInProgressRef.current || isSearchingFromStorage;
+  
+  // Read search results from localStorage on every render to ensure fresh data
+  const searchResultsFromStorage = (() => {
+    try {
+      const cachedResults = localStorage.getItem(`process_${processId}_manualSearchResults`);
+      if (!cachedResults) return null;
+      
+      const results = JSON.parse(cachedResults);
+      return results;
+    } catch {
+      return null;
+    }
+  })();
+  
+  // Use storage results as fallback if state is null
+  const effectiveSearchResults = searchResults !== null ? searchResults : searchResultsFromStorage?.results;
+  const effectiveSearchTerm = searchTerm || searchResultsFromStorage?.searchTerm || '';
+  const effectiveLastSearchWarning = lastSearchWarning || searchResultsFromStorage?.warning || null;
+  
+  // Persistent validation loading state - read from localStorage on every render
+  const isValidatingFromStorage = (() => {
+    try {
+      const stored = localStorage.getItem(`process_${processId}_isValidating`);
+      return stored ? JSON.parse(stored) : false;
+    } catch {
+      return false;
+    }
+  })();
+  
+  // Combined validation loading state
+  const isActuallyValidating = isValidating || isValidatingFromStorage;
+  
+  // Read validation completion status from localStorage
+  const validationCompletedFromStorage = (() => {
+    try {
+      const stored = localStorage.getItem(`process_${processId}_validationCompleted`);
+      return stored ? JSON.parse(stored) : false;
+    } catch {
+      return false;
+    }
+  })();
 
   const handleValidate = async () => {
     try {
+      // Set validating state in localStorage before starting
+      localStorage.setItem(`process_${processId}_isValidating`, JSON.stringify(true));
+      localStorage.setItem(`process_${processId}_validationCompleted`, JSON.stringify(false));
+      console.log('[AuthorValidation] Set isValidating to true in localStorage');
+      
       await validateAuthors();
+      
+      // Clear validating state and set completed flag after success
+      localStorage.setItem(`process_${processId}_isValidating`, JSON.stringify(false));
+      localStorage.setItem(`process_${processId}_validationCompleted`, JSON.stringify(true));
+      console.log('[AuthorValidation] Set isValidating to false and validationCompleted to true in localStorage');
     } catch (error) {
       // Error is handled by the hook
       console.error('Validation failed:', error);
+      
+      // Clear validating state on error
+      localStorage.setItem(`process_${processId}_isValidating`, JSON.stringify(false));
+      console.log('[AuthorValidation] Set isValidating to false in localStorage after error');
     }
   };
 
@@ -99,6 +167,84 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
       }
     };
   }, []);
+  
+  // Monitor for search completion when navigating back
+  React.useEffect(() => {
+    const checkSearchCompletion = () => {
+      const isSearchingStored = localStorage.getItem(`process_${processId}_manualSearching`);
+      const currentSearchId = localStorage.getItem(`process_${processId}_manualSearchId`);
+      const cachedResults = localStorage.getItem(`process_${processId}_manualSearchResults`);
+      
+      if (isSearchingStored && JSON.parse(isSearchingStored) && cachedResults) {
+        console.log('[AuthorValidation] Checking search completion, currentSearchId:', currentSearchId);
+        
+        try {
+          const results = JSON.parse(cachedResults);
+          
+          // Check if the results match the current search ID
+          if (results.searchId && currentSearchId && results.searchId !== currentSearchId) {
+            console.log('[AuthorValidation] Results are from a different search, keeping searching flag');
+            return;
+          }
+          
+          console.log('[AuthorValidation] Search completed while away, loading results');
+          
+          // Load results
+          setSearchResults(results.results);
+          setSearchTerm(results.searchTerm);
+          setLastSearchWarning(results.warning);
+          
+          // Clear the searching flag only if search IDs match
+          localStorage.setItem(`process_${processId}_manualSearching`, JSON.stringify(false));
+          console.log('[AuthorValidation] Cleared manualSearching flag after loading results');
+        } catch (error) {
+          console.error('[AuthorValidation] Error loading results after navigation:', error);
+        }
+      }
+    };
+    
+    // Check immediately on mount
+    checkSearchCompletion();
+    
+    // Also check periodically while the component is mounted and searching
+    const interval = isSearchingFromStorage ? setInterval(checkSearchCompletion, 2000) : null;
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [processId, isSearchingFromStorage]);
+  
+  // Monitor for validation completion when navigating back
+  React.useEffect(() => {
+    const checkValidationCompletion = () => {
+      const isValidatingStored = localStorage.getItem(`process_${processId}_isValidating`);
+      
+      if (isValidatingStored && JSON.parse(isValidatingStored)) {
+        console.log('[AuthorValidation] Checking validation completion');
+        
+        // Check if validation is complete by looking at the status
+        // Use both the hook status and the validationCompletedFromStorage flag
+        if (isValidationComplete || validationCompletedFromStorage) {
+          console.log('[AuthorValidation] Validation completed while away');
+          
+          // Clear the validating flag and set completed flag
+          localStorage.setItem(`process_${processId}_isValidating`, JSON.stringify(false));
+          localStorage.setItem(`process_${processId}_validationCompleted`, JSON.stringify(true));
+          console.log('[AuthorValidation] Cleared isValidating flag and set validationCompleted after completion');
+        }
+      }
+    };
+    
+    // Check immediately on mount
+    checkValidationCompletion();
+    
+    // Also check periodically while the component is mounted and validating
+    const interval = isValidatingFromStorage ? setInterval(checkValidationCompletion, 2000) : null;
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [processId, isValidatingFromStorage, isValidationComplete, validationCompletedFromStorage]);
 
   const handleAuthorNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -175,6 +321,14 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
     globalSearchInProgress = true;
     globalLastSearch = { authorName: trimmedName, timestamp: now };
     
+    // Generate a unique search ID for this search operation
+    const searchId = Date.now().toString();
+    
+    // Set searching state in localStorage before starting with search ID
+    localStorage.setItem(`process_${processId}_manualSearching`, JSON.stringify(true));
+    localStorage.setItem(`process_${processId}_manualSearchId`, searchId);
+    console.log('[AuthorValidation] Set manualSearching to true in localStorage with searchId:', searchId);
+    
     // NO DEBOUNCE - Execute immediately to prevent race conditions
     try {
       searchInProgressRef.current = true;
@@ -199,6 +353,17 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
         setSearchTerm(authorName.trim());
         setLastSearchWarning(result.warning || null);
         
+        // Cache results to localStorage with search ID
+        const resultsWithMetadata = {
+          results: [author],
+          searchTerm: authorName.trim(),
+          warning: result.warning || null,
+          searchId,
+          timestamp: Date.now()
+        };
+        localStorage.setItem(`process_${processId}_manualSearchResults`, JSON.stringify(resultsWithMetadata));
+        console.log('[AuthorValidation] Cached search results to localStorage');
+        
         // Clear the search input after successful search
         setAuthorName('');
       } else {
@@ -206,7 +371,22 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
         setSearchResults([]);
         setSearchTerm(authorName.trim());
         setLastSearchWarning(null);
+        
+        // Cache empty results to localStorage with search ID
+        const resultsWithMetadata = {
+          results: [],
+          searchTerm: authorName.trim(),
+          warning: null,
+          searchId,
+          timestamp: Date.now()
+        };
+        localStorage.setItem(`process_${processId}_manualSearchResults`, JSON.stringify(resultsWithMetadata));
+        console.log('[AuthorValidation] Cached empty search results to localStorage');
       }
+      
+      // Clear searching state in localStorage after completion
+      localStorage.setItem(`process_${processId}_manualSearching`, JSON.stringify(false));
+      console.log('[AuthorValidation] Set manualSearching to false in localStorage');
     } catch (error: any) {
       // Handle specific error cases
       console.error('[AuthorValidation] Search error:', error);
@@ -215,6 +395,20 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
       setSearchResults([]);
       setSearchTerm(authorName.trim());
       setLastSearchWarning(null);
+      
+      // Cache empty results to localStorage
+      const resultsWithMetadata = {
+        results: [],
+        searchTerm: authorName.trim(),
+        warning: null,
+        searchId,
+        timestamp: Date.now()
+      };
+      localStorage.setItem(`process_${processId}_manualSearchResults`, JSON.stringify(resultsWithMetadata));
+      
+      // Clear searching state in localStorage on error
+      localStorage.setItem(`process_${processId}_manualSearching`, JSON.stringify(false));
+      console.log('[AuthorValidation] Set manualSearching to false in localStorage after error');
       
       // Clear the search input
       setAuthorName('');
@@ -228,7 +422,7 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
         }
       }, 5000);
     }
-  }, [authorName, addManualAuthorMutation]);
+  }, [authorName, addManualAuthorMutation, processId]);
 
 
 
@@ -279,14 +473,12 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
             if (!authorName.trim() || 
                 authorName.trim().length < 2 || 
                 !!authorNameError || 
-                addManualAuthorMutation.isPending || 
-                searchInProgressRef.current) {
+                isActuallySearching) {
               console.log('[AuthorValidation] Form submission blocked by validation:', {
                 authorName: authorName.trim(),
                 authorNameLength: authorName.trim().length,
                 authorNameError,
-                isPending: addManualAuthorMutation.isPending,
-                searchInProgress: searchInProgressRef.current
+                isActuallySearching
               });
               // Release lock if validation fails
               globalFormSubmissionLock = false;
@@ -310,7 +502,7 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
                   value={authorName}
                   onChange={handleAuthorNameChange}
                   className={authorNameError ? 'border-red-500' : ''}
-                  disabled={addManualAuthorMutation.isPending}
+                  disabled={isActuallySearching}
                   aria-label="Author name"
                   aria-describedby={authorNameError ? "author-name-error" : undefined}
                   aria-invalid={!!authorNameError}
@@ -321,11 +513,11 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
               </div>
               <Button
                 type="submit"
-                disabled={!authorName.trim() || authorName.trim().length < 2 || !!authorNameError || addManualAuthorMutation.isPending || searchInProgressRef.current}
+                disabled={!authorName.trim() || authorName.trim().length < 2 || !!authorNameError || isActuallySearching}
                 className="flex items-center gap-2"
                 aria-label="Search for author"
               >
-                {addManualAuthorMutation.isPending ? (
+                {isActuallySearching ? (
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                 ) : (
                   <Search className="h-4 w-4" aria-hidden="true" />
@@ -336,7 +528,7 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
           </form>
 
           {/* Loading state */}
-          {addManualAuthorMutation.isPending && (
+          {isActuallySearching && (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="h-5 w-5 animate-spin mr-2" />
               <span className="text-sm text-muted-foreground">Searching for authors...</span>
@@ -344,22 +536,22 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
           )}
 
           {/* Search results - display only */}
-          {searchResults && searchResults.length > 0 && (
+          {effectiveSearchResults && effectiveSearchResults.length > 0 && (
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Info className="h-4 w-4" />
-                <span>Found {searchResults.length} author(s) matching "{searchTerm}"</span>
+                <span>Found {effectiveSearchResults.length} author(s) matching "{effectiveSearchTerm}"</span>
               </div>
-              {lastSearchWarning && (
+              {effectiveLastSearchWarning && (
                 <Alert className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20">
                   <AlertTriangle className="h-4 w-4 text-amber-600" />
                   <AlertDescription className="text-amber-800 dark:text-amber-200">
-                    {lastSearchWarning}
+                    {effectiveLastSearchWarning}
                   </AlertDescription>
                 </Alert>
               )}
               <div className="space-y-2">
-                {searchResults.map((author, index) => (
+                {effectiveSearchResults.map((author, index) => (
                   <div
                     key={index}
                     className="p-3 border rounded-lg bg-muted/30"
@@ -410,12 +602,12 @@ export const AuthorValidation: React.FC<AuthorValidationProps> = ({
 
 
           {/* No results */}
-          {searchResults && searchResults.length === 0 && (
+          {effectiveSearchResults && effectiveSearchResults.length === 0 && !isActuallySearching && (
             <Alert>
               <Info className="h-4 w-4" />
               <AlertDescription>
                 <div className="space-y-2">
-                  <p>No authors found matching "{searchTerm}".</p>
+                  <p>No authors found matching "{effectiveSearchTerm}".</p>
                   <p className="text-sm">Suggestions:</p>
                   <ul className="text-sm list-disc list-inside space-y-1">
                     <li>Check the spelling of the author's name</li>

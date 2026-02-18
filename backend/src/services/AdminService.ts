@@ -355,8 +355,7 @@ export class AdminService {
       if (filters.search) {
         where.OR = [
           { email: { contains: filters.search, mode: 'insensitive' } },
-          { firstName: { contains: filters.search, mode: 'insensitive' } },
-          { lastName: { contains: filters.search, mode: 'insensitive' } }
+          { name: { contains: filters.search, mode: 'insensitive' } }
         ];
       }
 
@@ -373,31 +372,32 @@ export class AdminService {
         where,
         skip,
         take: limit,
-        orderBy,
-        include: {
-          _count: {
-            select: {
-              processes: true
-            }
-          }
-        }
+        orderBy
       });
 
       // Get total count
       const total = await this.userRepository.getPrismaClient().user.count({ where });
 
+      // Get process counts for each user separately to avoid relation issues
+      const usersWithCounts = await Promise.all(
+        users.map(async (user) => {
+          const processCount = await this.userRepository.getPrismaClient().process.count({
+            where: { userId: user.id }
+          });
+          return { ...user, processCount };
+        })
+      );
+
       // Format users for admin view
-      const formattedUsers = users.map(user => ({
+      const formattedUsers = usersWithCounts.map(user => ({
         id: user.id,
         email: this.sanitizeEmail(user.email),
-        firstName: user.firstName,
-        lastName: user.lastName,
+        name: user.name,
         role: user.role,
         status: user.status,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
-        processCount: user._count.processes,
-        lastLoginAt: user.lastLoginAt
+        processCount: user.processCount
       }));
 
       return {
