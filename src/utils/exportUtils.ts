@@ -49,6 +49,7 @@ export function generateCSV(reviewers: Reviewer[]): string {
     'coauthor',
     'country_match',
     'aff_match',
+    'sanction_country',
     'no_of_pub_condition_10_years',
     'no_of_pub_condition_5_years',
     'no_of_pub_condition_2_years',
@@ -98,6 +99,7 @@ export function generateCSV(reviewers: Reviewer[]): string {
     reviewer.coauthor ? 'Yes' : 'No',
     reviewer.country_match || '',
     reviewer.aff_match || '',
+    reviewer.sanction_country || 'no',
     reviewer.no_of_pub_condition_10_years || 0,
     reviewer.no_of_pub_condition_5_years || 0,
     reviewer.no_of_pub_condition_2_years || 0,
@@ -182,6 +184,7 @@ export function generateJSON(reviewers: Reviewer[]): string {
         coauthor: reviewer.coauthor,
         countryMatch: reviewer.country_match,
         affiliationMatch: reviewer.aff_match,
+        sanctionCountry: reviewer.sanction_country || 'no',
         conditionsMet: reviewer.conditions_met,
         conditionsSatisfied: reviewer.conditions_satisfied
       }
