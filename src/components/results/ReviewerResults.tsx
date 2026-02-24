@@ -164,6 +164,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
       coi_coauthor: reviewer.coi_coauthor || false,
       aff_match: reviewer.aff_match || 'no',
       country_match: reviewer.country_match || 'yes',
+      sanction_country: reviewer.sanction_country || 'no',
       
       // Condition flags
       no_of_pub_condition_10_years: reviewer.no_of_pub_condition_10_years || 0,
@@ -1109,6 +1110,33 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
                                 </div>
                               </div>
                             )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Sanction Country Container */}
+                    <div role="region" aria-label="Sanction Country status">
+                      {(() => {
+                        // Determine Sanction Country status
+                        // Convert to lowercase for comparison, default to "no"
+                        const sanctionStatus = (reviewer.sanction_country || 'no').toLowerCase() === 'yes' ? 'Yes' : 'No';
+                        const sanctionColor = sanctionStatus === 'No' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200';
+                        const sanctionTextColor = sanctionStatus === 'No' ? 'text-green-800' : 'text-red-800';
+                        const sanctionIcon = sanctionStatus === 'No' ? '✓' : '⚠';
+                        
+                        return (
+                          <div className={`p-4 rounded-lg border ${sanctionColor} text-center`}>
+                            <div className="flex items-center justify-center gap-3">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${sanctionStatus === 'No' ? 'bg-green-100' : 'bg-red-100'}`}>
+                                <span className={`text-sm font-bold ${sanctionTextColor}`}>{sanctionIcon}</span>
+                              </div>
+                              <div>
+                                <h4 className={`text-sm font-medium ${sanctionTextColor}`}>
+                                  Sanction Country: {sanctionStatus}
+                                </h4>
+                              </div>
+                            </div>
                           </div>
                         );
                       })()}

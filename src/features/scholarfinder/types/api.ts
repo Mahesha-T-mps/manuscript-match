@@ -198,6 +198,7 @@ export interface Reviewer {
   aff_match: string;
   conditions_met: number;
   conditions_satisfied: string;
+  sanction_country: string; // "yes" or "no"
   
   // Validation condition flags
   no_of_pub_condition_10_years: number;
