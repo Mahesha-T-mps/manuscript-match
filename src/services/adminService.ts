@@ -78,8 +78,26 @@ export class AdminService {
     search?: string;
   }): Promise<PaginatedResponse<AdminProcess>> {
     try {
-      const response = await apiService.get<PaginatedResponse<AdminProcess>>('/api/admin/processes', params);
-      return response.data;
+      // The apiService returns the backend response which has { success, data, pagination }
+      // But our PaginatedResponse type expects { data, pagination }
+      const backendResponse = await apiService.get('/api/admin/processes', params) as any;
+      
+      console.log('[AdminService] getProcesses raw backend response:', backendResponse);
+      console.log('[AdminService] getProcesses response.data:', backendResponse.data);
+      console.log('[AdminService] getProcesses response.pagination:', backendResponse.pagination);
+      
+      // Return in the format expected by the frontend
+      return {
+        data: backendResponse.data || [],
+        pagination: backendResponse.pagination || {
+          page: 1,
+          limit: 20,
+          total: 0,
+          totalPages: 0,
+          hasNextPage: false,
+          hasPreviousPage: false
+        }
+      };
     } catch (error) {
       console.error('Failed to get admin processes:', error);
       throw error;

@@ -86,8 +86,10 @@ export class CacheService {
     this.memoryCache = new MemoryCache();
 
     // Skip Redis in test environment or if explicitly disabled
-    if (process.env['NODE_ENV'] === 'test' || process.env['DISABLE_REDIS'] === 'true') {
-      console.log('🔄 Redis disabled for test environment, using in-memory cache');
+    if (process.env['NODE_ENV'] === 'test' || 
+        process.env['DISABLE_REDIS'] === 'true' ||
+        process.env['REDIS_ENABLED'] === 'false') {
+      console.log('🔄 Redis disabled, using in-memory cache');
       this.useRedis = false;
       return;
     }

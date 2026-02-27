@@ -196,13 +196,80 @@ export class ProcessController {
       }
 
       const userId = req.user.id;
-      console.log('Getting processes for user:', userId); // Debug logging
+      const isAdmin = req.user.role === 'ADMIN';
+      // Check if the request explicitly asks for all users' processes (for Reports page)
+      const includeAllUsers = req.query.includeAllUsers === 'true';
       
-      const result = await this.processService.getUserProcesses(userId, value);
+      console.log('Getting processes for user:', userId, 'isAdmin:', isAdmin, 'includeAllUsers:', includeAllUsers); // Debug logging
+      
+      let result;
+      let processesWithUserInfo;
+      
+      // Only show all users' processes if admin AND explicitly requested (for Reports page)
+      if (isAdmin && includeAllUsers) {
+        // For admin users requesting all processes, get ALL processes from all users
+        const { page = 1, limit = 10, status, sortBy = 'updatedAt', sortOrder = 'desc' } = value;
+        const skip = (page - 1) * limit;
+        
+        // Build where clause
+        const where: any = {};
+        if (status) {
+          where.status = status;
+        }
+        
+        // Get total count
+        const total = await this.processService['processRepository']['prisma'].process.count({ where });
+        
+        // Get all processes with user information
+        const processes = await this.processService['processRepository']['prisma'].process.findMany({
+          where,
+          skip,
+          take: limit,
+          orderBy: { [sortBy]: sortOrder },
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                role: true
+              }
+            }
+          }
+        });
+        
+        // Format processes with user information
+        processesWithUserInfo = processes.map(process => ({
+          id: process.id,
+          userId: process.userId,
+          title: process.title,
+          description: process.description,
+          status: process.status,
+          currentStep: process.currentStep,
+          createdAt: process.createdAt.toISOString(),
+          updatedAt: process.updatedAt.toISOString(),
+          userEmail: process.user?.email || 'Unknown',
+          userRole: process.user?.role || 'UNKNOWN'
+        }));
+        
+        result = {
+          processes: processesWithUserInfo,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit)
+          }
+        };
+      } else {
+        // For regular users OR admin viewing their own processes, get only their processes
+        result = await this.processService.getUserProcesses(userId, value);
+        processesWithUserInfo = result.processes;
+      }
+      
       console.log('ProcessService returned:', result); // Debug logging
 
       // Validate the result structure
-      if (!result || !Array.isArray(result.processes)) {
+      if (!result || !Array.isArray(result.processes || processesWithUserInfo)) {
         console.error('Invalid result from ProcessService:', result);
         res.status(500).json({
           success: false,
@@ -219,7 +286,7 @@ export class ProcessController {
       // Format response to match frontend expectations
       const response: ApiResponse = {
         success: true,
-        data: result.processes || [], // Ensure it's always an array
+        data: processesWithUserInfo || result.processes || [], // Ensure it's always an array
         pagination: result.pagination || { page: 1, limit: 10, total: 0, totalPages: 0 } // Provide default pagination
       };
 

@@ -76,10 +76,16 @@ class ProcessService {
   /**
    * Get all processes for the current user
    */
-  async getProcesses(): Promise<Process[]> {
+  async getProcesses(includeAllUsers: boolean = false): Promise<Process[]> {
     try {
+      // Build query parameters
+      const params: Record<string, any> = {};
+      if (includeAllUsers) {
+        params.includeAllUsers = 'true';
+      }
+      
       // The apiService returns the backend response directly
-      const backendResponse = await apiService.get('/api/processes');
+      const backendResponse = await apiService.get('/api/processes', params);
       
       console.log('Backend response for getProcesses:', backendResponse); // Debug logging
       

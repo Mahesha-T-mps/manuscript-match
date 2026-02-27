@@ -92,15 +92,15 @@ export function useReports(options: UseReportsOptions = {}) {
             return filterProcessesByDateRange(processes, dateRange);
           } catch (adminError) {
             console.warn('[useReports] Admin service failed, falling back to regular process service:', adminError);
-            // Fallback to regular process service for admin users
-            const allProcesses = await processService.getProcesses();
+            // Fallback to regular process service for admin users, but include all users
+            const allProcesses = await processService.getProcesses(true); // Include all users for admin
             console.log('[useReports] Fallback processes fetched:', allProcesses?.length || 0);
             return filterProcessesByDateRange(allProcesses || [], dateRange);
           }
         } else {
           // Regular users get their own processes
           console.log('[useReports] Fetching regular user processes...');
-          const allProcesses = await processService.getProcesses();
+          const allProcesses = await processService.getProcesses(false); // Don't include all users
           console.log('[useReports] Regular processes fetched:', allProcesses?.length || 0);
           return filterProcessesByDateRange(allProcesses || [], dateRange);
         }
@@ -446,40 +446,53 @@ function calculateUserActivity(processes: (Process | AdminProcess)[]): UserActiv
   const userMap: Record<string, UserActivityData> = {};
   
   console.log('[calculateUserActivity] Processing', processes.length, 'processes');
+  console.log('[calculateUserActivity] Sample process:', processes[0]);
   
   processes.forEach(p => {
+    // Type guard to check if this is an AdminProcess
+    const adminProcess = p as AdminProcess;
+    
     // Check if this is an AdminProcess with user information
-    if ('userId' in p && 'userEmail' in p) {
-      console.log('[calculateUserActivity] Found AdminProcess:', p.userId, p.userEmail);
+    if (adminProcess.userId && adminProcess.userEmail) {
+      console.log('[calculateUserActivity] Found AdminProcess:', adminProcess.userId, adminProcess.userEmail);
       
-      if (!userMap[p.userId]) {
-        userMap[p.userId] = {
-          userId: p.userId,
-          userEmail: p.userEmail,
+      if (!userMap[adminProcess.userId]) {
+        userMap[adminProcess.userId] = {
+          userId: adminProcess.userId,
+          userEmail: adminProcess.userEmail,
           processCount: 0,
           activeCount: 0,
           completedCount: 0,
         };
       }
       
-      userMap[p.userId].processCount++;
+      userMap[adminProcess.userId].processCount++;
       
-      if (p.status === 'PROCESSING' || p.status === 'SEARCHING' || p.status === 'VALIDATING' || p.status === 'UPLOADING') {
-        userMap[p.userId].activeCount++;
+      // Use progress-based status for counting
+      const progressStatus = getProgressBasedStatus(p.currentStep);
+      
+      if (progressStatus === 'In Progress' || progressStatus === 'Created') {
+        userMap[adminProcess.userId].activeCount++;
       }
       
-      if (p.status === 'COMPLETED') {
-        userMap[p.userId].completedCount++;
+      if (progressStatus === 'Completed') {
+        userMap[adminProcess.userId].completedCount++;
       }
     } else {
       // This is a regular Process without user info
-      // Since we don't have user information, we can't create meaningful user activity data
       console.log('[calculateUserActivity] Regular Process (no user info), skipping for user activity:', p.id);
+      console.log('[calculateUserActivity] Process details:', { 
+        hasUserId: 'userId' in p, 
+        hasUserEmail: 'userEmail' in p,
+        userId: (p as any).userId,
+        userEmail: (p as any).userEmail
+      });
     }
   });
   
   const result = Object.values(userMap).sort((a, b) => b.processCount - a.processCount);
   console.log('[calculateUserActivity] Final user activity data:', result);
+  console.log('[calculateUserActivity] User map:', userMap);
   
   return result;
 }
