@@ -185,12 +185,48 @@ export function useReports(options: UseReportsOptions = {}) {
       isAdmin, 
       dateRange,
       hasUsers: !!usersData,
+      userId,
       processes: processes
     });
 
     // Ensure we have a valid processes array
-    const validProcesses = Array.isArray(processes) ? processes : [];
-    const validUsers = Array.isArray(usersData) ? usersData : [];
+    let validProcesses = Array.isArray(processes) ? processes : [];
+    let validUsers = Array.isArray(usersData) ? usersData : [];
+
+    // If admin and no users from API, extract unique users from processes
+    if (isAdmin && validUsers.length === 0 && validProcesses.length > 0) {
+      console.log('[useReports] Extracting users from processes data');
+      const userMap = new Map<string, { id: string; email: string; role: string }>();
+      
+      validProcesses.forEach(process => {
+        // Check if this is an AdminProcess with user information
+        if ('userId' in process && 'userEmail' in process) {
+          const adminProcess = process as any;
+          if (adminProcess.userId && adminProcess.userEmail && !userMap.has(adminProcess.userId)) {
+            userMap.set(adminProcess.userId, {
+              id: adminProcess.userId,
+              email: adminProcess.userEmail,
+              role: adminProcess.userRole || 'USER'
+            });
+          }
+        }
+      });
+      
+      validUsers = Array.from(userMap.values());
+      console.log('[useReports] Extracted users from processes:', validUsers.length, validUsers);
+    }
+
+    // Filter processes by userId if specified (for admin user filter)
+    if (isAdmin && userId && userId !== 'all') {
+      console.log('[useReports] Filtering processes by userId:', userId);
+      validProcesses = validProcesses.filter(process => {
+        if ('userId' in process) {
+          return process.userId === userId;
+        }
+        return false;
+      });
+      console.log('[useReports] Filtered processes count:', validProcesses.length);
+    }
 
     if (validProcesses.length === 0) {
       console.log('No processes available for reports');
@@ -241,7 +277,7 @@ export function useReports(options: UseReportsOptions = {}) {
       userActivityData,
       users: validUsers,
     };
-  }, [processes, usersData, isAdmin, dateRange]);
+  }, [processes, usersData, isAdmin, dateRange, userId]);
 
   return {
     ...reportData,
