@@ -171,10 +171,11 @@ export const ReviewerSearch = ({
         console.log('[ReviewerSearch] Step indices - Current:', currentStepIndex, 'Previous:', previousStepIndex);
         
         // Load results if:
-        // 1. Search was completed (searchCompleted is true)
+        // 1. Search was completed (searchCompleted is true) - ALWAYS show if search completed
         // 2. Coming from a later step (higher index)
         // 3. No previous step recorded (first visit)
         // 4. Returning to the same step
+        // IMPORTANT: If search was completed, ALWAYS load results regardless of navigation
         const shouldLoadResults = searchCompleted || 
                                  previousStepIndex === -1 || 
                                  previousStepIndex > currentStepIndex || 
@@ -182,13 +183,19 @@ export const ReviewerSearch = ({
         
         console.log('[ReviewerSearch] Should load results:', shouldLoadResults);
         
-        if (!shouldLoadResults) {
-          console.log('[ReviewerSearch] Coming from earlier step, clearing any cached results');
+        // Only clear results if coming from an earlier step AND search was NOT completed
+        if (!shouldLoadResults && !searchCompleted) {
+          console.log('[ReviewerSearch] Coming from earlier step and search not completed, clearing any cached results');
           // Clear the cached results since we're coming from an earlier step
           localStorage.removeItem(`process_${processId}_searchResults`);
           setSearchResults([]);
           setSearchPerformedInSession(false);
           return;
+        }
+        
+        // If search was completed, always load results even if shouldLoadResults is false
+        if (searchCompleted) {
+          console.log('[ReviewerSearch] Search was completed, loading results regardless of navigation path');
         }
         
         const cachedResults = localStorage.getItem(`process_${processId}_searchResults`);

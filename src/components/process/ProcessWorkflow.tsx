@@ -765,14 +765,15 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   }, [processId, validationCompleted, isPollingValidation, startValidationPolling]);
 
   // Track the current step for navigation direction detection
+  // This updates whenever we view the step, not just when changing steps
   useEffect(() => {
     if (process?.currentStep) {
-      // Only set initial previous step if none exists (first load)
       const existingPreviousStep = localStorage.getItem(`process_${processId}_previousStep`);
-      if (!existingPreviousStep) {
-        console.log('[ProcessWorkflow] Setting initial previous step to current step:', process.currentStep);
-        localStorage.setItem(`process_${processId}_previousStep`, process.currentStep);
-      }
+      
+      // Always update the previous step to current when viewing a step
+      // This ensures proper tracking even when navigating away and back
+      console.log('[ProcessWorkflow] Viewing step:', process.currentStep, 'previous was:', existingPreviousStep);
+      localStorage.setItem(`process_${processId}_previousStep`, process.currentStep);
     }
   }, [process?.currentStep, processId]);
 
@@ -1179,8 +1180,36 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   }, [toast]);
 
   const handleKeywordStringChange = useCallback((newKeywordString: string) => {
+    console.log('[ProcessWorkflow] Keyword string changed, clearing old search results');
+    
+    // Update the keyword string
     setKeywordString(newKeywordString);
-  }, []);
+    
+    // Clear search results since keyword string has changed
+    // Old search results are no longer valid with new keyword string
+    setSearchCompleted(false);
+    localStorage.removeItem(`process_${processId}_searchCompleted`);
+    localStorage.removeItem(`process_${processId}_searchResults`);
+    localStorage.removeItem(`process_${processId}_isSearching`);
+    localStorage.removeItem(`process_${processId}_searchId`);
+    
+    // Also clear validation and downstream results since they depend on search
+    setValidationCompleted(false);
+    setValidationProgress({
+      percentage: 0,
+      processed: 0,
+      total: 0,
+      criteria: [],
+      status: 'pending',
+      estimatedCompletion: null
+    });
+    setValidationRecommendations(null);
+    localStorage.removeItem(`process_${processId}_validationCompleted`);
+    localStorage.removeItem(`process_${processId}_validationProgress`);
+    localStorage.removeItem(`process_${processId}_validationRecommendations`);
+    localStorage.removeItem(`process_${processId}_isValidating`);
+    localStorage.removeItem(`process_${processId}_validationId`);
+  }, [processId]);
   
   // COI click handler
   const handleCOIClick = useCallback((reviewer: any) => {
@@ -1225,13 +1254,39 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       setEnhancedKeywords(result);
       console.log('[ProcessWorkflow] Set enhancedKeywords state, this should trigger memo recalculation');
       
+      // Clear search results since keywords have changed
+      // Old search results are no longer valid with new keywords
+      console.log('[ProcessWorkflow] Clearing old search results due to new keyword enhancement');
+      setSearchCompleted(false);
+      localStorage.removeItem(`process_${processId}_searchCompleted`);
+      localStorage.removeItem(`process_${processId}_searchResults`);
+      localStorage.removeItem(`process_${processId}_isSearching`);
+      localStorage.removeItem(`process_${processId}_searchId`);
+      
+      // Also clear validation and downstream results since they depend on search
+      setValidationCompleted(false);
+      setValidationProgress({
+        percentage: 0,
+        processed: 0,
+        total: 0,
+        criteria: [],
+        status: 'pending',
+        estimatedCompletion: null
+      });
+      setValidationRecommendations(null);
+      localStorage.removeItem(`process_${processId}_validationCompleted`);
+      localStorage.removeItem(`process_${processId}_validationProgress`);
+      localStorage.removeItem(`process_${processId}_validationRecommendations`);
+      localStorage.removeItem(`process_${processId}_isValidating`);
+      localStorage.removeItem(`process_${processId}_validationId`);
+      
       // Clear the enhancing flag
       setIsEnhancingKeywords(false);
       localStorage.removeItem(`process_${processId}_isEnhancingKeywords`);
       
       toast({
         title: process?.title || 'Process',
-        description: `Keywords Enhanced\nGenerated ${result.enhanced.length} enhanced keywords and ${result.meshTerms.length} MeSH terms.`,
+        description: `Keywords Enhanced\nGenerated ${result.enhanced.length} enhanced keywords and ${result.meshTerms.length} MeSH terms.\nPrevious search results have been cleared.`,
       });
     } catch (error: any) {
       console.error('[ProcessWorkflow] Keyword enhancement failed:', error);
