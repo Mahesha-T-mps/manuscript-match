@@ -512,9 +512,21 @@ export const ReviewerSearch = ({
       setSearchPerformedInSession(true);
       console.log('[ReviewerSearch] Search performed in current session, setting completion status');
       
+      // Calculate the actual count of results found
+      let resultsCount = 0;
+      if (searchResponse?.author_email_affiliation_preview && Array.isArray(searchResponse.author_email_affiliation_preview)) {
+        resultsCount = searchResponse.author_email_affiliation_preview.length;
+      } else if (searchResponse?.data?.preview_reviewers && Array.isArray(searchResponse.data.preview_reviewers)) {
+        resultsCount = searchResponse.data.preview_reviewers.length;
+      } else if (searchResponse?.reviewers_count) {
+        resultsCount = searchResponse.reviewers_count;
+      } else if (searchResponse?.total_reviewers) {
+        resultsCount = searchResponse.total_reviewers;
+      }
+      
       toast({
         title: "Search completed",
-        description: `Found ${searchResponse?.reviewers_count || searchResponse?.total_reviewers || 0} potential reviewers from ${enabledDatabases.length} databases.`,
+        description: `Found ${resultsCount} potential reviewers from ${enabledDatabases.length} databases.`,
       });
     } catch (error: any) {
       console.error('[ReviewerSearch] Search error:', error);
