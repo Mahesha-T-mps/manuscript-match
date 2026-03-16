@@ -316,7 +316,7 @@ export interface UpdateShortlistRequest {
 }
 
 export interface ExportFormat {
-  format: 'csv' | 'xlsx' | 'docx';
+  format: 'csv' | 'xlsx' | 'docx' | 'json';
 }
 
 // Activity Log Types

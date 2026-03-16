@@ -25,6 +25,7 @@ interface ExportReviewersDialogProps {
   onOpenChange: (open: boolean) => void;
   reviewers: Reviewer[];
   onExport: (format: 'csv' | 'json') => void;
+  selectedValidationConditions?: string[]; // Selected validation conditions for filtering
 }
 
 interface ExportOption {
@@ -56,7 +57,8 @@ export const ExportReviewersDialog: React.FC<ExportReviewersDialogProps> = ({
   open,
   onOpenChange,
   reviewers,
-  onExport
+  onExport,
+  selectedValidationConditions
 }) => {
   const [selectedFormat, setSelectedFormat] = useState<'csv' | 'json'>('csv');
   const [isExporting, setIsExporting] = useState(false);
@@ -160,11 +162,29 @@ export const ExportReviewersDialog: React.FC<ExportReviewersDialogProps> = ({
             <ul className="text-sm text-gray-600 space-y-1">
               <li>• Reviewer names and contact information</li>
               <li>• Affiliation and institutional details</li>
-              <li>• Publication counts and metrics</li>
               <li>• Validation scores and criteria satisfied</li>
-              <li>• All publication statistics (last 10, 5, 2 years)</li>
-              <li>• Conflict of interest indicators</li>
+              {selectedValidationConditions && selectedValidationConditions.length > 0 ? (
+                <>
+                  <li>• Data for selected validation conditions only:</li>
+                  <ul className="ml-4 mt-1 space-y-1">
+                    {selectedValidationConditions.map(condition => (
+                      <li key={condition} className="text-xs">- {condition}</li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <>
+                  <li>• All publication statistics (last 10, 5, 2 years)</li>
+                  <li>• All validation condition data</li>
+                  <li>• Conflict of interest indicators</li>
+                </>
+              )}
             </ul>
+            {selectedValidationConditions && selectedValidationConditions.length > 0 && (
+              <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
+                <strong>Note:</strong> Export will only include data columns related to the {selectedValidationConditions.length} validation conditions that were selected during the validation process.
+              </div>
+            )}
           </div>
         </div>
 

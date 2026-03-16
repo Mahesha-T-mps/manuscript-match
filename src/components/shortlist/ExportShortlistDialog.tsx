@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Download, FileText, FileSpreadsheet, FileImage } from 'lucide-react';
+import { Download, FileText, FileSpreadsheet } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
 import { RadioGroup, RadioGroupItem } from '../ui/radio-group';
@@ -50,6 +50,13 @@ const exportOptions: ExportOption[] = [
     description: 'Microsoft Excel format with formatting and multiple sheets support',
     icon: <FileSpreadsheet className="h-5 w-5 text-green-600" />,
     fileExtension: 'xlsx'
+  },
+  {
+    format: 'json',
+    label: 'JSON (JavaScript Object Notation)',
+    description: 'Structured data format suitable for programmatic processing and data analysis',
+    icon: <FileText className="h-5 w-5 text-purple-600" />,
+    fileExtension: 'json'
   },
   {
     format: 'docx',
@@ -163,10 +170,14 @@ export const ExportShortlistDialog: React.FC<ExportShortlistDialogProps> = ({
             <ul className="text-sm text-gray-600 space-y-1">
               <li>• Reviewer names and contact information</li>
               <li>• Affiliation and institutional details</li>
-              <li>• Publication counts and expertise areas</li>
-              <li>• Validation status and conflict checks</li>
-              <li>• Match scores and recommendation rankings</li>
+              <li>• Validation scores and criteria satisfied</li>
+              <li>• Data filtered by selected validation conditions only</li>
+              <li>• Publication metrics relevant to validation criteria</li>
+              <li>• Conflict of interest indicators</li>
             </ul>
+            <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
+              <strong>Note:</strong> Export will only include data columns related to the validation conditions that were selected during the validation process, ensuring focused and relevant data.
+            </div>
           </div>
         </div>
 

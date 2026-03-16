@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ValidationStep Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .condition {
+            border: 1px solid #ddd;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+        }
+        .condition:hover {
+            background-color: #f5f5f5;
+        }
+        .checkbox {
+            margin-right: 10px;
+        }
+        .button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        .button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .button:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+        .selected-count {
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 ValidationStep Component Test</h1>
+    <p>This simulates the validation conditions that should appear in the ValidationStep component.</p>
+    
+    <div id="validation-conditions">
+        <h2>Validation Conditions</h2>
+        <p>Select which validation conditions to apply to the authors</p>
+        
+        <div style="margin-bottom: 20px;">
+            <button class="button" onclick="selectAll()">Select All</button>
+            <button class="button" onclick="selectNone()">Select None</button>
+            <span class="selected-count" id="selected-count">4 of 10 selected</span>
+        </div>
+        
+        <div id="conditions-list">
+            <!-- Conditions will be populated by JavaScript -->
+        </div>
+        
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd;">
+            <button class="button" id="validate-button" onclick="validateAuthors()" style="width: 100%; font-size: 18px;">
+                🎯 Validate Authors (4 conditions selected)
+            </button>
+            <p id="validation-message" style="text-align: center; color: #666; font-size: 14px;">
+                Please select at least one validation condition to proceed
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const VALIDATION_CONDITIONS = [
+            {
+                id: 'Publications',
+                label: 'Publications',
+                description: 'Check publication count in last 10 years (≥8) and last 5 years, last 2 years and last year'
+            },
+            {
+                id: 'First/Last Author in publications',
+                label: 'First/Last Author Publications',
+                description: 'Analyze first and last author publications'
+            },
+            {
+                id: 'Relevant Publications',
+                label: 'Relevant Publications',
+                description: 'Check relevant publications in last 5 years and last 2 years'
+            },
+            {
+                id: 'Publication Types',
+                label: 'Publication Types',
+                description: 'Analyze publication types of Clinical Trial, Clinical Study, Case Report and Retracted Publication if any'
+            },
+            {
+                id: 'T&F Publications last year',
+                label: 'Taylor & Francis Publications',
+                description: 'Check Taylor & Francis publications in the last year'
+            },
+            {
+                id: 'Coauthor',
+                label: 'Coauthor Analysis',
+                description: 'Check for coauthorship with manuscript authors'
+            },
+            {
+                id: 'Conflict of Interest',
+                label: 'Conflict of Interest',
+                description: 'Detect potential conflicts of interest with manuscript authors'
+            },
+            {
+                id: 'Affiliation/Country match',
+                label: 'Affiliation/Country Match',
+                description: 'Verify affiliation and country consistency'
+            },
+            {
+                id: 'Study Type Detection',
+                label: 'Study Type Detection',
+                description: 'Analyze study types in author publications'
+            },
+            {
+                id: 'Sanction Country',
+                label: 'Sanction Country Check',
+                description: 'Check if author is from a sanctioned country'
+            }
+        ];
+
+        let selectedConditions = [
+            'Publications',
+            'Coauthor',
+            'Conflict of Interest',
+            'Affiliation/Country match'
+        ];
+
+        function renderConditions() {
+            const conditionsList = document.getElementById('conditions-list');
+            conditionsList.innerHTML = '';
+
+            VALIDATION_CONDITIONS.forEach(condition => {
+                const div = document.createElement('div');
+                div.className = 'condition';
+                div.innerHTML = `
+                    <label style="display: flex; align-items: flex-start; cursor: pointer;">
+                        <input type="checkbox" class="checkbox" 
+                               ${selectedConditions.includes(condition.id) ? 'checked' : ''}
+                               onchange="toggleCondition('${condition.id}', this.checked)">
+                        <div>
+                            <strong>${condition.label}</strong>
+                            <br>
+                            <small style="color: #666;">${condition.description}</small>
+                        </div>
+                    </label>
+                `;
+                conditionsList.appendChild(div);
+            });
+
+            updateUI();
+        }
+
+        function toggleCondition(conditionId, checked) {
+            if (checked) {
+                if (!selectedConditions.includes(conditionId)) {
+                    selectedConditions.push(conditionId);
+                }
+            } else {
+                selectedConditions = selectedConditions.filter(id => id !== conditionId);
+            }
+            updateUI();
+        }
+
+        function selectAll() {
+            selectedConditions = VALIDATION_CONDITIONS.map(c => c.id);
+            renderConditions();
+        }
+
+        function selectNone() {
+            selectedConditions = [];
+            renderConditions();
+        }
+
+        function updateUI() {
+            const selectedCount = document.getElementById('selected-count');
+            const validateButton = document.getElementById('validate-button');
+            const validationMessage = document.getElementById('validation-message');
+
+            selectedCount.textContent = `${selectedConditions.length} of ${VALIDATION_CONDITIONS.length} selected`;
+            
+            if (selectedConditions.length === 0) {
+                validateButton.disabled = true;
+                validateButton.textContent = 'Validate Authors (0 conditions selected)';
+                validationMessage.textContent = 'Please select at least one validation condition to proceed';
+                validationMessage.style.display = 'block';
+            } else {
+                validateButton.disabled = false;
+                validateButton.textContent = `🎯 Validate Authors (${selectedConditions.length} conditions selected)`;
+                validationMessage.style.display = 'none';
+            }
+        }
+
+        function validateAuthors() {
+            if (selectedConditions.length === 0) {
+                alert('Please select at least one validation condition!');
+                return;
+            }
+
+            const validateButton = document.getElementById('validate-button');
+            validateButton.disabled = true;
+            validateButton.textContent = '⏳ Validating Authors...';
+
+            // Simulate API call
+            setTimeout(() => {
+                alert(`✅ Validation completed!\n\nSelected conditions:\n${selectedConditions.map(id => '• ' + id).join('\n')}\n\nThis would now call the backend API with these conditions.`);
+                
+                validateButton.disabled = false;
+                validateButton.textContent = `🎯 Validate Authors (${selectedConditions.length} conditions selected)`;
+            }, 2000);
+        }
+
+        // Initialize
+        renderConditions();
+    </script>
+</body>
+</html>

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Export Filtering</title>
+</head>
+<body>
+    <h1>Test Export Filtering</h1>
+    <button onclick="testExportFiltering()">Test Export Filtering</button>
+    <div id="results"></div>
+
+    <script>
+        // Mock the validation condition columns mapping
+        const VALIDATION_CONDITION_COLUMNS = {
+            'Publications': [
+                'Total_Publications',
+                'Total_Publications_first', 
+                'Total_Publications_last',
+                'Publications_10_years',
+                'Publications_10_years_first',
+                'Publications_10_years_last',
+                'Publications_2_years',
+                'Publications_2_years_first',
+                'Publications_2_years_last',
+                'no_of_pub_condition_10_years',
+                'no_of_pub_condition_2_years'
+            ],
+            'Coauthor': [
+                'coauthor',
+                'coauthor_condition'
+            ],
+            'Publication Types': [
+                'English_Pubs',
+                'english_ratio',
+                'english_condition',
+                'Clinical_Trials_no',
+                'Clinical_study_no',
+                'Case_reports_no',
+                'Retracted_Pubs_no',
+                'retracted_condition'
+            ]
+        };
+
+        // Mock generateCSV function
+        function generateCSV(reviewers, selectedConditions) {
+            console.log('generateCSV called with conditions:', selectedConditions);
+            
+            // Base headers that are always included
+            const baseHeaders = [
+                'author',
+                'email', 
+                'aff',
+                'city',
+                'country',
+                'conditions_met',
+                'conditions_satisfied'
+            ];
+
+            // Get columns for selected validation conditions
+            let conditionalHeaders = [];
+            if (selectedConditions && selectedConditions.length > 0) {
+                console.log('Using selected conditions:', selectedConditions);
+                const selectedColumns = new Set();
+                selectedConditions.forEach(condition => {
+                    const columns = VALIDATION_CONDITION_COLUMNS[condition];
+                    console.log('Columns for condition', condition, ':', columns);
+                    if (columns) {
+                        columns.forEach(col => selectedColumns.add(col));
+                    }
+                });
+                conditionalHeaders = Array.from(selectedColumns);
+                console.log('Selected columns:', conditionalHeaders);
+            } else {
+                console.log('No conditions specified, using all columns');
+                // Include all validation columns (backward compatibility)
+                conditionalHeaders = [
+                    'Total_Publications',
+                    'Total_Publications_first',
+                    'Total_Publications_last',
+                    'Publications_10_years',
+                    'Publications_10_years_first',
+                    'Publications_10_years_last',
+                    'English_Pubs',
+                    'coauthor',
+                    'Clinical_Trials_no',
+                    'english_ratio',
+                    'english_condition',
+                    'coauthor_condition'
+                ];
+            }
+
+            const headers = [...baseHeaders, ...conditionalHeaders];
+            console.log('Final headers:', headers);
+            return headers.join(',');
+        }
+
+        function testExportFiltering() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<h2>Test Results:</h2>';
+
+            const mockReviewer = {
+                reviewer: 'Dr. Test',
+                email: 'test@example.com',
+                aff: 'Test University',
+                city: 'Test City',
+                country: 'Test Country',
+                conditions_met: 5,
+                conditions_satisfied: '5 of 9'
+            };
+
+            // Test 1: With selected conditions
+            console.log('=== Test 1: With selected conditions ===');
+            const selectedConditions = ['Publications', 'Coauthor'];
+            const csvWithConditions = generateCSV([mockReviewer], selectedConditions);
+            results.innerHTML += '<h3>Test 1: With selected conditions ["Publications", "Coauthor"]</h3>';
+            results.innerHTML += '<p>Headers: ' + csvWithConditions + '</p>';
+            results.innerHTML += '<p>Header count: ' + csvWithConditions.split(',').length + '</p>';
+
+            // Test 2: Without selected conditions
+            console.log('=== Test 2: Without selected conditions ===');
+            const csvWithoutConditions = generateCSV([mockReviewer]);
+            results.innerHTML += '<h3>Test 2: Without selected conditions (all columns)</h3>';
+            results.innerHTML += '<p>Headers: ' + csvWithoutConditions + '</p>';
+            results.innerHTML += '<p>Header count: ' + csvWithoutConditions.split(',').length + '</p>';
+
+            // Test 3: Empty conditions array
+            console.log('=== Test 3: Empty conditions array ===');
+            const csvEmptyConditions = generateCSV([mockReviewer], []);
+            results.innerHTML += '<h3>Test 3: Empty conditions array</h3>';
+            results.innerHTML += '<p>Headers: ' + csvEmptyConditions + '</p>';
+            results.innerHTML += '<p>Header count: ' + csvEmptyConditions.split(',').length + '</p>';
+
+            // Test localStorage simulation
+            console.log('=== Test 4: localStorage simulation ===');
+            const processId = 'test-process-123';
+            const key = `process_${processId}_selectedValidationConditions`;
+            
+            // Simulate saving conditions
+            localStorage.setItem(key, JSON.stringify(['Publications', 'Publication Types']));
+            
+            // Simulate retrieving conditions
+            const savedConditions = localStorage.getItem(key);
+            if (savedConditions) {
+                const parsedConditions = JSON.parse(savedConditions);
+                console.log('Retrieved conditions from localStorage:', parsedConditions);
+                const csvFromStorage = generateCSV([mockReviewer], parsedConditions);
+                results.innerHTML += '<h3>Test 4: From localStorage ["Publications", "Publication Types"]</h3>';
+                results.innerHTML += '<p>Headers: ' + csvFromStorage + '</p>';
+                results.innerHTML += '<p>Header count: ' + csvFromStorage.split(',').length + '</p>';
+            }
+        }
+    </script>
+</body>
+</html>

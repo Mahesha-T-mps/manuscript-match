@@ -9,6 +9,7 @@ import { ArrowLeft, User, Mail, MapPin, BookOpen, Award, AlertCircle } from 'luc
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { useProcess, useUpdateProcessStep } from '@/hooks/useProcesses';
 import { useSearch } from '@/hooks/useSearch';
@@ -25,10 +26,65 @@ import { KeywordEnhancement } from '@/components/keywords/KeywordEnhancement';
 import { ReviewerSearch } from '@/components/search/ReviewerSearch';
 import { ReviewerResults } from '@/components/results/ReviewerResults';
 import { AuthorValidation } from '@/components/validation/AuthorValidation';
+import { AuthorSelectionStep } from '@/components/validation/AuthorSelectionStep';
 import { ShortlistManager } from '@/components/shortlist/ShortlistManager';
 import { COIPublicationsModal } from '@/components/coi/COIPublicationsModal';
 import type { Reviewer } from '@/types/api';
 import type { EnhancedKeywords } from '@/services/keywordService';
+
+// Available validation conditions from backend
+const VALIDATION_CONDITIONS = [
+  {
+    id: 'Publications',
+    label: 'Publications',
+    description: 'Check publication count in last 10 years (≥8) and last 5 years, last 2 years and last year'
+  },
+  {
+    id: 'First/Last Author in publications',
+    label: 'First/Last Author Publications',
+    description: 'Analyze first and last author publications'
+  },
+  {
+    id: 'Relevant Publications',
+    label: 'Relevant Publications',
+    description: 'Check relevant publications in last 5 years and last 2 years'
+  },
+  {
+    id: 'Publication Types',
+    label: 'Publication Types',
+    description: 'Analyze publication types of Clinical Trial, Clinical Study, Case Report and Retracted Publication if any'
+  },
+  {
+    id: 'T&F Publications last year',
+    label: 'Taylor & Francis Publications',
+    description: 'Check Taylor & Francis publications in the last year'
+  },
+  {
+    id: 'Coauthor',
+    label: 'Coauthor Analysis',
+    description: 'Check for coauthorship with manuscript authors'
+  },
+  {
+    id: 'Conflict of Interest',
+    label: 'Conflict of Interest',
+    description: 'Detect potential conflicts of interest with manuscript authors'
+  },
+  {
+    id: 'Affiliation/Country match',
+    label: 'Affiliation/Country Match',
+    description: 'Verify affiliation and country consistency'
+  },
+  {
+    id: 'Study Type Detection',
+    label: 'Study Type Detection',
+    description: 'Analyze study types in author publications'
+  },
+  {
+    id: 'Sanction Country',
+    label: 'Sanction Country Check',
+    description: 'Check if author is from a sanctioned country'
+  }
+];
 
 interface ProcessWorkflowProps {
   processId: string;
@@ -362,6 +418,21 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     return saved ? JSON.parse(saved) : null;
   });
   const [isLoadingRecommendations, setIsLoadingRecommendations] = useState(false);
+  
+  // Validation conditions state
+  const [selectedValidationConditions, setSelectedValidationConditions] = useState<string[]>(() => {
+    const saved = localStorage.getItem(`process_${processId}_selectedValidationConditions`);
+    return saved ? JSON.parse(saved) : [
+      'Publications',
+      'Coauthor',
+      'Conflict of Interest',
+      'Affiliation/Country match'
+    ]; // Pre-select common conditions
+  });
+  const [showConditionSelection, setShowConditionSelection] = useState(() => {
+    const saved = localStorage.getItem(`process_${processId}_showConditionSelection`);
+    return saved ? JSON.parse(saved) : true;
+  });
   
   // Ref to prevent auto-check after manual reset
   const skipValidationCheckRef = useRef(false);
@@ -865,6 +936,14 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     }
   }, [validationRecommendations, processId]);
 
+  useEffect(() => {
+    localStorage.setItem(getStorageKey('selectedValidationConditions'), JSON.stringify(selectedValidationConditions));
+  }, [selectedValidationConditions, processId]);
+
+  useEffect(() => {
+    localStorage.setItem(getStorageKey('showConditionSelection'), JSON.stringify(showConditionSelection));
+  }, [showConditionSelection, processId]);
+
   // Cleanup function to clear localStorage when component unmounts
   useEffect(() => {
     return () => {
@@ -908,6 +987,30 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     ];
     keys.forEach(key => localStorage.removeItem(getStorageKey(key)));
   }, [stopValidationPolling, getStorageKey]);
+
+  // Validation condition handlers
+  const handleConditionToggle = useCallback((conditionId: string, checked: boolean) => {
+    setSelectedValidationConditions(prev => {
+      const newConditions = checked 
+        ? [...prev, conditionId]
+        : prev.filter(id => id !== conditionId);
+      
+      // Save to localStorage
+      localStorage.setItem(`process_${processId}_selectedValidationConditions`, JSON.stringify(newConditions));
+      return newConditions;
+    });
+  }, [processId]);
+
+  const handleSelectAllConditions = useCallback(() => {
+    const allConditions = VALIDATION_CONDITIONS.map(c => c.id);
+    setSelectedValidationConditions(allConditions);
+    localStorage.setItem(`process_${processId}_selectedValidationConditions`, JSON.stringify(allConditions));
+  }, [processId]);
+
+  const handleSelectNoConditions = useCallback(() => {
+    setSelectedValidationConditions([]);
+    localStorage.setItem(`process_${processId}_selectedValidationConditions`, JSON.stringify([]));
+  }, [processId]);
 
   // Memoize the validation handler to prevent recreation on every render
   const handleValidateAuthors = useCallback(async () => {
@@ -956,25 +1059,26 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       }
 
       console.log('[ProcessWorkflow] Starting validation for jobId:', jobId);
+      console.log('[ProcessWorkflow] Selected validation conditions:', selectedValidationConditions);
 
-      // Call the validate authors API
-      const response = await scholarFinderApiService.validateAuthors(jobId);
+      // Validate that conditions are selected
+      if (selectedValidationConditions.length === 0) {
+        toast({
+          title: 'No Conditions Selected',
+          description: 'Please select at least one validation condition to run.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Call the validate authors API with selected conditions
+      const response = await scholarFinderApiService.validateAuthorsWithConditions(jobId, selectedValidationConditions);
       
       console.log('[ProcessWorkflow] Validation API response:', response);
       
-      // Initialize progress tracking
-      setValidationProgress({
-        percentage: response.data?.progress_percentage || 0,
-        processed: response.data?.total_authors_processed || 0,
-        total: response.data?.total_authors_processed || 0,
-        criteria: response.data?.validation_criteria || [],
-        status: response.data?.validation_status || 'in_progress',
-        estimatedCompletion: response.data?.estimated_completion_time || null
-      });
-      
-      // Check if validation completed immediately (small number of authors)
-      if (response.data?.validation_status === 'completed') {
-        console.log('[ProcessWorkflow] Validation completed immediately');
+      // Check if validation completed successfully (our new API returns results immediately)
+      if (response.total_authors !== undefined) {
+        console.log('[ProcessWorkflow] Validation completed successfully');
         setValidationCompleted(true);
         
         // Clear validating state and set completed flag in localStorage
@@ -982,14 +1086,20 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         localStorage.setItem(`process_${processId}_validationCompleted`, JSON.stringify(true));
         console.log('[ProcessWorkflow] Set isValidating to false and validationCompleted to true in localStorage');
         
-        const processedCount = response.data.total_authors_processed || 0;
-        const criteriaCount = response.data.validation_criteria?.length || 0;
-        const summary = response.data.summary;
+        // Set validation progress to completed
+        setValidationProgress({
+          percentage: 100,
+          processed: response.total_authors || 0,
+          total: response.total_authors || 0,
+          criteria: selectedValidationConditions,
+          status: 'completed',
+          estimatedCompletion: null
+        });
+        
+        const processedCount = response.total_authors || 0;
+        const criteriaCount = selectedValidationConditions.length;
         
         let description = `Processed ${processedCount} authors against ${criteriaCount} validation criteria.`;
-        if (summary) {
-          description += ` Found ${summary.authors_validated} validated authors with average score of ${summary.average_conditions_met.toFixed(1)}.`;
-        }
         description += ' Results are now available.';
         
         toast({
@@ -998,28 +1108,30 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
           duration: 8000,
         });
       } else {
-        // Validation is running in background - start polling for completion
-        console.log('[ProcessWorkflow] Validation started, beginning polling');
+        // Fallback: If response doesn't have total_authors, assume it's still processing
+        console.log('[ProcessWorkflow] Validation response unclear, assuming still processing');
         
-        const processedCount = response.data?.total_authors_processed || 0;
-        const estimatedTime = response.data?.estimated_completion_time;
-        
-        let description = 'Author validation has been initiated successfully and is running in the background.';
-        if (processedCount > 0) {
-          description += ` Processing ${processedCount} authors.`;
-        }
-        if (estimatedTime) {
-          description += ` ${estimatedTime}`;
-        }
-        
-        toast({
-          title: `${process?.title || 'Process'} - Validation Started & Saved`,
-          description,
-          duration: 6000,
+        // Initialize progress tracking for polling
+        setValidationProgress({
+          percentage: 0,
+          processed: 0,
+          total: 0,
+          criteria: selectedValidationConditions,
+          status: 'in_progress',
+          estimatedCompletion: null
         });
         
-        // Start polling for validation completion
-        await startValidationPolling(jobId);
+        // Start polling for completion
+        console.log('[ProcessWorkflow] Starting validation polling');
+        
+        toast({
+          title: 'Validation Started',
+          description: `Author validation has started with ${selectedValidationConditions.length} conditions. This may take several minutes.`,
+          duration: 5000,
+        });
+        
+        // Start polling
+        startValidationPolling(jobId);
       }
       
     } catch (error: any) {
@@ -1042,7 +1154,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       setIsValidating(false);
       validationInProgressRef.current = false;
     }
-  }, [processId, isValidating, isPollingValidation, toast, startValidationPolling, stopValidationPolling]);
+  }, [processId, isValidating, isPollingValidation, toast, startValidationPolling, stopValidationPolling, selectedValidationConditions]);
 
   // Memoize callbacks to prevent unnecessary re-renders
   const handleStepChange = useCallback(async (newStep: string) => {
@@ -1512,6 +1624,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
             <ReviewerResults 
               processId={processId}
               onShortlistCreated={() => handleStepChange('SHORTLIST')}
+              selectedValidationConditions={selectedValidationConditions}
             />
           );
         }
@@ -1564,32 +1677,105 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
           <Card>
             <CardHeader>
               <CardTitle>Validate Authors</CardTitle>
-              <CardDescription>
-                Validate reviewers against conflict of interest rules and eligibility criteria
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {!validationCompleted && !validationCompletedFromStorage ? (
-                <div className="flex flex-col items-center space-y-4">
-                  <div className="text-center text-muted-foreground">
-                    <p>Click the button below to start author validation.</p>
-                    <p className="text-sm">This process may take several minutes to complete.</p>
-                  </div>
-                  <Button 
-                    onClick={handleValidateAuthors}
-                    size="lg"
-                    className="px-8"
-                    disabled={isActuallyValidating || isPollingValidation || validationInProgressRef.current || validationProgress.status === 'in_progress'}
-                  >
-                    {isActuallyValidating || isPollingValidation || validationProgress.status === 'in_progress' ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Validating Authors...
-                      </>
-                    ) : (
-                      'Validate Authors'
+                <div className="space-y-6">
+                  {/* Validation Conditions Selection */}
+                  {showConditionSelection && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center space-x-2">
+                          <span>Validation Conditions</span>
+                        </CardTitle>
+                        <CardDescription>
+                          Select which validation conditions to apply to the authors
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        {/* Select All/None buttons */}
+                        <div className="flex gap-2 mb-4">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleSelectAllConditions}
+                            disabled={isActuallyValidating || isPollingValidation}
+                          >
+                            Select All
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleSelectNoConditions}
+                            disabled={isActuallyValidating || isPollingValidation}
+                          >
+                            Select None
+                          </Button>
+                          <div className="ml-auto text-sm text-muted-foreground">
+                            {selectedValidationConditions.length} of {VALIDATION_CONDITIONS.length} selected
+                          </div>
+                        </div>
+
+                        {/* Condition checkboxes */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {VALIDATION_CONDITIONS.map((condition) => (
+                            <div
+                              key={condition.id}
+                              className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50"
+                            >
+                              <Checkbox
+                                id={condition.id}
+                                checked={selectedValidationConditions.includes(condition.id)}
+                                onCheckedChange={(checked) => 
+                                  handleConditionToggle(condition.id, checked as boolean)
+                                }
+                                disabled={isActuallyValidating || isPollingValidation}
+                              />
+                              <div className="flex-1 space-y-1">
+                                <label
+                                  htmlFor={condition.id}
+                                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                                >
+                                  {condition.label}
+                                </label>
+                                <p className="text-xs text-muted-foreground">
+                                  {condition.description}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Validate Authors Button */}
+                  <div className="flex flex-col items-center space-y-4">
+                    <div className="text-center text-muted-foreground">
+                      <p>Click the button below to start author validation with selected conditions.</p>
+                      <p className="text-sm">This process may take several minutes to complete.</p>
+                    </div>
+                    <Button 
+                      onClick={handleValidateAuthors}
+                      size="lg"
+                      className="px-8"
+                      disabled={isActuallyValidating || isPollingValidation || validationInProgressRef.current || validationProgress.status === 'in_progress' || selectedValidationConditions.length === 0}
+                    >
+                      {isActuallyValidating || isPollingValidation || validationProgress.status === 'in_progress' ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Validating Authors...
+                        </>
+                      ) : (
+                        `Validate Authors (${selectedValidationConditions.length} conditions selected)`
+                      )}
+                    </Button>
+                    {selectedValidationConditions.length === 0 && (
+                      <p className="text-sm text-muted-foreground text-center">
+                        Please select at least one validation condition to proceed
+                      </p>
                     )}
-                  </Button>
+                  </div>
                 </div>
               ) : null}
               

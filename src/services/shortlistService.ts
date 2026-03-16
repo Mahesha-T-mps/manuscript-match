@@ -4,14 +4,13 @@
  * Uses localStorage for ScholarFinder workflow
  */
 
-import { apiService } from './apiService';
 import * as XLSX from 'xlsx';
 import { fileService } from './fileService';
+import { generateCSV, generateJSON } from '../utils/exportUtils';
 import type { 
   Shortlist, 
   CreateShortlistRequest, 
-  UpdateShortlistRequest,
-  ApiResponse 
+  UpdateShortlistRequest
 } from '../types/api';
 import type { Reviewer } from '../features/scholarfinder/types/api';
 
@@ -139,8 +138,45 @@ class ShortlistService {
   /**
    * Get reviewer details for shortlist export
    */
-  private async getReviewerDetails(processId: string, reviewerEmails: string[]): Promise<Reviewer[]> {
+  private async getReviewerDetails(processId: string, reviewerEmails: string[]): Promise<{ reviewers: Reviewer[], selectedValidationConditions?: string[] }> {
     try {
+      // First, always try to get selected validation conditions regardless of data source
+      let selectedValidationConditions: string[] | undefined;
+      const selectedConditionsKey = `process_${processId}_selectedValidationConditions`;
+      const selectedConditionsData = localStorage.getItem(selectedConditionsKey);
+      
+      console.log('[ShortlistService] Checking for validation conditions with key:', selectedConditionsKey);
+      console.log('[ShortlistService] Raw localStorage data:', selectedConditionsData);
+      
+      if (selectedConditionsData) {
+        try {
+          selectedValidationConditions = JSON.parse(selectedConditionsData);
+          console.log('[ShortlistService] Successfully parsed selected validation conditions:', selectedValidationConditions);
+          console.log('[ShortlistService] Conditions count:', selectedValidationConditions?.length || 0);
+          
+          // Validate that we have actual conditions
+          if (Array.isArray(selectedValidationConditions) && selectedValidationConditions.length > 0) {
+            console.log('[ShortlistService] Valid conditions array found');
+          } else {
+            console.log('[ShortlistService] Conditions array is empty or invalid, will use all columns');
+            selectedValidationConditions = undefined;
+          }
+        } catch (error) {
+          console.warn('[ShortlistService] Failed to parse selected validation conditions:', error);
+          selectedValidationConditions = undefined;
+        }
+      } else {
+        console.log('[ShortlistService] No selected validation conditions found in localStorage');
+        
+        // Try to check if there are any validation-related keys at all
+        const allKeys = Object.keys(localStorage);
+        const validationKeys = allKeys.filter(key => key.includes('selectedValidationConditions'));
+        console.log('[ShortlistService] All validation condition keys in localStorage:', validationKeys);
+        
+        selectedValidationConditions = undefined;
+      }
+
+      // Now try to get reviewer data from different sources
       // Try to get data from validationRecommendations first (primary source)
       const validationKey = `process_${processId}_validationRecommendations`;
       const validationData = localStorage.getItem(validationKey);
@@ -157,7 +193,13 @@ class ShortlistService {
           
           if (selectedReviewers.length > 0) {
             console.log('[ShortlistService] Found reviewers from validationRecommendations:', selectedReviewers.length);
-            return selectedReviewers;
+            
+            // Normalize reviewer data to ensure all fields are properly mapped
+            const normalizedReviewers = selectedReviewers.map((reviewer: any) => 
+              this.normalizeReviewerData(reviewer)
+            );
+            
+            return { reviewers: normalizedReviewers, selectedValidationConditions };
           }
         }
       }
@@ -178,7 +220,13 @@ class ShortlistService {
           
           if (selectedReviewers.length > 0) {
             console.log('[ShortlistService] Found reviewers from recommendations cache:', selectedReviewers.length);
-            return selectedReviewers;
+            
+            // Normalize reviewer data to ensure all fields are properly mapped
+            const normalizedReviewers = selectedReviewers.map((reviewer: any) => 
+              this.normalizeReviewerData(reviewer)
+            );
+            
+            return { reviewers: normalizedReviewers, selectedValidationConditions };
           }
         }
       }
@@ -197,7 +245,15 @@ class ShortlistService {
         
         if (selectedReviewers.length > 0) {
           console.log('[ShortlistService] Found reviewers from API:', selectedReviewers.length);
-          return selectedReviewers;
+          console.log('[ShortlistService] API data does not include validation conditions, but using stored conditions:', selectedValidationConditions);
+          
+          // Transform API data to ensure all fields are properly mapped
+          const transformedReviewers = selectedReviewers.map((reviewer: any) => {
+            console.log('[ShortlistService] Transforming reviewer data for:', reviewer.email);
+            return this.normalizeReviewerData(reviewer);
+          });
+          
+          return { reviewers: transformedReviewers, selectedValidationConditions };
         }
       }
 
@@ -209,248 +265,261 @@ class ShortlistService {
   }
 
   /**
-   * Export shortlist as CSV
+   * Normalize reviewer data to ensure all fields are properly mapped
    */
-  private exportAsCSV(shortlist: Shortlist, reviewers: Reviewer[]): void {
-    // Use the same headers as exportUtils.ts for consistency
-    const headers = [
-      'author',
-      'email', 
-      'aff',
-      'city',
-      'country',
-      'Total_Publications',
-      'Total_Publications_first',
-      'Total_Publications_last',
-      'Publications_10_years',
-      'Publications_10_years_first',
-      'Publications_10_years_last',
-      'Publications_5_years',
-      'Publications_5_years_first',
-      'Publications_5_years_last',
-      'Relevant_Publications_5_years',
-      'Relevant_Publications_5_years_first',
-      'Relevant_Publications_5_years_last',
-      'Relevant_Primary_Pub_2_years',
-      'Relevant_Secondary_Pub_2_years',
-      'Publications_2_years',
-      'Publications_2_years_first',
-      'Publications_2_years_last',
-      'Publications_last_year',
-      'Publications_last_year_first',
-      'Publications_last_year_last',
-      'Clinical_Trials_no',
-      'Retracted_Pubs_no',
-      'Clinical_study_no',
-      'Case_reports_no',
-      'TF_Publications_last_year',
-      'English_Pubs',
-      'coauthor',
-      'country_match',
-      'aff_match',
-      'sanction_country',
-      'no_of_pub_condition_10_years',
-      'no_of_pub_condition_5_years',
-      'no_of_pub_condition_2_years',
-      'english_ratio',
-      'english_condition',
-      'coauthor_condition',
-      'aff_condition',
-      'country_match_condition',
-      'retracted_condition',
-      'conditions_met',
-      'conditions_satisfied'
-    ];
-
-    const rows = reviewers.map(reviewer => [
-      reviewer.reviewer || '',
-      reviewer.email || '',
-      reviewer.aff || '',
-      reviewer.city || '',
-      reviewer.country || '',
-      reviewer.Total_Publications || 0,
-      reviewer.Total_Publications_first || 0,
-      reviewer.Total_Publications_last || 0,
-      reviewer.Publications_10_years || reviewer['Publications (last 10 years)'] || 0,
-      reviewer.Publications_10_years_first || 0,
-      reviewer.Publications_10_years_last || 0,
-      reviewer.Publications_5_years || 0,
-      reviewer.Publications_5_years_first || 0,
-      reviewer.Publications_5_years_last || 0,
-      reviewer.Relevant_Publications_5_years || reviewer['Relevant Publications (last 5 years)'] || 0,
-      reviewer.Relevant_Publications_5_years_first || 0,
-      reviewer.Relevant_Publications_5_years_last || 0,
-      reviewer.Relevant_Primary_Pub_2_years || 0,
-      reviewer.Relevant_Secondary_Pub_2_years || 0,
-      reviewer.Publications_2_years || reviewer['Publications (last 2 years)'] || 0,
-      reviewer.Publications_2_years_first || 0,
-      reviewer.Publications_2_years_last || 0,
-      reviewer.Publications_last_year || reviewer['Publications (last year)'] || 0,
-      reviewer.Publications_last_year_first || 0,
-      reviewer.Publications_last_year_last || 0,
-      reviewer.Clinical_Trials_no || 0,
-      reviewer.Retracted_Pubs_no || 0,
-      reviewer.Clinical_study_no || 0,
-      reviewer.Case_reports_no || 0,
-      reviewer.TF_Publications_last_year || 0,
-      reviewer.English_Pubs || 0,
-      reviewer.coauthor ? 'Yes' : 'No',
-      reviewer.country_match || '',
-      reviewer.aff_match || '',
-      reviewer.sanction_country || 'no',
-      reviewer.no_of_pub_condition_10_years || 0,
-      reviewer.no_of_pub_condition_5_years || 0,
-      reviewer.no_of_pub_condition_2_years || 0,
-      reviewer.english_ratio || 0,
-      reviewer.english_condition || 0,
-      reviewer.coauthor_condition || 0,
-      reviewer.aff_condition || 0,
-      reviewer.country_match_condition || 0,
-      reviewer.retracted_condition || 0,
-      reviewer.conditions_met || 0,
-      reviewer.conditions_satisfied || ''
-    ]);
-
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => {
-        const cellStr = String(cell);
-        if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
-          return `"${cellStr.replace(/"/g, '""')}"`;
-        }
-        return cellStr;
-      }).join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${shortlist.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  private normalizeReviewerData(reviewer: any): Reviewer {
+    console.log('[ShortlistService] Normalizing reviewer data for:', reviewer.email);
+    console.log('[ShortlistService] Original reviewer keys:', Object.keys(reviewer));
+    console.log('[ShortlistService] Original reviewer sample data:', {
+      name: reviewer.name,
+      reviewer: reviewer.reviewer,
+      Total_Publications: reviewer.Total_Publications,
+      publications: reviewer.publications,
+      'Publications (last 10 years)': reviewer['Publications (last 10 years)'],
+      Publications_10_years: reviewer.Publications_10_years,
+      English_Pubs: reviewer.English_Pubs,
+      english_pubs: reviewer.english_pubs,
+      Clinical_Trials_no: reviewer.Clinical_Trials_no,
+      clinical_trials: reviewer.clinical_trials
+    });
+    
+    // Ensure all expected fields exist with proper values
+    const normalized: any = {
+      // Basic info
+      reviewer: reviewer.reviewer || reviewer.name || 'Unknown',
+      email: reviewer.email || '',
+      aff: reviewer.aff || reviewer.affiliation || '',
+      city: reviewer.city || '',
+      country: reviewer.country || '',
+      
+      // Conditions
+      conditions_met: reviewer.conditions_met || 0,
+      conditions_satisfied: reviewer.conditions_satisfied || '',
+      
+      // Total publications
+      Total_Publications: reviewer.Total_Publications || reviewer.publications || 0,
+      Total_Publications_first: reviewer.Total_Publications_first || 0,
+      Total_Publications_last: reviewer.Total_Publications_last || 0,
+      
+      // 10 years publications
+      'Publications (last 10 years)': reviewer['Publications (last 10 years)'] || reviewer.Publications_10_years || 0,
+      Publications_10_years: reviewer.Publications_10_years || reviewer['Publications (last 10 years)'] || 0,
+      Publications_10_years_first: reviewer.Publications_10_years_first || 0,
+      Publications_10_years_last: reviewer.Publications_10_years_last || 0,
+      
+      // 5 years publications
+      Publications_5_years: reviewer.Publications_5_years || 0,
+      Publications_5_years_first: reviewer.Publications_5_years_first || 0,
+      Publications_5_years_last: reviewer.Publications_5_years_last || 0,
+      'Relevant Publications (last 5 years)': reviewer['Relevant Publications (last 5 years)'] || reviewer.Relevant_Publications_5_years || 0,
+      Relevant_Publications_5_years: reviewer.Relevant_Publications_5_years || reviewer['Relevant Publications (last 5 years)'] || 0,
+      Relevant_Publications_5_years_first: reviewer.Relevant_Publications_5_years_first || 0,
+      Relevant_Publications_5_years_last: reviewer.Relevant_Publications_5_years_last || 0,
+      Relevant_Primary_Pub_2_years: reviewer.Relevant_Primary_Pub_2_years || 0,
+      Relevant_Secondary_Pub_2_years: reviewer.Relevant_Secondary_Pub_2_years || 0,
+      
+      // 2 years publications
+      'Publications (last 2 years)': reviewer['Publications (last 2 years)'] || reviewer.Publications_2_years || 0,
+      Publications_2_years: reviewer.Publications_2_years || reviewer['Publications (last 2 years)'] || 0,
+      Publications_2_years_first: reviewer.Publications_2_years_first || 0,
+      Publications_2_years_last: reviewer.Publications_2_years_last || 0,
+      
+      // Last year publications
+      'Publications (last year)': reviewer['Publications (last year)'] || reviewer.Publications_last_year || 0,
+      Publications_last_year: reviewer.Publications_last_year || reviewer['Publications (last year)'] || 0,
+      Publications_last_year_first: reviewer.Publications_last_year_first || 0,
+      Publications_last_year_last: reviewer.Publications_last_year_last || 0,
+      
+      // Specialized publications
+      Clinical_Trials_no: reviewer.Clinical_Trials_no || reviewer.clinical_trials || 0,
+      Clinical_study_no: reviewer.Clinical_study_no || reviewer.clinical_studies || 0,
+      Case_reports_no: reviewer.Case_reports_no || reviewer.case_reports || 0,
+      Retracted_Pubs_no: reviewer.Retracted_Pubs_no || reviewer.retracted_pubs || 0,
+      TF_Publications_last_year: reviewer.TF_Publications_last_year || reviewer.tf_publications_last_year || 0,
+      
+      // Language and quality
+      English_Pubs: reviewer.English_Pubs || reviewer.english_pubs || 0,
+      english_ratio: reviewer.english_ratio || 0,
+      
+      // Validation fields
+      coauthor: reviewer.coauthor || false,
+      coi_coauthor: reviewer.coi_coauthor || false,
+      aff_match: reviewer.aff_match || 'no',
+      country_match: reviewer.country_match || 'yes',
+      sanction_country: reviewer.sanction_country || 'no',
+      
+      // Condition flags
+      no_of_pub_condition_10_years: reviewer.no_of_pub_condition_10_years || 0,
+      no_of_pub_condition_5_years: reviewer.no_of_pub_condition_5_years || 0,
+      no_of_pub_condition_2_years: reviewer.no_of_pub_condition_2_years || 0,
+      english_condition: reviewer.english_condition || 0,
+      coauthor_condition: reviewer.coauthor_condition || 0,
+      aff_condition: reviewer.aff_condition || 0,
+      country_match_condition: reviewer.country_match_condition || 0,
+      retracted_condition: reviewer.retracted_condition || 0,
+      coi_condition: reviewer.coi_condition || 0
+    };
+    
+    console.log('[ShortlistService] Normalized reviewer data keys:', Object.keys(normalized).length);
+    console.log('[ShortlistService] Normalized reviewer sample data:', {
+      reviewer: normalized.reviewer,
+      Total_Publications: normalized.Total_Publications,
+      Publications_10_years: normalized.Publications_10_years,
+      English_Pubs: normalized.English_Pubs,
+      Clinical_Trials_no: normalized.Clinical_Trials_no,
+      coauthor: normalized.coauthor,
+      conditions_met: normalized.conditions_met
+    });
+    return normalized as Reviewer;
   }
 
   /**
+   * Export shortlist as CSV
+   */
+  private exportAsCSV(shortlist: Shortlist, reviewers: Reviewer[], selectedValidationConditions?: string[]): void {
+    try {
+      console.log('[ShortlistService] Exporting CSV with conditions:', selectedValidationConditions);
+      console.log('[ShortlistService] Reviewers being exported:', reviewers.length);
+      console.log('[ShortlistService] First reviewer data being exported:', {
+        reviewer: reviewers[0]?.reviewer,
+        email: reviewers[0]?.email,
+        Total_Publications: reviewers[0]?.Total_Publications,
+        Publications_10_years: reviewers[0]?.Publications_10_years,
+        English_Pubs: reviewers[0]?.English_Pubs,
+        Clinical_Trials_no: reviewers[0]?.Clinical_Trials_no,
+        coauthor: reviewers[0]?.coauthor,
+        conditions_met: reviewers[0]?.conditions_met
+      });
+      
+      const csvContent = generateCSV(reviewers, selectedValidationConditions);
+      console.log('[ShortlistService] Generated CSV headers:', csvContent.split('\n')[0]);
+      
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${shortlist.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to export shortlist as CSV:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Export shortlist as JSON
+   */
+  private exportAsJSON(shortlist: Shortlist, reviewers: Reviewer[], selectedValidationConditions?: string[]): void {
+    try {
+      const jsonContent = generateJSON(reviewers, selectedValidationConditions);
+      const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${shortlist.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to export shortlist as JSON:', error);
+      throw error;
+    }
+  }
+  /**
    * Export shortlist as Excel
    */
-  private exportAsExcel(shortlist: Shortlist, reviewers: Reviewer[]): void {
-    const worksheetData = [
-      // Headers - matching exportUtils.ts
-      [
-        'author',
-        'email', 
-        'aff',
-        'city',
-        'country',
-        'Total_Publications',
-        'Total_Publications_first',
-        'Total_Publications_last',
-        'Publications_10_years',
-        'Publications_10_years_first',
-        'Publications_10_years_last',
-        'Publications_5_years',
-        'Publications_5_years_first',
-        'Publications_5_years_last',
-        'Relevant_Publications_5_years',
-        'Relevant_Publications_5_years_first',
-        'Relevant_Publications_5_years_last',
-        'Relevant_Primary_Pub_2_years',
-        'Relevant_Secondary_Pub_2_years',
-        'Publications_2_years',
-        'Publications_2_years_first',
-        'Publications_2_years_last',
-        'Publications_last_year',
-        'Publications_last_year_first',
-        'Publications_last_year_last',
-        'Clinical_Trials_no',
-        'Retracted_Pubs_no',
-        'Clinical_study_no',
-        'Case_reports_no',
-        'TF_Publications_last_year',
-        'English_Pubs',
-        'coauthor',
-        'country_match',
-        'aff_match',
-        'sanction_country',
-        'no_of_pub_condition_10_years',
-        'no_of_pub_condition_5_years',
-        'no_of_pub_condition_2_years',
-        'english_ratio',
-        'english_condition',
-        'coauthor_condition',
-        'aff_condition',
-        'country_match_condition',
-        'retracted_condition',
-        'conditions_met',
-        'conditions_satisfied'
-      ],
-      // Data rows
-      ...reviewers.map(reviewer => [
-        reviewer.reviewer || '',
-        reviewer.email || '',
-        reviewer.aff || '',
-        reviewer.city || '',
-        reviewer.country || '',
-        reviewer.Total_Publications || 0,
-        reviewer.Total_Publications_first || 0,
-        reviewer.Total_Publications_last || 0,
-        reviewer.Publications_10_years || reviewer['Publications (last 10 years)'] || 0,
-        reviewer.Publications_10_years_first || 0,
-        reviewer.Publications_10_years_last || 0,
-        reviewer.Publications_5_years || 0,
-        reviewer.Publications_5_years_first || 0,
-        reviewer.Publications_5_years_last || 0,
-        reviewer.Relevant_Publications_5_years || reviewer['Relevant Publications (last 5 years)'] || 0,
-        reviewer.Relevant_Publications_5_years_first || 0,
-        reviewer.Relevant_Publications_5_years_last || 0,
-        reviewer.Relevant_Primary_Pub_2_years || 0,
-        reviewer.Relevant_Secondary_Pub_2_years || 0,
-        reviewer.Publications_2_years || reviewer['Publications (last 2 years)'] || 0,
-        reviewer.Publications_2_years_first || 0,
-        reviewer.Publications_2_years_last || 0,
-        reviewer.Publications_last_year || reviewer['Publications (last year)'] || 0,
-        reviewer.Publications_last_year_first || 0,
-        reviewer.Publications_last_year_last || 0,
-        reviewer.Clinical_Trials_no || 0,
-        reviewer.Retracted_Pubs_no || 0,
-        reviewer.Clinical_study_no || 0,
-        reviewer.Case_reports_no || 0,
-        reviewer.TF_Publications_last_year || 0,
-        reviewer.English_Pubs || 0,
-        reviewer.coauthor ? 'Yes' : 'No',
-        reviewer.country_match || '',
-        reviewer.aff_match || '',
-        reviewer.sanction_country || 'no',
-        reviewer.no_of_pub_condition_10_years || 0,
-        reviewer.no_of_pub_condition_5_years || 0,
-        reviewer.no_of_pub_condition_2_years || 0,
-        reviewer.english_ratio || 0,
-        reviewer.english_condition || 0,
-        reviewer.coauthor_condition || 0,
-        reviewer.aff_condition || 0,
-        reviewer.country_match_condition || 0,
-        reviewer.retracted_condition || 0,
-        reviewer.conditions_met || 0,
-        reviewer.conditions_satisfied || ''
-      ])
-    ];
+  private exportAsExcel(shortlist: Shortlist, reviewers: Reviewer[], selectedValidationConditions?: string[]): void {
+    try {
+      console.log('[ShortlistService] Exporting Excel with conditions:', selectedValidationConditions);
+      console.log('[ShortlistService] Reviewers being exported to Excel:', reviewers.length);
+      
+      // Generate CSV content using the same filtering logic
+      const csvContent = generateCSV(reviewers, selectedValidationConditions);
+      console.log('[ShortlistService] Generated CSV for Excel conversion');
+      
+      // Parse CSV more carefully to handle escaped fields
+      const lines = csvContent.split('\n');
+      const headers = this.parseCSVLine(lines[0]);
+      console.log('[ShortlistService] Parsed Excel headers:', headers);
+      
+      const dataRows = lines.slice(1).map((line, index) => {
+        const parsedRow = this.parseCSVLine(line);
+        console.log(`[ShortlistService] Parsed Excel row ${index + 1}:`, parsedRow);
+        return parsedRow;
+      });
 
-    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Reviewers');
+      console.log('[ShortlistService] Excel data structure:');
+      console.log('- Headers count:', headers.length);
+      console.log('- First row count:', dataRows[0]?.length || 0);
+      console.log('- Headers vs Row match:', headers.length === (dataRows[0]?.length || 0));
 
-    // Generate Excel file
-    XLSX.writeFile(workbook, `${shortlist.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.xlsx`);
+      const worksheetData = [headers, ...dataRows];
+      const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Reviewers');
+
+      // Generate Excel file
+      XLSX.writeFile(workbook, `${shortlist.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.xlsx`);
+      console.log('[ShortlistService] Excel file generated successfully');
+    } catch (error) {
+      console.error('Failed to export shortlist as Excel:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Parse a CSV line properly handling escaped fields
+   */
+  private parseCSVLine(line: string): string[] {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    let i = 0;
+
+    while (i < line.length) {
+      const char = line[i];
+      
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          // Escaped quote
+          current += '"';
+          i += 2;
+        } else {
+          // Toggle quote state
+          inQuotes = !inQuotes;
+          i++;
+        }
+      } else if (char === ',' && !inQuotes) {
+        // Field separator
+        result.push(current);
+        current = '';
+        i++;
+      } else {
+        current += char;
+        i++;
+      }
+    }
+    
+    // Add the last field
+    result.push(current);
+    
+    return result;
   }
 
   /**
    * Export shortlist as Word document (HTML-based)
    */
-  private exportAsWord(shortlist: Shortlist, reviewers: Reviewer[]): void {
-    const htmlContent = `
+  private exportAsWord(shortlist: Shortlist, reviewers: Reviewer[], selectedValidationConditions?: string[]): void {
+    try {
+      // Generate filtered data using JSON export logic to get structured data
+      const jsonContent = generateJSON(reviewers, selectedValidationConditions);
+      const exportData = JSON.parse(jsonContent);
+      
+      const htmlContent = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -466,6 +535,7 @@ class ShortlistService {
     tr:nth-child(even) { background-color: #f9f9f9; }
     .reviewer-section { margin-bottom: 40px; page-break-inside: avoid; }
     .info-label { font-weight: bold; color: #555; }
+    .conditions-info { background-color: #e8f4fd; padding: 10px; border-radius: 5px; margin-bottom: 20px; }
   </style>
 </head>
 <body>
@@ -473,10 +543,20 @@ class ShortlistService {
   <p><strong>Created:</strong> ${new Date(shortlist.createdAt).toLocaleDateString()}</p>
   <p><strong>Total Reviewers:</strong> ${reviewers.length}</p>
   
+  ${selectedValidationConditions && selectedValidationConditions.length > 0 ? `
+  <div class="conditions-info">
+    <h3>Selected Validation Conditions</h3>
+    <p>This export includes data only for the following validation conditions that were selected during the validation process:</p>
+    <ul>
+      ${selectedValidationConditions.map(condition => `<li>${condition}</li>`).join('')}
+    </ul>
+  </div>
+  ` : ''}
+  
   <h2>Reviewer Details</h2>
-  ${reviewers.map((reviewer, index) => `
+  ${exportData.reviewers.map((reviewer: any, index: number) => `
     <div class="reviewer-section">
-      <h3>${index + 1}. ${reviewer.reviewer || 'Unknown'}</h3>
+      <h3>${index + 1}. ${reviewer.name || 'Unknown'}</h3>
       <table>
         <tr>
           <th colspan="2">Contact Information</th>
@@ -487,229 +567,86 @@ class ShortlistService {
         </tr>
         <tr>
           <td class="info-label">Affiliation</td>
-          <td>${reviewer.aff || 'N/A'}</td>
+          <td>${reviewer.affiliation || 'N/A'}</td>
         </tr>
         <tr>
           <td class="info-label">Location</td>
-          <td>${reviewer.city || 'N/A'}, ${reviewer.country || 'N/A'}</td>
-        </tr>
-        <tr>
-          <th colspan="2">Publication Metrics</th>
-        </tr>
-        <tr>
-          <td class="info-label">Total Publications</td>
-          <td>${reviewer.Total_Publications || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Total Publications (First Author)</td>
-          <td>${reviewer.Total_Publications_first || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Total Publications (Last Author)</td>
-          <td>${reviewer.Total_Publications_last || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Publications (10 years)</td>
-          <td>${reviewer['Publications (last 10 years)'] || reviewer.Publications_10_years || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Publications (10 years, First Author)</td>
-          <td>${reviewer.Publications_10_years_first || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Publications (10 years, Last Author)</td>
-          <td>${reviewer.Publications_10_years_last || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Publications (5 years)</td>
-          <td>${reviewer.Publications_5_years || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Publications (5 years, First Author)</td>
-          <td>${reviewer.Publications_5_years_first || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Publications (5 years, Last Author)</td>
-          <td>${reviewer.Publications_5_years_last || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Relevant Publications (5 years)</td>
-          <td>${reviewer['Relevant Publications (last 5 years)'] || reviewer.Relevant_Publications_5_years || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Relevant Publications (5 years, First Author)</td>
-          <td>${reviewer.Relevant_Publications_5_years_first || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Relevant Publications (5 years, Last Author)</td>
-          <td>${reviewer.Relevant_Publications_5_years_last || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Publications (2 years)</td>
-          <td>${reviewer['Publications (last 2 years)'] || reviewer.Publications_2_years || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Publications (2 years, First Author)</td>
-          <td>${reviewer.Publications_2_years_first || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Publications (2 years, Last Author)</td>
-          <td>${reviewer.Publications_2_years_last || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Relevant Primary Publications (2 years)</td>
-          <td>${reviewer.Relevant_Primary_Pub_2_years || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Relevant Secondary Publications (2 years)</td>
-          <td>${reviewer.Relevant_Secondary_Pub_2_years || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Publications (last year)</td>
-          <td>${reviewer['Publications (last year)'] || reviewer.Publications_last_year || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Publications (last year, First Author)</td>
-          <td>${reviewer.Publications_last_year_first || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Publications (last year, Last Author)</td>
-          <td>${reviewer.Publications_last_year_last || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">English Publications</td>
-          <td>${reviewer.English_Pubs || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">English Ratio</td>
-          <td>${reviewer.english_ratio || 0}</td>
-        </tr>
-        <tr>
-          <th colspan="2">Research Focus</th>
-        </tr>
-        <tr>
-          <td class="info-label">Clinical Trials</td>
-          <td>${reviewer.Clinical_Trials_no || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Clinical Studies</td>
-          <td>${reviewer.Clinical_study_no || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Case Reports</td>
-          <td>${reviewer.Case_reports_no || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Retracted Publications</td>
-          <td>${reviewer.Retracted_Pubs_no || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">T&F Publications (last year)</td>
-          <td>${reviewer.TF_Publications_last_year || 0}</td>
+          <td>${reviewer.location?.city || 'N/A'}, ${reviewer.location?.country || 'N/A'}</td>
         </tr>
         <tr>
           <th colspan="2">Validation Status</th>
         </tr>
         <tr>
-          <td class="info-label">Coauthor</td>
-          <td>${reviewer.coauthor ? 'Yes' : 'No'}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Affiliation Match</td>
-          <td>${reviewer.aff_match || 'N/A'}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Country Match</td>
-          <td>${reviewer.country_match || 'N/A'}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Sanction Country</td>
-          <td>${reviewer.sanction_country || 'no'}</td>
-        </tr>
-        <tr>
           <td class="info-label">Conditions Met</td>
-          <td>${reviewer.conditions_met || 0}/9</td>
+          <td>${reviewer.validation?.conditionsMet || 0}/9</td>
         </tr>
         <tr>
           <td class="info-label">Conditions Satisfied</td>
-          <td>${reviewer.conditions_satisfied || 'N/A'}</td>
+          <td>${reviewer.validation?.conditionsSatisfied || 'N/A'}</td>
         </tr>
+        ${Object.keys(reviewer).filter(key => 
+          !['name', 'email', 'affiliation', 'location', 'validation'].includes(key)
+        ).map(key => `
         <tr>
-          <th colspan="2">Validation Conditions</th>
+          <td class="info-label">${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</td>
+          <td>${reviewer[key] || 'N/A'}</td>
         </tr>
-        <tr>
-          <td class="info-label">Publications (10 years) Condition</td>
-          <td>${reviewer.no_of_pub_condition_10_years || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Publications (5 years) Condition</td>
-          <td>${reviewer.no_of_pub_condition_5_years || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Publications (2 years) Condition</td>
-          <td>${reviewer.no_of_pub_condition_2_years || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">English Condition</td>
-          <td>${reviewer.english_condition || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Coauthor Condition</td>
-          <td>${reviewer.coauthor_condition || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Affiliation Condition</td>
-          <td>${reviewer.aff_condition || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Country Match Condition</td>
-          <td>${reviewer.country_match_condition || 0}</td>
-        </tr>
-        <tr>
-          <td class="info-label">Retracted Condition</td>
-          <td>${reviewer.retracted_condition || 0}</td>
-        </tr>
+        `).join('')}
       </table>
     </div>
   `).join('')}
 </body>
 </html>
-    `;
+      `;
 
-    const blob = new Blob([htmlContent], { type: 'application/msword' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${shortlist.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.doc`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+      const blob = new Blob([htmlContent], { type: 'application/msword' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${shortlist.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.doc`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to export shortlist as Word:', error);
+      throw error;
+    }
   }
 
   /**
    * Export a shortlist in the specified format
    */
-  async exportShortlist(processId: string, shortlistId: string, format: 'csv' | 'xlsx' | 'docx'): Promise<void> {
+  async exportShortlist(processId: string, shortlistId: string, format: 'csv' | 'xlsx' | 'docx' | 'json'): Promise<void> {
     try {
+      console.log('[ShortlistService] Starting export for process:', processId, 'shortlist:', shortlistId, 'format:', format);
+      
       const shortlist = await this.getShortlist(processId, shortlistId);
-      const reviewers = await this.getReviewerDetails(processId, shortlist.selectedReviewers);
+      const { reviewers, selectedValidationConditions } = await this.getReviewerDetails(processId, shortlist.selectedReviewers);
 
       if (reviewers.length === 0) {
         throw new Error('No reviewer details found for export');
       }
 
-      console.log('[ShortlistService] Exporting shortlist:', shortlist.name, 'Format:', format, 'Reviewers:', reviewers.length);
+      console.log('[ShortlistService] Export details:');
+      console.log('- Shortlist name:', shortlist.name);
+      console.log('- Format:', format);
+      console.log('- Reviewers count:', reviewers.length);
+      console.log('- Selected validation conditions:', selectedValidationConditions);
+      console.log('- Conditions count:', selectedValidationConditions?.length || 0);
 
       switch (format) {
         case 'csv':
-          this.exportAsCSV(shortlist, reviewers);
+          this.exportAsCSV(shortlist, reviewers, selectedValidationConditions);
           break;
         case 'xlsx':
-          this.exportAsExcel(shortlist, reviewers);
+          this.exportAsExcel(shortlist, reviewers, selectedValidationConditions);
           break;
         case 'docx':
-          this.exportAsWord(shortlist, reviewers);
+          this.exportAsWord(shortlist, reviewers, selectedValidationConditions);
+          break;
+        case 'json':
+          this.exportAsJSON(shortlist, reviewers, selectedValidationConditions);
           break;
         default:
           throw new Error(`Unsupported export format: ${format}`);

@@ -6,9 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
-import { Search, Database, AlertCircle, Loader2, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Search, Database, AlertCircle, Loader2, CheckCircle, XCircle, Clock, Users, Filter } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useInitiateSearch, useSearchProgress } from "@/hooks/useSearch";
+import { scholarFinderApiService } from "@/features/scholarfinder/services/ScholarFinderApiService";
+import { fileService } from "@/services/fileService";
 
 interface SearchDatabase {
   id: string;
@@ -81,6 +84,15 @@ export const ReviewerSearch = ({
 
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   
+  // Author selection state
+  const [selectedAuthors, setSelectedAuthors] = useState<Set<string>>(() => {
+    // Clear any existing selection since we changed from emails to author names
+    localStorage.removeItem(`process_${processId}_selectedAuthors`);
+    return new Set();
+  });
+  const [authorFilter, setAuthorFilter] = useState('');
+  const [isFilteringAuthors, setIsFilteringAuthors] = useState(false);
+  
   // Editable keyword string state
   const [isEditingKeywordString, setIsEditingKeywordString] = useState(false);
   const [editableKeywordString, setEditableKeywordString] = useState('');
@@ -134,6 +146,18 @@ export const ReviewerSearch = ({
   // Use storage results as fallback if state is empty
   const effectiveSearchResults = searchResults.length > 0 ? searchResults : searchResultsFromStorage;
   const hasSearchResults = effectiveSearchResults.length > 0;
+
+  // Filter authors based on search term - MOVED UP to avoid hoisting issues
+  const filteredResults = effectiveSearchResults.filter(result => {
+    if (!authorFilter.trim()) return true;
+    const term = authorFilter.toLowerCase();
+    return (
+      result.author.toLowerCase().includes(term) ||
+      result.email.toLowerCase().includes(term) ||
+      result.aff.toLowerCase().includes(term) ||
+      result.country?.toLowerCase().includes(term)
+    );
+  });
 
   // Load cached search results on component mount, but only if coming from later steps
   useEffect(() => {
@@ -378,6 +402,107 @@ export const ReviewerSearch = ({
     setEditableKeywordString(currentString);
     setIsEditingKeywordString(false);
   }, [keywordString, savedKeywordString]);
+
+  // Author selection functions
+  const getAuthorId = (result: SearchResult) => {
+    // Use author name as primary identifier, email as fallback
+    return result.author && result.author.trim() !== '' ? result.author : result.email;
+  };
+
+  const toggleAuthor = useCallback((authorId: string) => {
+    console.log('[ReviewerSearch] Toggling author:', authorId);
+    setSelectedAuthors(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(authorId)) {
+        newSet.delete(authorId);
+        console.log('[ReviewerSearch] Deselected author:', authorId);
+      } else {
+        newSet.add(authorId);
+        console.log('[ReviewerSearch] Selected author:', authorId);
+      }
+      // Save to localStorage
+      localStorage.setItem(`process_${processId}_selectedAuthors`, JSON.stringify(Array.from(newSet)));
+      console.log('[ReviewerSearch] Updated selection:', Array.from(newSet));
+      return newSet;
+    });
+  }, [processId]);
+
+  const selectAllAuthors = useCallback(() => {
+    const allIds = filteredResults.map(result => getAuthorId(result));
+    setSelectedAuthors(new Set(allIds));
+    localStorage.setItem(`process_${processId}_selectedAuthors`, JSON.stringify(allIds));
+    toast({
+      title: 'All Authors Selected',
+      description: `Selected ${allIds.length} authors for validation.`,
+    });
+  }, [filteredResults, processId, toast]);
+
+  const clearSelection = useCallback(() => {
+    setSelectedAuthors(new Set());
+    localStorage.setItem(`process_${processId}_selectedAuthors`, JSON.stringify([]));
+    toast({
+      title: 'Selection Cleared',
+      description: 'All authors have been deselected.',
+    });
+  }, [processId, toast]);
+
+  const saveSelectedAuthors = useCallback(async () => {
+    if (selectedAuthors.size === 0) {
+      toast({
+        title: 'No Authors Selected',
+        description: 'Please select at least one author to continue.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setIsFilteringAuthors(true);
+      
+      const selectedList = Array.from(selectedAuthors);
+      
+      // Get job ID and call the filter API
+      const jobId = fileService.getJobId(processId);
+      if (!jobId) {
+        toast({
+          title: 'Error',
+          description: 'No job ID found. Please upload a file first.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      console.log('[ReviewerSearch] Calling filter API with:', { jobId, selectedList });
+
+      // Call the filter API
+      const response = await scholarFinderApiService.filterSelectedAuthors(jobId, selectedList);
+      
+      console.log('[ReviewerSearch] Filter API response:', response);
+      
+      // Also save to localStorage as backup
+      localStorage.setItem(`process_${processId}_selectedAuthors`, JSON.stringify(selectedList));
+      
+      toast({
+        title: 'Authors Selected Successfully',
+        description: `${response.selected_count} authors have been selected for validation.`,
+      });
+      
+    } catch (error: any) {
+      console.error('Error filtering authors:', error);
+      
+      // Save to localStorage as fallback if API fails
+      const selectedList = Array.from(selectedAuthors);
+      localStorage.setItem(`process_${processId}_selectedAuthors`, JSON.stringify(selectedList));
+      
+      toast({
+        title: 'Selection Saved Locally',
+        description: `${selectedList.length} authors selected. API call failed but selection saved locally.`,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsFilteringAuthors(false);
+    }
+  }, [selectedAuthors, processId, toast]);
 
   const handleSearch = async () => {
     const enabledDatabases = databases.filter(db => db.enabled).map(db => db.id);
@@ -734,7 +859,7 @@ export const ReviewerSearch = ({
         </Card>
       )}
 
-      {/* Search Results Table */}
+      {/* Search Results Table with Selection */}
       {hasSearchResults && (
         <Card>
           <CardHeader>
@@ -742,18 +867,80 @@ export const ReviewerSearch = ({
               <CheckCircle className="w-5 h-5 text-green-500" />
               <span>Potential Reviewers</span>
               <Badge variant="secondary" className="ml-2">
-                {effectiveSearchResults.length} found
+                {filteredResults.length} found
               </Badge>
+              {selectedAuthors.size > 0 && (
+                <Badge variant="default" className="ml-2">
+                  {selectedAuthors.size} selected
+                </Badge>
+              )}
             </CardTitle>
             <CardDescription>
-              Preview of potential reviewers found in the selected databases
+              Select which authors you want to validate from the database search results
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="overflow-auto max-h-[600px]">
+          <CardContent className="space-y-4">
+            {/* Selection Controls */}
+            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+              <div className="flex-1 relative">
+                <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Filter by name, email, affiliation, or country..."
+                  value={authorFilter}
+                  onChange={(e) => setAuthorFilter(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={selectAllAuthors}
+                  className="flex items-center gap-1"
+                >
+                  <Users className="h-4 w-4" />
+                  Select All
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearSelection}
+                  className="flex items-center gap-1"
+                >
+                  <XCircle className="h-4 w-4" />
+                  Clear
+                </Button>
+              </div>
+            </div>
+
+            {/* Results Table */}
+            <div className="overflow-auto max-h-[600px] border rounded-lg">
               <table className="w-full border-collapse">
                 <thead>
-                  <tr className="border-b bg-muted/50">
+                  <tr className="border-b bg-muted/50 sticky top-0">
+                    <th className="p-3 text-left font-semibold w-12">
+                      <Checkbox
+                        checked={filteredResults.length > 0 && filteredResults.every(result => selectedAuthors.has(getAuthorId(result)))}
+                        indeterminate={filteredResults.some(result => selectedAuthors.has(getAuthorId(result))) && !filteredResults.every(result => selectedAuthors.has(getAuthorId(result)))}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            // Select all visible authors
+                            const visibleIds = filteredResults.map(result => getAuthorId(result));
+                            const newSelection = new Set([...selectedAuthors, ...visibleIds]);
+                            setSelectedAuthors(newSelection);
+                            localStorage.setItem(`process_${processId}_selectedAuthors`, JSON.stringify(Array.from(newSelection)));
+                          } else {
+                            // Deselect all visible authors
+                            const visibleIds = new Set(filteredResults.map(result => getAuthorId(result)));
+                            const newSelection = new Set([...selectedAuthors].filter(id => !visibleIds.has(id)));
+                            setSelectedAuthors(newSelection);
+                            localStorage.setItem(`process_${processId}_selectedAuthors`, JSON.stringify(Array.from(newSelection)));
+                          }
+                        }}
+                        aria-label="Select all visible authors"
+                      />
+                    </th>
                     <th className="p-3 text-left font-semibold">Author</th>
                     <th className="p-3 text-left font-semibold">Email</th>
                     <th className="p-3 text-left font-semibold">Affiliation</th>
@@ -762,20 +949,82 @@ export const ReviewerSearch = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {effectiveSearchResults.map((result, index) => (
-                    <tr key={index} className="border-b hover:bg-muted/30 transition-colors">
-                      <td className="p-3 font-medium">{result.author}</td>
-                      <td className="p-3 text-sm text-muted-foreground">{result.email || '-'}</td>
-                      <td className="p-3 text-sm">{result.aff || '-'}</td>
-                      <td className="p-3 text-sm">{result.city || '-'}</td>
-                      <td className="p-3 text-sm">{result.country || '-'}</td>
-                    </tr>
-                  ))}
+                  {filteredResults.map((result, index) => {
+                    const authorId = getAuthorId(result);
+                    const isSelected = selectedAuthors.has(authorId);
+                    
+                    const handleCheckboxChange = (checked: boolean) => {
+                      console.log('[ReviewerSearch] Checkbox changed:', { authorId, checked });
+                      toggleAuthor(authorId);
+                    };
+                    
+                    const handleRowClick = (e: React.MouseEvent) => {
+                      // Only handle row clicks, not checkbox clicks
+                      const target = e.target as HTMLElement;
+                      if (target.tagName === 'INPUT' || target.closest('button')) {
+                        return;
+                      }
+                      console.log('[ReviewerSearch] Row clicked:', authorId);
+                      toggleAuthor(authorId);
+                    };
+                    
+                    return (
+                      <tr 
+                        key={`${authorId}-${index}`}
+                        className={`border-b hover:bg-muted/30 transition-colors cursor-pointer ${
+                          isSelected ? 'bg-primary/5 border-primary/20' : ''
+                        }`}
+                        onClick={handleRowClick}
+                      >
+                        <td className="p-3">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={handleCheckboxChange}
+                            aria-label={`Select ${result.author}`}
+                          />
+                        </td>
+                        <td className="p-3 font-medium">{result.author}</td>
+                        <td className="p-3 text-sm text-muted-foreground">{result.email || '-'}</td>
+                        <td className="p-3 text-sm">{result.aff || '-'}</td>
+                        <td className="p-3 text-sm">{result.city || '-'}</td>
+                        <td className="p-3 text-sm">{result.country || '-'}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-            <div className="mt-4 text-sm text-muted-foreground">
-              Showing preview of {effectiveSearchResults.length} potential reviewers. Complete results will be available in the validation step.
+
+            {/* Selection Summary and Actions */}
+            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between pt-4 border-t">
+              <div className="text-sm text-muted-foreground">
+                Showing {filteredResults.length} of {effectiveSearchResults.length} authors
+                {selectedAuthors.size > 0 && (
+                  <span className="ml-2 font-medium text-primary">
+                    • {selectedAuthors.size} selected for validation
+                  </span>
+                )}
+              </div>
+              
+              {selectedAuthors.size > 0 && (
+                <Button 
+                  onClick={saveSelectedAuthors}
+                  disabled={isFilteringAuthors}
+                  className="flex items-center gap-2"
+                >
+                  {isFilteringAuthors ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving Selection...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="h-4 w-4" />
+                      Save Selection ({selectedAuthors.size} authors)
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>

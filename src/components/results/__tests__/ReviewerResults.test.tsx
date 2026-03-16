@@ -517,6 +517,150 @@ describe('ReviewerResults Component', () => {
     });
   });
 
+  describe('Validation Conditions Filtering', () => {
+    it('should display only selected validation conditions when provided', async () => {
+      const selectedConditions = ['Publications', 'Coauthor', 'Conflict of Interest'];
+      
+      mockUseRecommendations.mockReturnValue({
+        data: {
+          ...mockApiResponse,
+          reviewers: [mockReviewers[0]]
+        },
+        isLoading: false,
+        error: null,
+        refetch: vi.fn()
+      });
+
+      render(
+        <ReviewerResults 
+          processId="test-process" 
+          selectedValidationConditions={selectedConditions}
+        />,
+        { wrapper: createWrapper() }
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Dr. Alice Johnson')).toBeInTheDocument();
+      });
+
+      // Check that validation criteria section shows selected conditions info
+      expect(screen.getByText(/validation criteria/i)).toBeInTheDocument();
+      expect(screen.getByText(/showing 3 selected conditions/i)).toBeInTheDocument();
+      
+      // Should show Publications condition
+      expect(screen.getByText(/publications.*last 10 years.*≥ 8/i)).toBeInTheDocument();
+      
+      // Should show Coauthor condition
+      expect(screen.getByText(/no coauthorship/i)).toBeInTheDocument();
+      
+      // Should show Conflict of Interest condition
+      expect(screen.getByText(/no conflict of interest/i)).toBeInTheDocument();
+      
+      // Should NOT show conditions that weren't selected (e.g., Affiliation/Country match)
+      expect(screen.queryByText(/different affiliation/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/same country/i)).not.toBeInTheDocument();
+    });
+
+    it('should display all validation conditions when no selection provided', async () => {
+      mockUseRecommendations.mockReturnValue({
+        data: {
+          ...mockApiResponse,
+          reviewers: [mockReviewers[0]]
+        },
+        isLoading: false,
+        error: null,
+        refetch: vi.fn()
+      });
+
+      render(
+        <ReviewerResults processId="test-process" />,
+        { wrapper: createWrapper() }
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Dr. Alice Johnson')).toBeInTheDocument();
+      });
+
+      // Check validation criteria section exists
+      expect(screen.getByText(/validation criteria/i)).toBeInTheDocument();
+      
+      // Should show all default conditions
+      expect(screen.getByText(/publications.*last 10 years.*≥ 8/i)).toBeInTheDocument();
+      expect(screen.getByText(/no coauthorship/i)).toBeInTheDocument();
+      expect(screen.getByText(/different affiliation/i)).toBeInTheDocument();
+      expect(screen.getByText(/same country/i)).toBeInTheDocument();
+      expect(screen.getByText(/no conflict of interest/i)).toBeInTheDocument();
+    });
+
+    it('should handle complex validation condition mappings', async () => {
+      const selectedConditions = ['Publication Types', 'Affiliation/Country match', 'Study Type Detection'];
+      
+      mockUseRecommendations.mockReturnValue({
+        data: {
+          ...mockApiResponse,
+          reviewers: [mockReviewers[0]]
+        },
+        isLoading: false,
+        error: null,
+        refetch: vi.fn()
+      });
+
+      render(
+        <ReviewerResults 
+          processId="test-process" 
+          selectedValidationConditions={selectedConditions}
+        />,
+        { wrapper: createWrapper() }
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Dr. Alice Johnson')).toBeInTheDocument();
+      });
+
+      // Publication Types should show both 2-year publications and English publications
+      expect(screen.getByText(/publications.*last 2 years.*≥ 1/i)).toBeInTheDocument();
+      expect(screen.getByText(/english publications.*> 50%/i)).toBeInTheDocument();
+      
+      // Affiliation/Country match should show both affiliation and country checks
+      expect(screen.getByText(/different affiliation/i)).toBeInTheDocument();
+      expect(screen.getByText(/same country/i)).toBeInTheDocument();
+      
+      // Study Type Detection should show study type analysis
+      expect(screen.getByText(/study type analysis available/i)).toBeInTheDocument();
+    });
+
+    it('should handle empty validation conditions array', async () => {
+      const selectedConditions: string[] = [];
+      
+      mockUseRecommendations.mockReturnValue({
+        data: {
+          ...mockApiResponse,
+          reviewers: [mockReviewers[0]]
+        },
+        isLoading: false,
+        error: null,
+        refetch: vi.fn()
+      });
+
+      render(
+        <ReviewerResults 
+          processId="test-process" 
+          selectedValidationConditions={selectedConditions}
+        />,
+        { wrapper: createWrapper() }
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Dr. Alice Johnson')).toBeInTheDocument();
+      });
+
+      // Should fall back to showing all conditions when empty array is provided
+      expect(screen.getByText(/validation criteria/i)).toBeInTheDocument();
+      expect(screen.getByText(/publications.*last 10 years.*≥ 8/i)).toBeInTheDocument();
+      expect(screen.getByText(/no coauthorship/i)).toBeInTheDocument();
+    });
+  });
+
   describe('Export Functionality', () => {
     it('should disable export button when no reviewers selected', async () => {
       mockUseRecommendations.mockReturnValue({

@@ -793,11 +793,13 @@ def manual_authors(
 # -----------------------------------------------------------
 @app.post("/validate_authors")
 def validate_authors(
-        job_id: str = Form(..., description="Unique job ID")
+        job_id: str = Form(..., description="Unique job ID"),
+        selected_authors: str = Form(None, description="JSON string of selected author emails (optional)")
 ):
     """
     Validate authors: fetch publication metrics, coauthoring, and condition scoring.
     Uses author_email_df_before_val.csv and keyword string from the given job folder.
+    If selected_authors is provided, only validate those specific authors.
     """
 
     job_dir = BASE_DIR / job_id
@@ -812,18 +814,50 @@ def validate_authors(
     # print("\nvalidate_authors started...")
     logger.info(f"validate_authors started for job_id: {job_id}")
 
-    # Load author_email_df_before_val
+    # Load author_email_df_before_val or filtered version
+    # Check for filtered file first (from author selection)
+    filtered_path = job_dir / "author_email_df_selected.csv"
     author_email_df_path = job_dir / "author_email_df_before_val.csv"
-    if not author_email_df_path.exists():
-        # print("author_email_df_before_val.csv not found.")
-        logger.error("author_email_df_before_val.csv not found.")
+    
+    if filtered_path.exists():
+        # Use filtered authors if selection was made
+        author_email_df = pd.read_csv(filtered_path)
+        logger.info(f"Loaded filtered author selection from author_email_df_selected.csv with {len(author_email_df)} authors")
+    elif author_email_df_path.exists():
+        # Use all authors if no selection was made
+        author_email_df = pd.read_csv(author_email_df_path)
+        logger.info(f"Loaded all authors from author_email_df_before_val.csv with {len(author_email_df)} authors")
+        
+        # Apply selection filter if provided via API
+        if selected_authors:
+            try:
+                selected_list = json.loads(selected_authors)
+                if selected_list and len(selected_list) > 0:
+                    logger.info(f"Filtering to {len(selected_list)} selected authors via API")
+                    # Filter by email (primary key) or author name as fallback
+                    author_email_df = author_email_df[
+                        author_email_df['email'].isin(selected_list) | 
+                        author_email_df['author'].isin(selected_list)
+                    ]
+                    logger.info(f"After API filtering: {len(author_email_df)} authors to validate")
+                    
+                    if len(author_email_df) == 0:
+                        return JSONResponse(
+                            content={"error": "No matching authors found from selection."},
+                            status_code=400
+                        )
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse selected_authors JSON: {e}")
+                return JSONResponse(
+                    content={"error": "Invalid selected_authors format."},
+                    status_code=400
+                )
+    else:
+        logger.error("No author data found.")
         return JSONResponse(
-            content={"error": "No author_email_df_before_val.csv found. Please run /database_search first."},
+            content={"error": "No author data found. Please run /database_search first."},
             status_code=404
         )
-
-    author_email_df = pd.read_csv(author_email_df_path)
-    logger.info(f"Loaded author_email_df_before_val.csv with {len(author_email_df)} authors")
 
     # Load keyword string
     keyword_files = list(job_dir.glob("*_keywordstring.json"))

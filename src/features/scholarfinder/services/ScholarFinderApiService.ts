@@ -927,7 +927,7 @@ export class ScholarFinderApiService {
    * Step 6: Validate authors against conflict rules
    * Note: This is a long-running process (up to 1 hour). 504 timeouts are expected and should be treated as "still processing"
    */
-  async validateAuthors(jobId: string): Promise<ValidationResponse> {
+  async validateAuthors(jobId: string, selectedAuthors?: string[]): Promise<ValidationResponse> {
     if (!jobId) {
       throw {
         type: ScholarFinderErrorType.VALIDATION_ERROR,
@@ -939,11 +939,27 @@ export class ScholarFinderApiService {
     // Use direct API call without retries for validation (long-running process)
     try {
       console.log('[ScholarFinderApiService.validateAuthors] 🚀 Starting validation for jobId:', jobId);
+      console.log('[ScholarFinderApiService.validateAuthors] 📋 Selected authors:', selectedAuthors);
+      
+      // Prepare form data if selected authors are provided
+      let requestData: any = undefined;
+      let headers: any = undefined;
+      
+      if (selectedAuthors && selectedAuthors.length > 0) {
+        const formData = new URLSearchParams();
+        formData.append('job_id', jobId);
+        formData.append('selected_authors', JSON.stringify(selectedAuthors));
+        requestData = formData.toString();
+        headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+        console.log('[ScholarFinderApiService.validateAuthors] 🎯 Validating only selected authors:', selectedAuthors.length);
+      }
       
       // Send job_id as query parameter (as expected by the Python API)
       const response = await this.apiService.request<ValidationResponse>({
         method: 'POST',
-        url: `/validate_authors?job_id=${encodeURIComponent(jobId)}`,
+        url: `/validate_authors${!requestData ? `?job_id=${encodeURIComponent(jobId)}` : ''}`,
+        data: requestData,
+        headers: headers,
         timeout: 3600000, // 1 hour timeout for validation
         retries: 0 // No retries for validation
       });
@@ -995,6 +1011,62 @@ export class ScholarFinderApiService {
       
       const scholarFinderError = this.handleApiError(error, 'author validation');
       console.error('[ScholarFinderApiService.validateAuthors] 🔥 Throwing processed error:', scholarFinderError);
+      throw scholarFinderError;
+    }
+  }
+
+  /**
+   * Filter selected authors - calls the new /filter_selected_authors endpoint
+   */
+  async filterSelectedAuthors(jobId: string, selectedAuthors: string[]): Promise<{
+    job_id: string;
+    selected_count: number;
+    preview: any[];
+  }> {
+    if (!jobId) {
+      throw {
+        type: ScholarFinderErrorType.SEARCH_ERROR,
+        message: 'Job ID is required for author filtering',
+        retryable: false
+      } as ScholarFinderError;
+    }
+
+    if (!selectedAuthors || selectedAuthors.length === 0) {
+      throw {
+        type: ScholarFinderErrorType.SEARCH_ERROR,
+        message: 'At least one author must be selected',
+        retryable: false
+      } as ScholarFinderError;
+    }
+
+    try {
+      console.log('[ScholarFinderApiService.filterSelectedAuthors] 🎯 Filtering authors:', selectedAuthors);
+      
+      // Prepare form data
+      const formData = new URLSearchParams();
+      selectedAuthors.forEach(author => {
+        formData.append('selected_authors', author);
+      });
+
+      const response = await this.apiService.request<{
+        job_id: string;
+        selected_count: number;
+        preview: any[];
+      }>({
+        method: 'POST',
+        url: `/filter_selected_authors?job_id=${encodeURIComponent(jobId)}`,
+        data: formData.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        timeout: 30000 // 30 seconds timeout
+      });
+      
+      console.log('[ScholarFinderApiService.filterSelectedAuthors] ✅ Authors filtered successfully:', response);
+      return response as any;
+    } catch (error) {
+      console.error('[ScholarFinderApiService.filterSelectedAuthors] ❌ Error filtering authors:', error);
+      const scholarFinderError = this.handleApiError(error, 'author filtering');
       throw scholarFinderError;
     }
   }
@@ -1282,6 +1354,92 @@ export class ScholarFinderApiService {
       }
       
       const scholarFinderError = this.handleApiError(error, 'COI publications retrieval');
+      throw scholarFinderError;
+    }
+  }
+
+  /**
+   * Step 6: Validate authors with selected conditions
+   */
+  async validateAuthorsWithConditions(jobId: string, selectedConditions: string[]): Promise<{
+    message: string;
+    job_id: string;
+    total_authors: number;
+    top_5_preview: any[];
+  }> {
+    if (!jobId) {
+      throw {
+        type: ScholarFinderErrorType.VALIDATION_ERROR,
+        message: 'Job ID is required for author validation',
+        retryable: false
+      } as ScholarFinderError;
+    }
+
+    if (!selectedConditions || selectedConditions.length === 0) {
+      throw {
+        type: ScholarFinderErrorType.VALIDATION_ERROR,
+        message: 'At least one validation condition must be selected',
+        retryable: false
+      } as ScholarFinderError;
+    }
+
+    console.log('[ScholarFinderApiService.validateAuthorsWithConditions] 🔍 Starting validation with conditions:', selectedConditions);
+
+    // The API expects application/x-www-form-urlencoded format
+    const formData = new URLSearchParams();
+    selectedConditions.forEach(condition => {
+      formData.append('selected_conditions', condition);
+    });
+
+    try {
+      // Use extended timeout for validation - this operation can take 10-20 minutes
+      const response = await this.apiService.request<{
+        message: string;
+        job_id: string;
+        total_authors: number;
+        top_5_preview: any[];
+      }>({
+        method: 'POST',
+        url: `/validate_authors?job_id=${encodeURIComponent(jobId)}`,
+        data: formData.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        timeout: 1800000, // 30 minutes timeout for validation
+        retries: 0 // No retries for long-running operations
+      });
+      
+      console.log('[ScholarFinderApiService.validateAuthorsWithConditions] ✅ Validation completed successfully');
+      
+      return response as any;
+    } catch (error) {
+      console.error('[ScholarFinderApiService.validateAuthorsWithConditions] ❌ Validation error:', error);
+      
+      // Handle 504 Gateway Timeout specially - validation might still be running
+      const is504Timeout = (
+        (error as any)?.userError?.type === 'GATEWAY_TIMEOUT' || 
+        (error as any)?.type === 'GATEWAY_TIMEOUT' ||
+        (error as any)?.type === 'TIMEOUT_ERROR' ||
+        (error as any)?.details?.status === 504 ||
+        (error as any)?.response?.status === 504 ||
+        (error as any)?.status === 504 ||
+        error?.message?.includes('504') ||
+        error?.message?.includes('Gateway Timeout')
+      );
+      
+      if (is504Timeout) {
+        console.warn('[ScholarFinderApiService.validateAuthorsWithConditions] 504 timeout - validation may still be running');
+        
+        // Return a partial success response
+        return {
+          message: 'Author validation initiated successfully and may still be processing',
+          job_id: jobId,
+          total_authors: 0,
+          top_5_preview: []
+        };
+      }
+      
+      const scholarFinderError = this.handleApiError(error, 'author validation');
       throw scholarFinderError;
     }
   }

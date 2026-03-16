@@ -42,9 +42,10 @@ interface ReviewerResultsProps {
   processId: string;
   onShortlistCreated?: () => void;
   validationData?: any; // Optional validation data to display instead of fetching
+  selectedValidationConditions?: string[]; // Selected validation conditions for export filtering
 }
 
-export const ReviewerResults = ({ processId, onShortlistCreated, validationData }: ReviewerResultsProps) => {
+export const ReviewerResults = ({ processId, onShortlistCreated, validationData, selectedValidationConditions }: ReviewerResultsProps) => {
   // State for filtering and search
   const [searchTerm, setSearchTerm] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -344,24 +345,25 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
     }
 
     try {
-      // Export based on format
+      // Export based on format, passing selected validation conditions
       if (format === 'csv') {
-        exportReviewersAsCSV(selectedReviewers);
+        exportReviewersAsCSV(selectedReviewers, selectedValidationConditions);
       } else {
-        exportReviewersAsJSON(selectedReviewers);
+        exportReviewersAsJSON(selectedReviewers, selectedValidationConditions);
       }
 
       // Log the export activity
       const logger = ActivityLogger.getInstance();
       await logger.logActivity(
         'EXPORT',
-        `Exported ${selectedReviewers.length} reviewers as ${format.toUpperCase()}`,
+        `Exported ${selectedReviewers.length} reviewers as ${format.toUpperCase()}${selectedValidationConditions ? ` with ${selectedValidationConditions.length} selected conditions` : ''}`,
         JSON.stringify({
           processId,
           format,
           reviewerCount: selectedReviewers.length,
           reviewerNames: selectedReviewers.map(r => r.reviewer),
-          averageConditionsMet: selectedReviewers.reduce((sum, r) => sum + r.conditions_met, 0) / selectedReviewers.length
+          averageConditionsMet: selectedReviewers.reduce((sum, r) => sum + r.conditions_met, 0) / selectedReviewers.length,
+          selectedValidationConditions: selectedValidationConditions || []
         })
       );
     } catch (error) {
@@ -919,228 +921,357 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
                         </div>
                       </div>
 
-                      {/* Research Focus Areas */}
-                      <div>
-                        <div className="flex items-center mb-3">
-                          <div className="w-2 h-2 bg-purple-500 rounded-full mr-2"></div>
-                          <h5 className="text-sm font-medium text-gray-700">Research Focus Areas</h5>
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                          <div className="p-3 bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-lg border border-indigo-200 text-center">
-                            <div className="text-xs font-medium text-indigo-700 mb-1">Clinical Trials</div>
-                            <div className="text-lg font-bold text-indigo-900">{reviewer.Clinical_Trials_no || 0}</div>
-                            <div className="text-xs text-indigo-600">Research studies</div>
+                      {/* Research Focus Areas - Show different parts based on selected conditions */}
+                      {(!selectedValidationConditions || selectedValidationConditions.length === 0 || 
+                        selectedValidationConditions.includes('Publication Types') || 
+                        selectedValidationConditions.includes('T&F Publications last year')) && (
+                        <div>
+                          <div className="flex items-center mb-3">
+                            <div className="w-2 h-2 bg-purple-500 rounded-full mr-2"></div>
+                            <h5 className="text-sm font-medium text-gray-700">Research Focus Areas</h5>
                           </div>
-                          
-                          <div className="p-3 bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-lg border border-cyan-200 text-center">
-                            <div className="text-xs font-medium text-cyan-700 mb-1">Clinical Studies</div>
-                            <div className="text-lg font-bold text-cyan-900">{reviewer.Clinical_study_no || 0}</div>
-                            <div className="text-xs text-cyan-600">Clinical research</div>
-                          </div>
-                          
-                          <div className="p-3 bg-gradient-to-br from-teal-50 to-teal-100 rounded-lg border border-teal-200 text-center">
-                            <div className="text-xs font-medium text-teal-700 mb-1">Case Reports</div>
-                            <div className="text-lg font-bold text-teal-900">{reviewer.Case_reports_no || 0}</div>
-                            <div className="text-xs text-teal-600">Case studies</div>
-                          </div>
-                          
-                          <div className="p-3 bg-gradient-to-br from-red-50 to-red-100 rounded-lg border border-red-200 text-center">
-                            <div className="text-xs font-medium text-red-700 mb-1">Retractions</div>
-                            <div className="text-lg font-bold text-red-900">{reviewer.Retracted_Pubs_no || 0}</div>
-                            <div className="text-xs text-red-600">Quality indicator</div>
-                          </div>
-                          
-                          <div className="p-3 bg-gradient-to-br from-violet-50 to-violet-100 rounded-lg border border-violet-200 text-center">
-                            <div className="text-xs font-medium text-violet-700 mb-1">T&F Publications</div>
-                            <div className="text-lg font-bold text-violet-900">{reviewer.TF_Publications_last_year || 0}</div>
-                            <div className="text-xs text-violet-600">Last year</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Study Type Distribution */}
-                      <div className="mt-6">
-                        <div className="flex items-center mb-3">
-                          <div className="w-2 h-2 bg-orange-500 rounded-full mr-2"></div>
-                          <h5 className="text-sm font-medium text-gray-700">Study Type Distribution</h5>
-                        </div>
-                        <div className="grid grid-cols-3 gap-3">
-                          {(() => {
-                            // Parse the study_type JSON string
-                            let studyTypeCounts = { in_vivo: 0, in_vitro: 0, in_silico: 0 };
-                            try {
-                              if (reviewer.study_type) {
-                                const parsedStudyType = JSON.parse(reviewer.study_type.replace(/'/g, '"'));
-                                studyTypeCounts = parsedStudyType.study_type_counts || studyTypeCounts;
-                              }
-                            } catch (error) {
-                              console.log('Error parsing study_type for reviewer:', reviewer.reviewer, error);
-                            }
-                            
-                            return (
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                            {/* Publication Types related items */}
+                            {(!selectedValidationConditions || selectedValidationConditions.length === 0 || selectedValidationConditions.includes('Publication Types')) && (
                               <>
-                                <div className="p-3 bg-gradient-to-br from-green-50 to-green-100 rounded-lg border border-green-200 text-center">
-                                  <div className="text-xs font-medium text-green-700 mb-1">In Vivo</div>
-                                  <div className="text-lg font-bold text-green-900">{studyTypeCounts.in_vivo}</div>
-                                  <div className="text-xs text-green-600">Animal studies</div>
+                                <div className="p-3 bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-lg border border-indigo-200 text-center">
+                                  <div className="text-xs font-medium text-indigo-700 mb-1">Clinical Trials</div>
+                                  <div className="text-lg font-bold text-indigo-900">{reviewer.Clinical_Trials_no || 0}</div>
+                                  <div className="text-xs text-indigo-600">Research studies</div>
                                 </div>
                                 
-                                <div className="p-3 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200 text-center">
-                                  <div className="text-xs font-medium text-blue-700 mb-1">In Vitro</div>
-                                  <div className="text-lg font-bold text-blue-900">{studyTypeCounts.in_vitro}</div>
-                                  <div className="text-xs text-blue-600">Lab studies</div>
+                                <div className="p-3 bg-gradient-to-br from-cyan-50 to-cyan-100 rounded-lg border border-cyan-200 text-center">
+                                  <div className="text-xs font-medium text-cyan-700 mb-1">Clinical Studies</div>
+                                  <div className="text-lg font-bold text-cyan-900">{reviewer.Clinical_study_no || 0}</div>
+                                  <div className="text-xs text-cyan-600">Clinical research</div>
                                 </div>
                                 
-                                <div className="p-3 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200 text-center">
-                                  <div className="text-xs font-medium text-purple-700 mb-1">In Silico</div>
-                                  <div className="text-lg font-bold text-purple-900">{studyTypeCounts.in_silico}</div>
-                                  <div className="text-xs text-purple-600">Computational</div>
+                                <div className="p-3 bg-gradient-to-br from-teal-50 to-teal-100 rounded-lg border border-teal-200 text-center">
+                                  <div className="text-xs font-medium text-teal-700 mb-1">Case Reports</div>
+                                  <div className="text-lg font-bold text-teal-900">{reviewer.Case_reports_no || 0}</div>
+                                  <div className="text-xs text-teal-600">Case studies</div>
+                                </div>
+                                
+                                <div className="p-3 bg-gradient-to-br from-red-50 to-red-100 rounded-lg border border-red-200 text-center">
+                                  <div className="text-xs font-medium text-red-700 mb-1">Retractions</div>
+                                  <div className="text-lg font-bold text-red-900">{reviewer.Retracted_Pubs_no || 0}</div>
+                                  <div className="text-xs text-red-600">Quality indicator</div>
                                 </div>
                               </>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Validation Criteria */}
-                    <div role="region" aria-label="Validation criteria">
-                      <h4 className="text-sm font-medium mb-2">
-                        Validation Criteria ({reviewer.conditions_satisfied})
-                      </h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm" role="list">
-                        <div className="flex items-center space-x-2">
-                          {getValidationIcon(reviewer['Publications (last 10 years)'] >= 8)}
-                          <span>Publications (last 10 years) ≥ 8</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {getValidationIcon(reviewer['Relevant Publications (last 5 years)'] >= 3)}
-                          <span>Relevant Publications (last 5 years) ≥ 3</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {getValidationIcon(reviewer['Publications (last 2 years)'] >= 1)}
-                          <span>Publications (last 2 years) ≥ 1</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {getValidationIcon(reviewer.English_Pubs > reviewer.Total_Publications / 2)}
-                          <span>English Publications &gt; 50%</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {getValidationIcon(!reviewer.coauthor)}
-                          <span>No Coauthorship</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {getValidationIcon(reviewer.aff_match === 'no')}
-                          <span>Different Affiliation</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {getValidationIcon(reviewer.country_match === 'yes')}
-                          <span>Same Country</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {getValidationIcon(reviewer.Retracted_Pubs_no <= 1)}
-                          <span>No Retracted Publications</span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {getValidationIcon((() => {
-                            const hasAuthorId = (value: any) => {
-                              if (typeof value === 'string') {
-                                // Check if string contains author ID pattern: A followed by numbers
-                                return /A\d+/.test(value);
-                              }
-                              return false;
-                            };
-                            // No COI if FALSE/False or if no author ID detected
-                            return (reviewer.coi_coauthor === false || reviewer.coi_coauthor === 'FALSE' || reviewer.coi_coauthor === 'False') || !hasAuthorId(reviewer.coi_coauthor);
-                          })())}
-                          <span>No Conflict of Interest</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* COI Container for this reviewer */}
-                    <div role="region" aria-label="Conflict of Interest details">
-                      {(() => {
-                        // Determine COI status based on coi_coauthor column
-                        // COI is "No" if coi_coauthor is FALSE or False
-                        // COI is "Yes" only when coi_coauthor contains author ID format (A followed by numbers)
-                        const hasAuthorId = (value: any) => {
-                          if (typeof value === 'string') {
-                            // Check if string contains author ID pattern: A followed by numbers
-                            return /A\d+/.test(value);
-                          }
-                          return false;
-                        };
-                        
-                        const coiStatus = (reviewer.coi_coauthor === false || reviewer.coi_coauthor === 'FALSE' || reviewer.coi_coauthor === 'False') 
-                          ? 'No' 
-                          : hasAuthorId(reviewer.coi_coauthor) 
-                            ? 'Yes' 
-                            : 'No';
-                        const coiColor = coiStatus === 'No' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200';
-                        const coiTextColor = coiStatus === 'No' ? 'text-green-800' : 'text-red-800';
-                        const coiBadgeColor = coiStatus === 'No' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
-                        const coiIcon = coiStatus === 'No' ? '✓' : '⚠';
-                        
-                        return (
-                          <div className={`p-4 rounded-lg border ${coiColor} text-center`}>
-                            {coiStatus === 'Yes' ? (
-                              <button
-                                onClick={() => handleCOIClick(reviewer)}
-                                className={`flex items-center justify-center gap-3 w-full hover:opacity-80 transition-opacity cursor-pointer`}
-                              >
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${coiStatus === 'No' ? 'bg-green-100' : 'bg-red-100'}`}>
-                                  <span className={`text-sm font-bold ${coiTextColor}`}>{coiIcon}</span>
-                                </div>
-                                <div>
-                                  <h4 className={`text-sm font-medium ${coiTextColor} underline`}>
-                                    Conflict of Interest: {coiStatus}
-                                  </h4>
-                                </div>
-                              </button>
-                            ) : (
-                              <div className="flex items-center justify-center gap-3">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${coiStatus === 'No' ? 'bg-green-100' : 'bg-red-100'}`}>
-                                  <span className={`text-sm font-bold ${coiTextColor}`}>{coiIcon}</span>
-                                </div>
-                                <div>
-                                  <h4 className={`text-sm font-medium ${coiTextColor}`}>
-                                    Conflict of Interest: {coiStatus}
-                                  </h4>
-                                </div>
+                            )}
+                            
+                            {/* T&F Publications - controlled by T&F Publications last year condition */}
+                            {(!selectedValidationConditions || selectedValidationConditions.length === 0 || selectedValidationConditions.includes('T&F Publications last year')) && (
+                              <div className="p-3 bg-gradient-to-br from-violet-50 to-violet-100 rounded-lg border border-violet-200 text-center">
+                                <div className="text-xs font-medium text-violet-700 mb-1">T&F Publications</div>
+                                <div className="text-lg font-bold text-violet-900">{reviewer.TF_Publications_last_year || 0}</div>
+                                <div className="text-xs text-violet-600">Last year</div>
                               </div>
                             )}
                           </div>
-                        );
-                      })()}
+                        </div>
+                      )}
+
+                      {/* Study Type Distribution - Only show if Study Type Detection is selected */}
+                      {(!selectedValidationConditions || selectedValidationConditions.length === 0 || selectedValidationConditions.includes('Study Type Detection')) && (
+                        <div className="mt-6">
+                          <div className="flex items-center mb-3">
+                            <div className="w-2 h-2 bg-orange-500 rounded-full mr-2"></div>
+                            <h5 className="text-sm font-medium text-gray-700">Study Type Distribution</h5>
+                          </div>
+                          <div className="grid grid-cols-3 gap-3">
+                            {(() => {
+                              // Parse the study_type JSON string
+                              let studyTypeCounts = { in_vivo: 0, in_vitro: 0, in_silico: 0 };
+                              try {
+                                if (reviewer.study_type) {
+                                  const parsedStudyType = JSON.parse(reviewer.study_type.replace(/'/g, '"'));
+                                  studyTypeCounts = parsedStudyType.study_type_counts || studyTypeCounts;
+                                }
+                              } catch (error) {
+                                console.log('Error parsing study_type for reviewer:', reviewer.reviewer, error);
+                              }
+                              
+                              return (
+                                <>
+                                  <div className="p-3 bg-gradient-to-br from-green-50 to-green-100 rounded-lg border border-green-200 text-center">
+                                    <div className="text-xs font-medium text-green-700 mb-1">In Vivo</div>
+                                    <div className="text-lg font-bold text-green-900">{studyTypeCounts.in_vivo}</div>
+                                    <div className="text-xs text-green-600">Animal studies</div>
+                                  </div>
+                                  
+                                  <div className="p-3 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg border border-blue-200 text-center">
+                                    <div className="text-xs font-medium text-blue-700 mb-1">In Vitro</div>
+                                    <div className="text-lg font-bold text-blue-900">{studyTypeCounts.in_vitro}</div>
+                                    <div className="text-xs text-blue-600">Lab studies</div>
+                                  </div>
+                                  
+                                  <div className="p-3 bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg border border-purple-200 text-center">
+                                    <div className="text-xs font-medium text-purple-700 mb-1">In Silico</div>
+                                    <div className="text-lg font-bold text-purple-900">{studyTypeCounts.in_silico}</div>
+                                    <div className="text-xs text-purple-600">Computational</div>
+                                  </div>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Sanction Country Container */}
-                    <div role="region" aria-label="Sanction Country status">
-                      {(() => {
-                        // Determine Sanction Country status
-                        // Convert to lowercase for comparison, default to "no"
-                        const sanctionStatus = (reviewer.sanction_country || 'no').toLowerCase() === 'yes' ? 'Yes' : 'No';
-                        const sanctionColor = sanctionStatus === 'No' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200';
-                        const sanctionTextColor = sanctionStatus === 'No' ? 'text-green-800' : 'text-red-800';
-                        const sanctionIcon = sanctionStatus === 'No' ? '✓' : '⚠';
-                        
-                        return (
-                          <div className={`p-4 rounded-lg border ${sanctionColor} text-center`}>
-                            <div className="flex items-center justify-center gap-3">
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${sanctionStatus === 'No' ? 'bg-green-100' : 'bg-red-100'}`}>
-                                <span className={`text-sm font-bold ${sanctionTextColor}`}>{sanctionIcon}</span>
-                              </div>
-                              <div>
-                                <h4 className={`text-sm font-medium ${sanctionTextColor}`}>
-                                  Sanction Country: {sanctionStatus}
-                                </h4>
+                    {/* Validation Criteria - Only show selected conditions */}
+                    <div role="region" aria-label="Validation criteria">
+                      <h4 className="text-sm font-medium mb-2">
+                        Validation Criteria ({reviewer.conditions_satisfied})
+                        {selectedValidationConditions && selectedValidationConditions.length > 0 && (
+                          <span className="text-xs text-muted-foreground ml-2">
+                            (Showing {selectedValidationConditions.length} selected conditions)
+                          </span>
+                        )}
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm" role="list">
+                        {/* Only show validation conditions that were selected during validation */}
+                        {(!selectedValidationConditions || selectedValidationConditions.length === 0) ? (
+                          // Fallback: Show all conditions if no selection data available
+                          <>
+                            <div className="flex items-center space-x-2">
+                              {getValidationIcon(reviewer['Publications (last 10 years)'] >= 8)}
+                              <span>Publications (last 10 years) ≥ 8</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              {getValidationIcon(reviewer['Relevant Publications (last 5 years)'] >= 3)}
+                              <span>Relevant Publications (last 5 years) ≥ 3</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              {getValidationIcon(reviewer['Publications (last 2 years)'] >= 1)}
+                              <span>Publications (last 2 years) ≥ 1</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              {getValidationIcon(reviewer.English_Pubs > reviewer.Total_Publications / 2)}
+                              <span>English Publications &gt; 50%</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              {getValidationIcon(!reviewer.coauthor)}
+                              <span>No Coauthorship</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              {getValidationIcon(reviewer.aff_match === 'no')}
+                              <span>Different Affiliation</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              {getValidationIcon(reviewer.country_match === 'yes')}
+                              <span>Same Country</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              {getValidationIcon(reviewer.Retracted_Pubs_no <= 1)}
+                              <span>No Retracted Publications</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              {getValidationIcon((() => {
+                                const hasAuthorId = (value: any) => {
+                                  if (typeof value === 'string') {
+                                    // Check if string contains author ID pattern: A followed by numbers
+                                    return /A\d+/.test(value);
+                                  }
+                                  return false;
+                                };
+                                // No COI if FALSE/False or if no author ID detected
+                                return (reviewer.coi_coauthor === false || reviewer.coi_coauthor === 'FALSE' || reviewer.coi_coauthor === 'False') || !hasAuthorId(reviewer.coi_coauthor);
+                              })())}
+                              <span>No Conflict of Interest</span>
+                            </div>
+                          </>
+                        ) : (
+                          // Show only selected validation conditions
+                          selectedValidationConditions.map(conditionId => {
+                            switch (conditionId) {
+                              case 'Publications':
+                                return (
+                                  <div key="publications" className="flex items-center space-x-2">
+                                    {getValidationIcon(reviewer['Publications (last 10 years)'] >= 8)}
+                                    <span>Publications (last 10 years) ≥ 8</span>
+                                  </div>
+                                );
+                              case 'Relevant Publications':
+                                return (
+                                  <div key="relevant-publications" className="flex items-center space-x-2">
+                                    {getValidationIcon(reviewer['Relevant Publications (last 5 years)'] >= 3)}
+                                    <span>Relevant Publications (last 5 years) ≥ 3</span>
+                                  </div>
+                                );
+                              case 'Publication Types':
+                                return (
+                                  <>
+                                    <div key="publications-2y" className="flex items-center space-x-2">
+                                      {getValidationIcon(reviewer['Publications (last 2 years)'] >= 1)}
+                                      <span>Publications (last 2 years) ≥ 1</span>
+                                    </div>
+                                    <div key="english-pubs" className="flex items-center space-x-2">
+                                      {getValidationIcon(reviewer.English_Pubs > reviewer.Total_Publications / 2)}
+                                      <span>English Publications &gt; 50%</span>
+                                    </div>
+                                  </>
+                                );
+                              case 'Coauthor':
+                                return (
+                                  <div key="coauthor" className="flex items-center space-x-2">
+                                    {getValidationIcon(!reviewer.coauthor)}
+                                    <span>No Coauthorship</span>
+                                  </div>
+                                );
+                              case 'Affiliation/Country match':
+                                return (
+                                  <>
+                                    <div key="affiliation" className="flex items-center space-x-2">
+                                      {getValidationIcon(reviewer.aff_match === 'no')}
+                                      <span>Different Affiliation</span>
+                                    </div>
+                                    <div key="country" className="flex items-center space-x-2">
+                                      {getValidationIcon(reviewer.country_match === 'yes')}
+                                      <span>Same Country</span>
+                                    </div>
+                                  </>
+                                );
+                              case 'Conflict of Interest':
+                                return (
+                                  <div key="coi" className="flex items-center space-x-2">
+                                    {getValidationIcon((() => {
+                                      const hasAuthorId = (value: any) => {
+                                        if (typeof value === 'string') {
+                                          // Check if string contains author ID pattern: A followed by numbers
+                                          return /A\d+/.test(value);
+                                        }
+                                        return false;
+                                      };
+                                      // No COI if FALSE/False or if no author ID detected
+                                      return (reviewer.coi_coauthor === false || reviewer.coi_coauthor === 'FALSE' || reviewer.coi_coauthor === 'False') || !hasAuthorId(reviewer.coi_coauthor);
+                                    })())}
+                                    <span>No Conflict of Interest</span>
+                                  </div>
+                                );
+                              case 'First/Last Author in publications':
+                                return (
+                                  <div key="first-last-author" className="flex items-center space-x-2">
+                                    {getValidationIcon((reviewer.Total_Publications_first || 0) > 0 || (reviewer.Total_Publications_last || 0) > 0)}
+                                    <span>First/Last Author Publications</span>
+                                  </div>
+                                );
+                              case 'T&F Publications last year':
+                                return (
+                                  <div key="tf-publications" className="flex items-center space-x-2">
+                                    {getValidationIcon((reviewer.TF_Publications_last_year || 0) > 0)}
+                                    <span>Taylor & Francis Publications (last year)</span>
+                                  </div>
+                                );
+                              case 'Study Type Detection':
+                                return (
+                                  <div key="study-type" className="flex items-center space-x-2">
+                                    {getValidationIcon(reviewer.study_type ? true : false)}
+                                    <span>Study Type Analysis Available</span>
+                                  </div>
+                                );
+                              case 'Sanction Country':
+                                return (
+                                  <div key="sanction-country" className="flex items-center space-x-2">
+                                    {getValidationIcon((reviewer.sanction_country || 'no').toLowerCase() !== 'yes')}
+                                    <span>Not from Sanctioned Country</span>
+                                  </div>
+                                );
+                              default:
+                                return null;
+                            }
+                          }).filter(Boolean)
+                        )}
+                      </div>
+                    </div>
+
+                    {/* COI Container for this reviewer - Only show if Conflict of Interest is selected */}
+                    {(!selectedValidationConditions || selectedValidationConditions.length === 0 || selectedValidationConditions.includes('Conflict of Interest')) && (
+                      <div role="region" aria-label="Conflict of Interest details">
+                        {(() => {
+                          // Determine COI status based on coi_coauthor column
+                          // COI is "No" if coi_coauthor is FALSE or False
+                          // COI is "Yes" only when coi_coauthor contains author ID format (A followed by numbers)
+                          const hasAuthorId = (value: any) => {
+                            if (typeof value === 'string') {
+                              // Check if string contains author ID pattern: A followed by numbers
+                              return /A\d+/.test(value);
+                            }
+                            return false;
+                          };
+                          
+                          const coiStatus = (reviewer.coi_coauthor === false || reviewer.coi_coauthor === 'FALSE' || reviewer.coi_coauthor === 'False') 
+                            ? 'No' 
+                            : hasAuthorId(reviewer.coi_coauthor) 
+                              ? 'Yes' 
+                              : 'No';
+                          const coiColor = coiStatus === 'No' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200';
+                          const coiTextColor = coiStatus === 'No' ? 'text-green-800' : 'text-red-800';
+                          const coiBadgeColor = coiStatus === 'No' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
+                          const coiIcon = coiStatus === 'No' ? '✓' : '⚠';
+                          
+                          return (
+                            <div className={`p-4 rounded-lg border ${coiColor} text-center`}>
+                              {coiStatus === 'Yes' ? (
+                                <button
+                                  onClick={() => handleCOIClick(reviewer)}
+                                  className={`flex items-center justify-center gap-3 w-full hover:opacity-80 transition-opacity cursor-pointer`}
+                                >
+                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${coiStatus === 'No' ? 'bg-green-100' : 'bg-red-100'}`}>
+                                    <span className={`text-sm font-bold ${coiTextColor}`}>{coiIcon}</span>
+                                  </div>
+                                  <div>
+                                    <h4 className={`text-sm font-medium ${coiTextColor} underline`}>
+                                      Conflict of Interest: {coiStatus}
+                                    </h4>
+                                  </div>
+                                </button>
+                              ) : (
+                                <div className="flex items-center justify-center gap-3">
+                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${coiStatus === 'No' ? 'bg-green-100' : 'bg-red-100'}`}>
+                                    <span className={`text-sm font-bold ${coiTextColor}`}>{coiIcon}</span>
+                                  </div>
+                                  <div>
+                                    <h4 className={`text-sm font-medium ${coiTextColor}`}>
+                                      Conflict of Interest: {coiStatus}
+                                    </h4>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+
+                    {/* Sanction Country Container - Only show if Sanction Country is selected */}
+                    {(!selectedValidationConditions || selectedValidationConditions.length === 0 || selectedValidationConditions.includes('Sanction Country')) && (
+                      <div role="region" aria-label="Sanction Country status">
+                        {(() => {
+                          // Determine Sanction Country status
+                          // Convert to lowercase for comparison, default to "no"
+                          const sanctionStatus = (reviewer.sanction_country || 'no').toLowerCase() === 'yes' ? 'Yes' : 'No';
+                          const sanctionColor = sanctionStatus === 'No' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200';
+                          const sanctionTextColor = sanctionStatus === 'No' ? 'text-green-800' : 'text-red-800';
+                          const sanctionIcon = sanctionStatus === 'No' ? '✓' : '⚠';
+                          
+                          return (
+                            <div className={`p-4 rounded-lg border ${sanctionColor} text-center`}>
+                              <div className="flex items-center justify-center gap-3">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${sanctionStatus === 'No' ? 'bg-green-100' : 'bg-red-100'}`}>
+                                  <span className={`text-sm font-bold ${sanctionTextColor}`}>{sanctionIcon}</span>
+                                </div>
+                                <div>
+                                  <h4 className={`text-sm font-medium ${sanctionTextColor}`}>
+                                    Sanction Country: {sanctionStatus}
+                                  </h4>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1233,6 +1364,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData 
         onOpenChange={setShowExportDialog}
         reviewers={filteredReviewers.filter(r => selectedReviewerIds.has(r.email))}
         onExport={handleExport}
+        selectedValidationConditions={selectedValidationConditions}
       />
       {/* COI Publications Modal */}
       {selectedCOIAuthor && (
