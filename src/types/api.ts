@@ -156,6 +156,15 @@ export interface ExtractedMetadata {
   authors: Author[];
   affiliations: Affiliation[];
   authorAffiliationMap?: Record<string, string>;
+  // Support for multiple files
+  files?: Array<{
+    fileName: string;
+    title: string;
+    abstract: string;
+    keywords: string[];
+    authors: Author[];
+    affiliations: Affiliation[];
+  }>;
 }
 
 export interface UpdateMetadataRequest {

@@ -5,7 +5,6 @@
  */
 
 import { fileService } from './fileService';
-import type { KeywordEnhancementResponse } from '../features/scholarfinder/types/api';
 
 /**
  * Enhanced keywords interface for internal use
@@ -98,17 +97,41 @@ class KeywordService {
       }
       
       console.log('Direct keyword enhancement API response:', data);
+      console.log('API response keys:', Object.keys(data));
+      console.log('combined_primary_keywords:', data.combined_primary_keywords);
+      console.log('combined_secondary_keywords:', data.combined_secondary_keywords);
+      console.log('manuscripts:', data.manuscripts);
       
-      // Transform API response to internal format
+      // The backend returns combined keywords at the top level
+      // Use these directly instead of trying to extract from individual manuscripts
+      let allPrimaryKeywords: string[] = data.combined_primary_keywords || [];
+      let allSecondaryKeywords: string[] = data.combined_secondary_keywords || [];
+      let meshTerms: string[] = [];
+      let broaderTerms: string[] = [];
+      
+      // Get mesh terms and broader terms from the first manuscript
+      if (data.manuscripts && Array.isArray(data.manuscripts) && data.manuscripts.length > 0) {
+        const firstManuscript = data.manuscripts[0];
+        console.log('Using first manuscript for mesh/broader terms:', firstManuscript);
+        meshTerms = firstManuscript.mesh_terms || [];
+        broaderTerms = firstManuscript.broader_terms || [];
+      }
+      
+      console.log('Using combined keywords from top level:');
+      console.log('Primary keywords:', allPrimaryKeywords);
+      console.log('Secondary keywords:', allSecondaryKeywords);
+      
       const transformedKeywords: EnhancedKeywords = {
-        original: data.primary_focus || [],
-        enhanced: data.additional_primary_keywords || [],
-        meshTerms: data.mesh_terms || [],
-        broaderTerms: data.broader_terms || [],
-        primaryFocus: data.all_primary_focus_list || [],
-        secondaryFocus: data.all_secondary_focus_list || [],
+        original: allPrimaryKeywords,
+        enhanced: allSecondaryKeywords,
+        meshTerms: meshTerms,
+        broaderTerms: broaderTerms,
+        primaryFocus: allPrimaryKeywords,
+        secondaryFocus: allSecondaryKeywords,
         searchStrings: {}
       };
+      
+      console.log('Transformed keywords:', transformedKeywords);
       
       // Cache the transformed keywords for later retrieval
       const key = `process_${processId}_keywords`;

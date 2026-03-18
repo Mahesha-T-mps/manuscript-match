@@ -113,6 +113,105 @@ export const DataExtraction = ({ processId, fileName }: DataExtractionProps) => 
     );
   }
 
+  // Check if this is multiple files metadata
+  const isMultipleFiles = metadata.files && metadata.files.length > 1;
+
+  if (isMultipleFiles) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <FileText className="w-5 h-5 text-primary" />
+              <span>Multiple Manuscripts Metadata</span>
+            </CardTitle>
+            <CardDescription>
+              Extracted information from {metadata.files?.length} manuscripts
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              {metadata.files?.map((file, fileIndex) => (
+                <div key={fileIndex} className="border rounded-lg p-4 space-y-4">
+                  <div className="flex items-center space-x-2 pb-2 border-b">
+                    <FileText className="w-4 h-4 text-primary" />
+                    <h3 className="font-semibold text-lg">File {fileIndex + 1}: {file.fileName}</h3>
+                  </div>
+                  
+                  {/* Title Section */}
+                  <div role="region" aria-label={`Manuscript ${fileIndex + 1} title`}>
+                    <h4 className="font-medium text-sm text-muted-foreground mb-2">TITLE</h4>
+                    <p className="text-base font-semibold leading-relaxed">
+                      {file.title || "No title extracted"}
+                    </p>
+                  </div>
+
+                  {/* Abstract Section */}
+                  <div role="region" aria-label={`Manuscript ${fileIndex + 1} abstract`}>
+                    <h4 className="font-medium text-sm text-muted-foreground mb-2">ABSTRACT</h4>
+                    <p className="text-sm leading-relaxed text-foreground/90 bg-muted/30 p-3 rounded-lg">
+                      {file.abstract || "No abstract extracted"}
+                    </p>
+                  </div>
+
+                  {/* Keywords Section */}
+                  <div role="region" aria-label={`Manuscript ${fileIndex + 1} keywords`}>
+                    <h4 className="font-medium text-sm text-muted-foreground mb-2 flex items-center">
+                      <Hash className="w-4 h-4 mr-1" aria-hidden="true" />
+                      KEYWORDS
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {file.keywords && file.keywords.length > 0 ? (
+                        file.keywords.map((keyword, index) => (
+                          <Badge key={index} variant="secondary" className="text-xs">
+                            {keyword}
+                          </Badge>
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No keywords extracted</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Authors Section */}
+                  {file.authors && file.authors.length > 0 && (
+                    <div role="region" aria-label={`Manuscript ${fileIndex + 1} authors`}>
+                      <h4 className="font-medium text-sm text-muted-foreground mb-2 flex items-center">
+                        <Users className="w-4 h-4 mr-1" aria-hidden="true" />
+                        AUTHORS & AFFILIATIONS
+                      </h4>
+                      <div className="space-y-2">
+                        {file.authors.map((author, index) => {
+                          const authorName = typeof author === 'string' ? author : author.name;
+                          const affiliation = typeof author !== 'string' ? author.affiliation : '';
+                          
+                          return (
+                            <div key={index} className="p-2 bg-card border rounded text-sm">
+                              <p className="font-medium">
+                                {index + 1}. {authorName}
+                              </p>
+                              {affiliation && (
+                                <p className="text-xs text-muted-foreground flex items-start mt-1">
+                                  <Building className="w-3 h-3 mr-1 mt-0.5 flex-shrink-0" />
+                                  <span>{affiliation}</span>
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Single file display (existing code)
   return (
     <div className="space-y-6">
       <Card>

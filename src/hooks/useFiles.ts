@@ -51,13 +51,19 @@ export const useFileUpload = () => {
  * Hook for fetching extracted metadata
  */
 export const useMetadata = (processId: string) => {
-  return useQuery({
+  console.log('[useMetadata] Hook called with processId:', processId);
+  
+  const query = useQuery({
     queryKey: queryKeys.metadata.detail(processId),
-    queryFn: (): Promise<ExtractedMetadata> => fileService.getMetadata(processId),
+    queryFn: (): Promise<ExtractedMetadata> => {
+      console.log('[useMetadata] queryFn called, calling fileService.getMetadata');
+      return fileService.getMetadata(processId);
+    },
     enabled: !!processId, // Only run query if processId is provided
-    staleTime: optimizedCacheConfig.metadata.staleTime,
+    staleTime: 0, // Always consider data stale to force fresh fetches
     gcTime: optimizedCacheConfig.metadata.gcTime,
     retry: (failureCount, error: any) => {
+      console.log('[useMetadata] Retry attempt:', failureCount, 'Error:', error);
       // Don't retry if no metadata exists yet
       if (error?.response?.status === 404) {
         return false;
@@ -65,6 +71,19 @@ export const useMetadata = (processId: string) => {
       return failureCount < 2;
     },
   });
+  
+  console.log('[useMetadata] Query state:', {
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    isError: query.isError,
+    data: query.data ? 'present' : 'null',
+    dataContent: query.data, // Show actual data content
+    error: query.error,
+    status: query.status,
+    fetchStatus: query.fetchStatus
+  });
+  
+  return query;
 };
 
 /**

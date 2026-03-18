@@ -61,7 +61,7 @@ export interface ScholarFinderError {
  */
 const UploadResponseSchema = z.object({
   message: z.string(),
-  data: z.object({
+  data: z.array(z.object({
     job_id: z.string(),
     file_name: z.string(),
     timestamp: z.string(),
@@ -71,7 +71,7 @@ const UploadResponseSchema = z.object({
     keywords: z.string(),
     abstract: z.string(),
     author_aff_map: z.record(z.string())
-  })
+  }))
 });
 
 const MetadataResponseSchema = z.object({
@@ -420,47 +420,51 @@ export class ScholarFinderApiService {
   }
 
   /**
-   * Step 1: Upload manuscript and extract metadata
+   * Step 1: Upload manuscripts and extract metadata
    */
-  async uploadManuscript(file: File, processId?: string, onProgress?: (progress: number) => void): Promise<UploadResponse> {
-    if (!file) {
+  async uploadManuscripts(files: File[], processId?: string, onProgress?: (progress: number) => void): Promise<UploadResponse> {
+    console.log('[ScholarFinderAPI] uploadManuscripts called with files:', files.map(f => f.name));
+    if (!files || files.length === 0) {
       throw {
         type: ScholarFinderErrorType.FILE_FORMAT_ERROR,
-        message: 'No file provided for upload',
+        message: 'No files provided for upload',
         retryable: false
       } as ScholarFinderError;
     }
 
-    // Validate file format
+    // Validate each file
     const allowedTypes = ['.doc', '.docx'];
-    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
-    if (!allowedTypes.includes(fileExtension)) {
-      throw {
-        type: ScholarFinderErrorType.FILE_FORMAT_ERROR,
-        message: `Unsupported file format: ${fileExtension}. Please upload a .doc or .docx file.`,
-        retryable: false
-      } as ScholarFinderError;
-    }
+    const maxSize = 100 * 1024 * 1024; // 100MB per file
+    
+    for (const file of files) {
+      const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+      if (!allowedTypes.includes(fileExtension)) {
+        throw {
+          type: ScholarFinderErrorType.FILE_FORMAT_ERROR,
+          message: `Unsupported file format: ${fileExtension} in file "${file.name}". Please upload .doc or .docx files only.`,
+          retryable: false
+        } as ScholarFinderError;
+      }
 
-    // Validate file size (100MB limit)
-    const maxSize = 100 * 1024 * 1024; // 100MB
-    if (file.size > maxSize) {
-      throw {
-        type: ScholarFinderErrorType.FILE_FORMAT_ERROR,
-        message: `File size too large: ${(file.size / 1024 / 1024).toFixed(1)}MB. Maximum allowed size is 100MB.`,
-        retryable: false
-      } as ScholarFinderError;
+      if (file.size > maxSize) {
+        throw {
+          type: ScholarFinderErrorType.FILE_FORMAT_ERROR,
+          message: `File "${file.name}" size too large: ${(file.size / 1024 / 1024).toFixed(1)}MB. Maximum allowed size is 100MB per file.`,
+          retryable: false
+        } as ScholarFinderError;
+      }
     }
 
     try {
       // Calculate extended timeout for upload + metadata extraction
-      // Base timeout: 10 minutes, plus 2 minutes per 10MB of file size
+      // Base timeout: 10 minutes, plus 2 minutes per file, plus 2 minutes per 10MB total size
       const baseTimeout = 10 * 60 * 1000; // 10 minutes
-      const fileSizeInMB = file.size / (1024 * 1024);
-      const additionalTimeout = Math.ceil(fileSizeInMB / 10) * 2 * 60 * 1000; // 2 minutes per 10MB
-      const uploadTimeout = baseTimeout + additionalTimeout;
+      const totalSizeInMB = files.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024);
+      const fileCountTimeout = files.length * 2 * 60 * 1000; // 2 minutes per file
+      const sizeTimeout = Math.ceil(totalSizeInMB / 10) * 2 * 60 * 1000; // 2 minutes per 10MB
+      const uploadTimeout = baseTimeout + fileCountTimeout + sizeTimeout;
 
-      console.log(`[ScholarFinderAPI] Upload timeout calculated: ${uploadTimeout}ms (${uploadTimeout/1000/60} minutes) for ${fileSizeInMB.toFixed(1)}MB file`);
+      console.log(`[ScholarFinderAPI] Upload timeout calculated: ${uploadTimeout}ms (${uploadTimeout/1000/60} minutes) for ${files.length} files (${totalSizeInMB.toFixed(1)}MB total)`);
 
       // Build URL with query parameter if processId is provided
       let url = '/upload_extract_metadata';
@@ -476,25 +480,35 @@ export class ScholarFinderApiService {
         retries: 0 // No retries for file uploads
       });
 
-      // Use uploadFile method with extended timeout
-      const response = await uploadApiService.uploadFile<UploadResponse>(
+      // Use uploadFiles method with extended timeout for multiple files
+      const response = await uploadApiService.uploadFiles<UploadResponse>(
         url,
-        file,
+        files,
         onProgress
       );
 
       return (response.data || response) as UploadResponse;
     } catch (error) {
-      const scholarFinderError = this.handleApiError(error, 'manuscript upload');
+      const scholarFinderError = this.handleApiError(error, 'manuscripts upload');
       throw scholarFinderError;
     }
+  }
+
+  /**
+   * Step 1: Upload single manuscript and extract metadata (backward compatibility)
+   */
+  async uploadManuscript(file: File, processId?: string, onProgress?: (progress: number) => void): Promise<UploadResponse> {
+    return this.uploadManuscripts([file], processId, onProgress);
   }
 
   /**
    * Step 2: Get extracted metadata for review
    */
   async getMetadata(jobId: string): Promise<MetadataResponse> {
+    console.log('[ScholarFinderApiService.getMetadata] Called with jobId:', jobId);
+    
     if (!jobId) {
+      console.error('[ScholarFinderApiService.getMetadata] No jobId provided');
       throw {
         type: ScholarFinderErrorType.METADATA_ERROR,
         message: 'Job ID is required to retrieve metadata',
@@ -502,6 +516,7 @@ export class ScholarFinderApiService {
       } as ScholarFinderError;
     }
 
+    console.log('[ScholarFinderApiService.getMetadata] Making request to /metadata_extraction');
     const response = await this.makeRequest<MetadataResponse>(
       'GET',
       `/metadata_extraction?job_id=${jobId}`,
@@ -510,6 +525,7 @@ export class ScholarFinderApiService {
       'metadata retrieval'
     );
     
+    console.log('[ScholarFinderApiService.getMetadata] Response received:', response);
     return response;
   }
 
@@ -526,15 +542,21 @@ export class ScholarFinderApiService {
       } as ScholarFinderError;
     }
 
-    const response = await this.makeRequest<KeywordEnhancementResponse>(
-      'POST',
-      `/keyword_enhancement?job_id=${encodeURIComponent(jobId)}`,
-      undefined,
-      undefined,
-      'keyword enhancement'
-    );
-    
-    return response;
+    // For keyword enhancement, we need the full response because combined keywords are at the top level
+    // Don't use makeRequest as it extracts response.data which doesn't contain combined_primary_keywords
+    try {
+      const response = await this.apiService.post(
+        `/keyword_enhancement?job_id=${encodeURIComponent(jobId)}`
+      );
+      
+      console.log('[ScholarFinderAPI] Full keyword enhancement response:', response);
+      
+      // Return the full response data, not just response.data
+      return response as any;
+    } catch (error) {
+      const scholarFinderError = this.handleApiError(error, 'keyword enhancement');
+      throw scholarFinderError;
+    }
   }
 
   /**

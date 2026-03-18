@@ -42,6 +42,8 @@ const VALIDATION_CONDITION_COLUMNS: Record<string, string[]> = {
     'Relevant_Publications_5_years_last',
     'Relevant_Primary_Pub_2_years',
     'Relevant_Secondary_Pub_2_years',
+    'Relevant_Primary_Pub_last_years',
+    'Relevant_Secondary_Pub_last_years',
     'no_of_pub_condition_5_years'
   ],
   'Publication Types': [
@@ -138,6 +140,8 @@ export function generateCSV(reviewers: Reviewer[], selectedConditions?: string[]
       'Relevant_Publications_5_years_last',
       'Relevant_Primary_Pub_2_years',
       'Relevant_Secondary_Pub_2_years',
+      'Relevant_Primary_Pub_last_years',
+      'Relevant_Secondary_Pub_last_years',
       'Publications_2_years',
       'Publications_2_years_first',
       'Publications_2_years_last',
@@ -233,7 +237,11 @@ function getReviewerFieldValue(reviewer: Reviewer, fieldName: string): string | 
     'Publications_10_years': ['Publications_10_years', 'Publications (last 10 years)'],
     'Publications_2_years': ['Publications_2_years', 'Publications (last 2 years)'],
     'Publications_last_year': ['Publications_last_year', 'Publications (last year)'],
-    'Relevant_Publications_5_years': ['Relevant_Publications_5_years', 'Relevant Publications (last 5 years)']
+    'Relevant_Publications_5_years': ['Relevant_Publications_5_years', 'Relevant Publications (last 5 years)'],
+    'Relevant_Primary_Pub_2_years': ['Relevant_Primary_Pub_2_years', 'Relevant Primary Publications (last 2 years)'],
+    'Relevant_Secondary_Pub_2_years': ['Relevant_Secondary_Pub_2_years', 'Relevant Secondary Publications (last 2 years)'],
+    'Relevant_Primary_Pub_last_years': ['Relevant_Primary_Pub_last_years', 'Relevant Primary Publications (last year)'],
+    'Relevant_Secondary_Pub_last_years': ['Relevant_Secondary_Pub_last_years', 'Relevant Secondary Publications (last year)']
   };
 
   // Try mapped field names first

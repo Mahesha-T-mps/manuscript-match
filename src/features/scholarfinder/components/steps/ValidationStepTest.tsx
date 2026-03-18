@@ -13,7 +13,7 @@ const VALIDATION_CONDITIONS = [
   {
     id: 'Publications',
     label: 'Publications',
-    description: 'Check publication count in last 10 years (≥8) and last 5 years, last 2 years and last year'
+    description: 'Check publication count in last 10 years and last 5 years, last 2 years and last 12 months'
   },
   {
     id: 'First/Last Author in publications',
@@ -23,17 +23,22 @@ const VALIDATION_CONDITIONS = [
   {
     id: 'Relevant Publications',
     label: 'Relevant Publications',
-    description: 'Check relevant publications in last 5 years and last 2 years'
+    description: 'Check relevant publications in last 5 years, last 2 years and last 12 months'
   },
   {
     id: 'Publication Types',
     label: 'Publication Types',
-    description: 'Analyze publication types of Clinical Trial, Clinical Study, Case Report and Retracted Publication if any'
+    description: 'Analyze publication types of Clinical Trial, Clinical Study and Case Report if any'
   },
   {
     id: 'T&F Publications last year',
     label: 'Taylor & Francis Publications',
-    description: 'Check Taylor & Francis publications in the last year'
+    description: 'Check Taylor & Francis publications in the last 12 months'
+  },
+  {
+    id: 'Retraction History',
+    label: 'Retraction History',
+    description: 'Check for any retracted publications in author history'
   }
 ];
 

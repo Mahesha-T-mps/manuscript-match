@@ -39,12 +39,16 @@ export interface Process {
 
 export interface ProcessMetadata {
   userId: string;
-  fileName?: string;
-  fileSize?: number;
+  files?: ProcessFile[];
   manuscriptTitle?: string;
   authors?: Author[];
   totalReviewers?: number;
   shortlistCount?: number;
+}
+
+export interface ProcessFile {
+  fileName: string;
+  fileSize: number;
 }
 
 export interface ProcessStepData {
@@ -60,9 +64,13 @@ export interface ProcessStepData {
 }
 
 export interface UploadStepData {
+  files: UploadedFile[];
+  uploadedAt: Date;
+}
+
+export interface UploadedFile {
   fileName: string;
   fileSize: number;
-  uploadedAt: Date;
   extractedMetadata: any;
 }
 

@@ -3,30 +3,35 @@
 
 export interface UploadResponse {
   message: string;
-  data: {
-    job_id: string;
-    file_name: string;
-    timestamp: string;
-    heading: string;
-    authors: string[];
-    affiliations: string[];
-    keywords: string;
-    abstract: string;
-    author_aff_map: Record<string, string>;
-  };
+  data: UploadFileData[];
+}
+
+export interface UploadFileData {
+  job_id: string;
+  file_name: string;
+  timestamp: string;
+  heading: string;
+  authors: string[];
+  affiliations: string[];
+  keywords: string;
+  abstract: string;
+  author_aff_map: Record<string, string>;
 }
 
 export interface MetadataResponse {
-  message: string;
   job_id: string;
-  data: {
-    heading: string;
-    authors: string[];
-    affiliations: string[];
-    keywords: string;
-    abstract: string;
-    author_aff_map: Record<string, string>;
-  };
+  total_manuscripts: number;
+  results: Array<{
+    file_name: string;
+    data: {
+      heading: string;
+      authors: string[];
+      affiliations: string[];
+      keywords: string;
+      abstract: string;
+      author_aff_map: Record<string, string>;
+    };
+  }>;
 }
 
 export interface KeywordEnhancementResponse {

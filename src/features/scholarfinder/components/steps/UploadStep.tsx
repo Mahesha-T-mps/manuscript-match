@@ -28,123 +28,258 @@ export const UploadStep: React.FC<UploadStepProps> = ({
   const { isMobile, isTablet } = useResponsive();
   const { announceMessage } = useAccessibilityContext();
   
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadResponse, setUploadResponse] = useState<UploadResponse | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(() => {
+    // Initialize upload progress from localStorage if available
+    const saved = localStorage.getItem(`upload_progress_${processId}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return parsed.progress || 0;
+      } catch (e) {
+        return 0;
+      }
+    }
+    return 0;
+  });
+  const [uploadResponses, setUploadResponses] = useState<UploadResponse[]>([]);
   
-  const { uploadManuscript } = useScholarFinderApi();
+  const { uploadManuscripts } = useScholarFinderApi();
   const updateProcessStep = useUpdateProcessStep();
   
-  const isUploading = uploadManuscript.isPending;
+  const isUploading = uploadManuscripts.isPending;
   const isLoading = externalLoading || isUploading;
 
   // File validation configuration
   const acceptedTypes = ['.doc', '.docx'];
   const maxFileSize = 100 * 1024 * 1024; // 100MB
 
-  const handleFileSelect = useCallback(async (file: File) => {
+  // Save upload state to localStorage
+  const saveUploadState = (progress: number, status: string, fileNames: string[]) => {
+    localStorage.setItem(`upload_progress_${processId}`, JSON.stringify({
+      progress,
+      status,
+      fileNames,
+      timestamp: Date.now()
+    }));
+  };
+
+  // Clear upload state from localStorage
+  const clearUploadState = () => {
+    localStorage.removeItem(`upload_progress_${processId}`);
+  };
+
+  // Check if we have completed upload data and clear progress state
+  useEffect(() => {
+    // If we have upload responses (completed upload) but still showing progress, clear it
+    if (uploadResponses.length > 0 && uploadProgress > 0) {
+      console.log('[UploadStep] Upload completed, clearing progress state');
+      clearUploadState();
+      setUploadProgress(0);
+    }
+  }, [uploadResponses, uploadProgress]);
+
+  // Check for existing upload data from stepData on mount/processId change
+  useEffect(() => {
+    if (stepData?.files && stepData.files.length > 0) {
+      console.log('[UploadStep] Found existing upload data in stepData:', stepData);
+      // Clear any lingering progress state since we have completed data
+      clearUploadState();
+      setUploadProgress(0);
+      setUploadError(null);
+      
+      // Create mock upload response from stepData for display
+      const mockResponse = {
+        data: stepData.files.map(file => ({
+          file_name: file.fileName,
+          heading: file.extractedMetadata?.title || '',
+          authors: file.extractedMetadata?.authors || [],
+          affiliations: file.extractedMetadata?.affiliations || [],
+          keywords: file.extractedMetadata?.keywords || '',
+          abstract: file.extractedMetadata?.abstract || '',
+          author_aff_map: file.extractedMetadata?.authorAffiliationMap || {}
+        }))
+      };
+      setUploadResponses([mockResponse]);
+    }
+  }, [stepData, processId]);
+
+  // Listen for upload completion notifications and update state
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === `process_${processId}_uploadResponse` && e.newValue) {
+        try {
+          const uploadResponse = JSON.parse(e.newValue);
+          console.log('[UploadStep] Detected upload completion via storage event:', uploadResponse);
+          
+          // Clear progress state and show completed upload
+          clearUploadState();
+          setUploadProgress(0);
+          setUploadError(null);
+          setUploadResponses([uploadResponse]);
+          
+          // Announce completion
+          announceMessage('Upload completed successfully', 'polite');
+        } catch (e) {
+          console.warn('[UploadStep] Failed to parse upload response from storage event:', e);
+        }
+      }
+    };
+
+    // Listen for storage changes (when upload completes on another tab/component)
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Also check localStorage on component mount in case upload completed while away
+    const checkForCompletedUpload = () => {
+      const savedUploadResponse = localStorage.getItem(`process_${processId}_uploadResponse`);
+      const savedProgressState = localStorage.getItem(`upload_progress_${processId}`);
+      
+      if (savedUploadResponse && savedProgressState) {
+        try {
+          const uploadResponse = JSON.parse(savedUploadResponse);
+          const progressState = JSON.parse(savedProgressState);
+          
+          // If we have both upload response and progress state, the upload completed
+          // while we were away, so clear progress and show completed state
+          console.log('[UploadStep] Found completed upload while away, updating state');
+          clearUploadState();
+          setUploadProgress(0);
+          setUploadError(null);
+          setUploadResponses([uploadResponse]);
+        } catch (e) {
+          console.warn('[UploadStep] Failed to parse saved upload data:', e);
+        }
+      }
+    };
+
+    checkForCompletedUpload();
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [processId, announceMessage]);
+
+  const handleFileSelect = useCallback(async (files: File[]) => {
+    console.log('[UploadStep] handleFileSelect called with files:', files.map(f => f.name));
     setUploadError(null);
     setUploadProgress(0);
-    setUploadResponse(null);
+    setUploadResponses([]);
+    clearUploadState(); // Clear any previous progress state
 
-    // Validate file
-    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
-    if (!acceptedTypes.includes(fileExtension)) {
-      setUploadError(`File type ${fileExtension} is not supported. Please upload a .doc or .docx file.`);
-      setSelectedFile(null);
-      return;
+    // Validate files
+    for (const file of files) {
+      const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+      if (!acceptedTypes.includes(fileExtension)) {
+        setUploadError(`File type ${fileExtension} is not supported. Please upload .doc or .docx files.`);
+        setSelectedFiles([]);
+        return;
+      }
+
+      if (file.size > maxFileSize) {
+        const maxSizeMB = (maxFileSize / 1024 / 1024).toFixed(1);
+        const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
+        setUploadError(`File ${file.name} size (${fileSizeMB}MB) exceeds maximum allowed size (${maxSizeMB}MB).`);
+        setSelectedFiles([]);
+        return;
+      }
     }
 
-    if (file.size > maxFileSize) {
-      const maxSizeMB = (maxFileSize / 1024 / 1024).toFixed(1);
-      const fileSizeMB = (file.size / 1024 / 1024).toFixed(1);
-      setUploadError(`File size (${fileSizeMB}MB) exceeds maximum allowed size (${maxSizeMB}MB).`);
-      setSelectedFile(null);
-      return;
-    }
+    // Files are valid, set them
+    setSelectedFiles(files);
 
-    // File is valid, set it
-    setSelectedFile(file);
-
-    // Start upload
+    // Start uploading files
     try {
-      // Simulate progress updates
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return 90; // Keep at 90% until actual upload completes
-          }
-          return prev + 10;
-        });
-      }, 200);
+      // Update progress for uploading
+      setUploadProgress(10);
+      const fileNames = files.map(f => f.name);
+      saveUploadState(10, 'uploading', fileNames);
 
-      const response = await uploadManuscript.mutateAsync(file);
+      console.log('[UploadStep] About to call uploadManuscripts.mutateAsync with files:', files.map(f => f.name));
+      const response = await uploadManuscripts.mutateAsync(files);
       
       // Complete progress
-      clearInterval(progressInterval);
       setUploadProgress(100);
-      setUploadResponse(response);
+      setUploadResponses([response]);
+      
+      // Clear upload progress state since upload is complete
+      clearUploadState();
 
-      // Announce success
-      announceMessage('File uploaded and processed successfully', 'polite');
+      // All files uploaded successfully
+      announceMessage(`${files.length} file(s) uploaded and processed successfully`, 'polite');
 
-      // Update process with the new job ID and step data
-      if (response.data.job_id) {
+      // Update process with the combined data from all files
+      // Use the first file's job_id as the primary one
+      if (response.data.length > 0) {
+        const primaryFile = response.data[0];
         await updateProcessStep.mutateAsync({
           processId,
           step: ProcessStep.UPLOAD,
           stepData: {
-            jobId: response.data.job_id,
-            fileName: response.data.file_name,
-            fileSize: file.size,
-            extractedMetadata: {
-              title: response.data.heading,
-              authors: response.data.authors,
-              affiliations: response.data.affiliations,
-              keywords: response.data.keywords,
-              abstract: response.data.abstract,
-              authorAffiliationMap: response.data.author_aff_map
-            }
+            jobId: primaryFile.job_id,
+            files: response.data.map((fileData, index) => ({
+              fileName: fileData.file_name,
+              fileSize: files[index]?.size || 0,
+              extractedMetadata: {
+                title: fileData.heading,
+                authors: fileData.authors,
+                affiliations: fileData.affiliations,
+                keywords: fileData.keywords,
+                abstract: fileData.abstract,
+                authorAffiliationMap: fileData.author_aff_map
+              }
+            }))
           }
         });
       }
 
     } catch (error: any) {
       setUploadProgress(0);
+      clearUploadState(); // Clear progress state on error
       const errorMessage = error.message || 'Upload failed. Please try again.';
       setUploadError(errorMessage);
       announceMessage(`Upload failed: ${errorMessage}`, 'assertive');
       console.error('Upload error:', error);
     }
-  }, [uploadManuscript, updateProcessStep, processId, acceptedTypes, maxFileSize, announceMessage]);
+  }, [uploadManuscripts, updateProcessStep, processId, acceptedTypes, maxFileSize, announceMessage, saveUploadState, clearUploadState]);
 
-  const handleFileRemove = useCallback(() => {
-    setSelectedFile(null);
+  const handleFileRemove = useCallback((fileIndex?: number) => {
+    if (typeof fileIndex === 'number') {
+      // Remove specific file
+      const newFiles = selectedFiles.filter((_, index) => index !== fileIndex);
+      setSelectedFiles(newFiles);
+    } else {
+      // Remove all files
+      setSelectedFiles([]);
+    }
     setUploadError(null);
     setUploadProgress(0);
-    setUploadResponse(null);
-  }, []);
+    setUploadResponses([]);
+    clearUploadState(); // Clear any saved progress state
+  }, [selectedFiles, clearUploadState]);
 
   const handleNext = useCallback(() => {
-    if (uploadResponse && uploadResponse.data.job_id) {
+    if (uploadResponses.length > 0 && uploadResponses[0].data.length > 0) {
+      const response = uploadResponses[0];
+      const primaryFile = response.data[0];
       onNext({
-        jobId: uploadResponse.data.job_id,
-        fileName: uploadResponse.data.file_name,
-        extractedMetadata: {
-          title: uploadResponse.data.heading,
-          authors: uploadResponse.data.authors,
-          affiliations: uploadResponse.data.affiliations,
-          keywords: uploadResponse.data.keywords,
-          abstract: uploadResponse.data.abstract,
-          authorAffiliationMap: uploadResponse.data.author_aff_map
-        }
+        jobId: primaryFile.job_id,
+        files: response.data.map((fileData, index) => ({
+          fileName: fileData.file_name,
+          extractedMetadata: {
+            title: fileData.heading,
+            authors: fileData.authors,
+            affiliations: fileData.affiliations,
+            keywords: fileData.keywords,
+            abstract: fileData.abstract,
+            authorAffiliationMap: fileData.author_aff_map
+          }
+        }))
       });
     }
-  }, [uploadResponse, onNext]);
+  }, [uploadResponses, onNext]);
 
-  const canProceed = uploadResponse && uploadResponse.data.job_id && !isLoading;
+  const canProceed = uploadResponses.length > 0 && uploadResponses[0].data.length > 0 && !isLoading;
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -161,12 +296,12 @@ export const UploadStep: React.FC<UploadStepProps> = ({
               <CardTitle className={cn(
                 responsiveText({ xs: 'lg', sm: 'xl' })
               )}>
-                Upload Manuscript
+                Upload Manuscripts
               </CardTitle>
               <CardDescription className={cn(
                 responsiveText({ xs: 'sm', sm: 'base' })
               )}>
-                Upload your manuscript file to begin the reviewer identification process
+                Upload your manuscript files to begin the reviewer identification process
               </CardDescription>
             </div>
           </div>
@@ -179,15 +314,16 @@ export const UploadStep: React.FC<UploadStepProps> = ({
         onFileRemove={handleFileRemove}
         acceptedTypes={acceptedTypes}
         maxSize={maxFileSize}
+        maxFiles={5}
         isUploading={isUploading}
         uploadProgress={uploadProgress}
         error={uploadError}
         disabled={isLoading}
-        selectedFile={selectedFile}
+        selectedFiles={selectedFiles}
       />
 
       {/* Upload Success - Extracted Metadata Preview */}
-      {uploadResponse && !isUploading && (
+      {uploadResponses.length > 0 && !isUploading && (
         <Card>
           <CardHeader className={cn(
             responsiveSpacing({ xs: '4', sm: '6' }, 'p')
@@ -203,112 +339,126 @@ export const UploadStep: React.FC<UploadStepProps> = ({
             <CardDescription className={cn(
               responsiveText({ xs: 'sm', sm: 'base' })
             )}>
-              Your manuscript has been uploaded and processed. Here's what we extracted:
+              Your manuscripts have been uploaded and processed. Here's what we extracted:
             </CardDescription>
           </CardHeader>
           <CardContent className={cn(
-            "space-y-4",
+            "space-y-6",
             responsiveSpacing({ xs: '4', sm: '6' }, 'p')
           )}>
-            <div className={cn(
-              responsiveFormLayout({ xs: 1, lg: 2 }, { xs: '4', lg: '6' })
-            )}>
-              {/* Title */}
-              <div>
-                <label className={cn(
-                  "font-medium text-muted-foreground block mb-2",
-                  responsiveText({ xs: 'xs', sm: 'sm' })
+            {uploadResponses.length > 0 && uploadResponses[0].data.map((fileData, index) => (
+              <div key={index} className="border rounded-lg p-4 space-y-4">
+                <div className="flex items-center space-x-2 border-b pb-2">
+                  <FileText className="h-4 w-4 text-primary" />
+                  <h4 className={cn(
+                    "font-medium",
+                    responsiveText({ xs: 'sm', sm: 'base' })
+                  )}>
+                    {fileData.file_name || `File ${index + 1}`}
+                  </h4>
+                </div>
+                
+                <div className={cn(
+                  responsiveFormLayout({ xs: 1, lg: 2 }, { xs: '4', lg: '6' })
                 )}>
-                  Title
-                </label>
-                <p className={cn(
-                  "p-3 bg-muted rounded-md",
-                  responsiveText({ xs: 'xs', sm: 'sm' })
-                )}>
-                  {uploadResponse.data.heading || 'No title extracted'}
-                </p>
-              </div>
+                  {/* Title */}
+                  <div>
+                    <label className={cn(
+                      "font-medium text-muted-foreground block mb-2",
+                      responsiveText({ xs: 'xs', sm: 'sm' })
+                    )}>
+                      Title
+                    </label>
+                    <p className={cn(
+                      "p-3 bg-muted rounded-md",
+                      responsiveText({ xs: 'xs', sm: 'sm' })
+                    )}>
+                      {fileData.heading || 'No title extracted'}
+                    </p>
+                  </div>
 
-              {/* Authors */}
-              <div>
-                <label className={cn(
-                  "font-medium text-muted-foreground block mb-2",
-                  responsiveText({ xs: 'xs', sm: 'sm' })
-                )}>
-                  Authors
-                </label>
-                <div className="p-3 bg-muted rounded-md">
-                  {uploadResponse.data.authors && uploadResponse.data.authors.length > 0 ? (
-                    <div className="space-y-1">
-                      {uploadResponse.data.authors.map((author, index) => (
-                        <div key={index} className={cn(
+                  {/* Authors */}
+                  <div>
+                    <label className={cn(
+                      "font-medium text-muted-foreground block mb-2",
+                      responsiveText({ xs: 'xs', sm: 'sm' })
+                    )}>
+                      Authors
+                    </label>
+                    <div className="p-3 bg-muted rounded-md">
+                      {fileData.authors && fileData.authors.length > 0 ? (
+                        <div className="space-y-1">
+                          {fileData.authors.map((author, authorIndex) => (
+                            <div key={authorIndex} className={cn(
+                              responsiveText({ xs: 'xs', sm: 'sm' })
+                            )}>
+                              <span className="font-medium">{author}</span>
+                              {fileData.author_aff_map[author] && (
+                                <span className="text-muted-foreground ml-2 block sm:inline">
+                                  {isMobile ? '' : '- '}{fileData.author_aff_map[author]}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className={cn(
+                          "text-muted-foreground",
                           responsiveText({ xs: 'xs', sm: 'sm' })
                         )}>
-                          <span className="font-medium">{author}</span>
-                          {uploadResponse.data.author_aff_map[author] && (
-                            <span className="text-muted-foreground ml-2 block sm:inline">
-                              {isMobile ? '' : '- '}{uploadResponse.data.author_aff_map[author]}
-                            </span>
-                          )}
-                        </div>
-                      ))}
+                          No authors extracted
+                        </p>
+                      )}
                     </div>
-                  ) : (
-                    <p className={cn(
-                      "text-muted-foreground",
+                  </div>
+
+                  {/* Keywords */}
+                  <div>
+                    <label className={cn(
+                      "font-medium text-muted-foreground block mb-2",
                       responsiveText({ xs: 'xs', sm: 'sm' })
                     )}>
-                      No authors extracted
+                      Keywords
+                    </label>
+                    <p className={cn(
+                      "p-3 bg-muted rounded-md",
+                      responsiveText({ xs: 'xs', sm: 'sm' })
+                    )}>
+                      {fileData.keywords || 'No keywords extracted'}
                     </p>
-                  )}
+                  </div>
+
+                  {/* Abstract Preview */}
+                  <div className="lg:col-span-2">
+                    <label className={cn(
+                      "font-medium text-muted-foreground block mb-2",
+                      responsiveText({ xs: 'xs', sm: 'sm' })
+                    )}>
+                      Abstract
+                    </label>
+                    <div className="p-3 bg-muted rounded-md">
+                      {fileData.abstract ? (
+                        <p className={cn(
+                          responsiveText({ xs: 'xs', sm: 'sm' })
+                        )}>
+                          {fileData.abstract.length > (isMobile ? 150 : 200)
+                            ? `${fileData.abstract.substring(0, isMobile ? 150 : 200)}...`
+                            : fileData.abstract
+                          }
+                        </p>
+                      ) : (
+                        <p className={cn(
+                          "text-muted-foreground",
+                          responsiveText({ xs: 'xs', sm: 'sm' })
+                        )}>
+                          No abstract extracted
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
-
-              {/* Keywords */}
-              <div>
-                <label className={cn(
-                  "font-medium text-muted-foreground block mb-2",
-                  responsiveText({ xs: 'xs', sm: 'sm' })
-                )}>
-                  Keywords
-                </label>
-                <p className={cn(
-                  "p-3 bg-muted rounded-md",
-                  responsiveText({ xs: 'xs', sm: 'sm' })
-                )}>
-                  {uploadResponse.data.keywords || 'No keywords extracted'}
-                </p>
-              </div>
-
-              {/* Abstract Preview */}
-              <div className="lg:col-span-2">
-                <label className={cn(
-                  "font-medium text-muted-foreground block mb-2",
-                  responsiveText({ xs: 'xs', sm: 'sm' })
-                )}>
-                  Abstract
-                </label>
-                <div className="p-3 bg-muted rounded-md">
-                  {uploadResponse.data.abstract ? (
-                    <p className={cn(
-                      responsiveText({ xs: 'xs', sm: 'sm' })
-                    )}>
-                      {uploadResponse.data.abstract.length > (isMobile ? 150 : 200)
-                        ? `${uploadResponse.data.abstract.substring(0, isMobile ? 150 : 200)}...`
-                        : uploadResponse.data.abstract
-                      }
-                    </p>
-                  ) : (
-                    <p className={cn(
-                      "text-muted-foreground",
-                      responsiveText({ xs: 'xs', sm: 'sm' })
-                    )}>
-                      No abstract extracted
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
+            ))}
 
             <Alert>
               <FileText className="h-4 w-4" />
@@ -377,7 +527,7 @@ export const UploadStep: React.FC<UploadStepProps> = ({
           ) : canProceed ? (
             'Continue'
           ) : (
-            isMobile ? 'Upload File' : 'Upload File to Continue'
+            isMobile ? 'Upload Files' : 'Upload Files to Continue'
           )}
         </Button>
       </div>

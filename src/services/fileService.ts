@@ -92,66 +92,137 @@ class FileService {
    * Get extracted metadata for a process - uses ScholarFinder API
    */
   async getMetadata(processId: string): Promise<ExtractedMetadata> {
-    // First check if we have cached metadata from upload
-    const cachedKey = `process_${processId}_metadata`;
-    const cachedMetadata = localStorage.getItem(cachedKey);
+    console.log('[fileService.getMetadata] Called with processId:', processId);
     
-    if (cachedMetadata) {
+    const jobId = this.getJobId(processId);
+    console.log('[fileService.getMetadata] Retrieved jobId:', jobId);
+    
+    if (!jobId) {
+      console.error('[fileService.getMetadata] No job ID found for processId:', processId);
+      throw new Error('No job ID found for this process. Please upload a file first.');
+    }
+
+    // Check if we have cached metadata from upload, but verify it matches current job ID
+    const cachedKey = `process_${processId}_metadata`;
+    const cachedJobIdKey = `process_${processId}_metadata_jobId`;
+    const cachedMetadata = localStorage.getItem(cachedKey);
+    const cachedJobId = localStorage.getItem(cachedJobIdKey);
+    
+    if (cachedMetadata && cachedJobId === jobId) {
       try {
         const parsed = JSON.parse(cachedMetadata);
-        // If cached metadata has the expected structure, return it
+        // If cached metadata has the expected structure and matches current job ID, return it
         if (parsed && parsed.title !== undefined && parsed.keywords !== undefined) {
+          console.log('[fileService.getMetadata] Returning cached metadata for jobId:', jobId, parsed);
           return parsed as ExtractedMetadata;
         }
       } catch (e) {
         console.warn('Failed to parse cached metadata, fetching from API');
       }
-    }
-    
-    const jobId = this.getJobId(processId);
-    if (!jobId) {
-      throw new Error('No job ID found for this process. Please upload a file first.');
+    } else if (cachedJobId !== jobId) {
+      console.log('[fileService.getMetadata] Job ID changed, clearing old cached metadata. Old:', cachedJobId, 'New:', jobId);
+      // Clear old cached metadata if job ID has changed
+      localStorage.removeItem(cachedKey);
+      localStorage.removeItem(cachedJobIdKey);
     }
 
+    console.log('[fileService.getMetadata] Calling scholarFinderApiService.getMetadata with jobId:', jobId);
     const response = await scholarFinderApiService.getMetadata(jobId);
     
-    // Transform response to match ExtractedMetadata format
-    // Convert keywords string to array if needed
-    const keywordsArray = typeof response.data.keywords === 'string' 
-      ? response.data.keywords.split(',').map(k => k.trim())
-      : response.data.keywords;
+    // Debug logging
+    console.log('[fileService.getMetadata] Raw response:', response);
     
-    // Transform authors array from strings to Author objects
-    const authorsArray = response.data.authors.map((authorName: string, index: number) => ({
-      id: `author-${index}`,
-      name: authorName,
-      affiliation: response.data.author_aff_map?.[authorName] || response.data.affiliations[index] || '',
-      country: '',
-      publicationCount: 0,
-      recentPublications: [],
-      expertise: [],
-      database: 'manuscript',
-      matchScore: 0
-    }));
+    // Handle the response structure from your backend API
+    // Response: { job_id, total_manuscripts, results: [{ file_name, data: {...} }] }
+    if (!response.results || response.results.length === 0) {
+      console.error('[fileService.getMetadata] No results found in response:', response);
+      throw new Error('No metadata found in the response');
+    }
     
-    // Transform affiliations array from strings to Affiliation objects
-    const affiliationsArray = response.data.affiliations.map((affName: string, index: number) => ({
-      id: `aff-${index}`,
-      name: affName,
-      country: '',
-      type: 'university'
-    }));
+    // Process all files, not just the first one
+    const allFilesMetadata = response.results.map((result, fileIndex) => {
+      const fileMetadata = result.data;
+      console.log(`[fileService.getMetadata] Processing file ${fileIndex + 1}:`, result.file_name, fileMetadata);
+      
+      // Clean the file name
+      const cleanFileName = result.file_name
+        .replace(/_metadata\.json$/, '')  // Remove _metadata.json
+        .replace(/_keywords\.json$/, '')  // Remove _keywords.json  
+        .replace(/\.json$/, '')           // Remove any remaining .json
+        .replace(/_metadata$/, '')        // Remove _metadata suffix
+        .replace(/_keywords$/, '');       // Remove _keywords suffix
+      
+      console.log(`[fileService.getMetadata] Original fileName: "${result.file_name}" -> Cleaned: "${cleanFileName}"`);
+      
+      if (!fileMetadata) {
+        console.error(`[fileService.getMetadata] Invalid metadata structure for file ${result.file_name}:`, result);
+        return null;
+      }
+      
+      // Transform response to match ExtractedMetadata format
+      // Convert keywords string to array if needed
+      const keywordsArray = typeof fileMetadata.keywords === 'string' 
+        ? fileMetadata.keywords.split(',').map(k => k.trim()).filter(k => k.length > 0)
+        : Array.isArray(fileMetadata.keywords) 
+        ? fileMetadata.keywords
+        : [];
+      
+      // Transform authors array from strings to Author objects
+      const authorsArray = Array.isArray(fileMetadata.authors) 
+        ? fileMetadata.authors.map((authorName: string, index: number) => ({
+            id: `author-${fileIndex}-${index}`,
+            name: authorName,
+            affiliation: fileMetadata.author_aff_map?.[authorName] || 
+                        (Array.isArray(fileMetadata.affiliations) ? fileMetadata.affiliations[index] : '') || '',
+            country: '',
+            publicationCount: 0,
+            recentPublications: [],
+            expertise: [],
+            database: 'manuscript',
+            matchScore: 0
+          }))
+        : [];
+      
+      // Transform affiliations array from strings to Affiliation objects
+      const affiliationsArray = Array.isArray(fileMetadata.affiliations)
+        ? fileMetadata.affiliations.map((affName: string, index: number) => ({
+            id: `aff-${fileIndex}-${index}`,
+            name: affName,
+            country: '',
+            type: 'university'
+          }))
+        : [];
+      
+      return {
+        fileName: cleanFileName,
+        title: fileMetadata.heading || fileMetadata.title || 'Untitled',
+        authors: authorsArray,
+        affiliations: affiliationsArray,
+        keywords: keywordsArray,
+        abstract: fileMetadata.abstract || ''
+      };
+    }).filter(Boolean); // Remove any null entries
     
-    const metadata = {
-      title: response.data.heading,
-      authors: authorsArray,
-      affiliations: affiliationsArray,
-      keywords: keywordsArray,
-      abstract: response.data.abstract
-    };
+    // For backward compatibility, if there's only one file, return it as a single object
+    // If multiple files, return the array structure
+    const metadata = allFilesMetadata.length === 1 
+      ? allFilesMetadata[0] 
+      : {
+          title: `${allFilesMetadata.length} Manuscripts`,
+          files: allFilesMetadata,
+          // Aggregate data for compatibility
+          authors: allFilesMetadata.flatMap(file => file.authors),
+          affiliations: allFilesMetadata.flatMap(file => file.affiliations),
+          keywords: [...new Set(allFilesMetadata.flatMap(file => file.keywords))], // Unique keywords
+          abstract: allFilesMetadata.map(file => `${file.title}: ${file.abstract}`).join('\n\n')
+        };
     
-    // Cache the metadata for future use
+    console.log('[fileService.getMetadata] Transformed metadata:', metadata);
+    
+    // Cache the metadata for future use along with the job ID
+    // Reuse the cachedKey and cachedJobIdKey variables from earlier
     localStorage.setItem(cachedKey, JSON.stringify(metadata));
+    localStorage.setItem(cachedJobIdKey, jobId);
     
     return metadata;
   }
@@ -182,16 +253,15 @@ class FileService {
     const response = await scholarFinderApiService.enhanceKeywords(jobId);
     console.log('[fileService] Full API response:', response);
     
-    // The API returns data directly in the response object, not nested in response.data
-    // Check if response.data exists, otherwise use response directly
-    const data = response.data || response;
-    console.log('[fileService] Extracted data:', data);
+    // For keyword enhancement, we need the full response because combined keywords are at the top level
+    // Don't extract just response.data as it doesn't contain combined_primary_keywords and combined_secondary_keywords
+    console.log('[fileService] Returning full response for keyword enhancement');
     
     // Cache the enhanced keywords for later retrieval
     const key = `process_${processId}_keywords`;
-    localStorage.setItem(key, JSON.stringify(data));
+    localStorage.setItem(key, JSON.stringify(response));
     
-    return data;
+    return response;
   }
 
   /**

@@ -681,6 +681,55 @@ export class ApiService {
   }
 
   /**
+   * Upload multiple files with progress tracking and extended timeout
+   */
+  async uploadFiles<T = any>(
+    url: string, 
+    files: File[], 
+    onProgress?: (progress: number) => void
+  ): Promise<ApiResponse<T>> {
+    const formData = new FormData();
+    
+    // Add all files to the form data
+    files.forEach((file, index) => {
+      formData.append('files', file);
+    });
+
+    // Calculate timeout based on total file size and count
+    const baseTimeout = 10 * 60 * 1000; // 10 minutes
+    const totalSizeInMB = files.reduce((sum, file) => sum + file.size, 0) / (1024 * 1024);
+    const fileCountTimeout = files.length * 2 * 60 * 1000; // 2 minutes per file
+    const sizeTimeout = Math.ceil(totalSizeInMB / 10) * 2 * 60 * 1000; // 2 minutes per 10MB
+    const uploadTimeout = Math.max(baseTimeout + fileCountTimeout + sizeTimeout, 15 * 60 * 1000); // Minimum 15 minutes
+
+    console.log(`[ApiService] Multi-file upload timeout: ${uploadTimeout}ms (${uploadTimeout/1000/60} minutes) for ${files.length} files (${totalSizeInMB.toFixed(1)}MB total)`);
+
+    try {
+      const response = await this.axiosInstance.post<ApiResponse<T>>(url, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: uploadTimeout, // Dynamic timeout based on file size and count
+        onUploadProgress: (progressEvent) => {
+          if (onProgress && progressEvent.total) {
+            const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            onProgress(progress);
+          }
+        },
+      });
+
+      return response.data;
+    } catch (error) {
+      console.error('[ApiService] Multi-file upload error:', error);
+      const userError = ErrorHandler.handle(error);
+      const err = new Error(userError.message);
+      (err as any).userError = userError;
+      (err as any).type = userError.type;
+      throw err;
+    }
+  }
+
+  /**
    * Upload file with progress tracking and extended timeout for large files
    */
   async uploadFile<T = any>(

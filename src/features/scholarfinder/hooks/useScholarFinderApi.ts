@@ -47,30 +47,75 @@ const handleScholarFinderError = (error: ScholarFinderError, operation: string) 
 };
 
 /**
- * Hook for manuscript upload and metadata extraction
+ * Hook for multiple manuscripts upload and metadata extraction
+ */
+export const useUploadManuscripts = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (files: File[]) => {
+      console.log('[useUploadManuscripts] mutationFn called with files:', files.map(f => f.name));
+      return scholarFinderApiService.uploadManuscripts(files);
+    },
+    onSuccess: (data: UploadResponse) => {
+      // Cache the metadata for the first file (primary job)
+      if (data.data.length > 0) {
+        const primaryFile = data.data[0];
+        queryClient.setQueryData(
+          scholarFinderQueryKeys.metadata(primaryFile.job_id),
+          {
+            message: data.message,
+            job_id: primaryFile.job_id,
+            data: {
+              heading: primaryFile.heading,
+              authors: primaryFile.authors,
+              affiliations: primaryFile.affiliations,
+              keywords: primaryFile.keywords,
+              abstract: primaryFile.abstract,
+              author_aff_map: primaryFile.author_aff_map
+            }
+          } as MetadataResponse
+        );
+      }
+      
+      toast.success(`${data.data.length} manuscript(s) uploaded successfully!`, {
+        description: 'Metadata has been extracted and is ready for review.'
+      });
+    },
+    onError: (error: ScholarFinderError) => {
+      handleScholarFinderError(error, 'Upload');
+    },
+  });
+};
+
+/**
+ * Hook for manuscript upload and metadata extraction (backward compatibility)
  */
 export const useUploadManuscript = () => {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: (file: File) => scholarFinderApiService.uploadManuscript(file),
+    mutationFn: (file: File) => scholarFinderApiService.uploadManuscripts([file]),
     onSuccess: (data: UploadResponse) => {
-      // Cache the metadata immediately
-      queryClient.setQueryData(
-        scholarFinderQueryKeys.metadata(data.data.job_id),
-        {
-          message: data.message,
-          job_id: data.data.job_id,
-          data: {
-            heading: data.data.heading,
-            authors: data.data.authors,
-            affiliations: data.data.affiliations,
-            keywords: data.data.keywords,
-            abstract: data.data.abstract,
-            author_aff_map: data.data.author_aff_map
-          }
-        } as MetadataResponse
-      );
+      // Cache the metadata for the file
+      if (data.data.length > 0) {
+        const fileData = data.data[0];
+        queryClient.setQueryData(
+          scholarFinderQueryKeys.metadata(fileData.job_id),
+          {
+            message: data.message,
+            job_id: fileData.job_id,
+            data: {
+              heading: fileData.heading,
+              authors: fileData.authors,
+              affiliations: fileData.affiliations,
+              keywords: fileData.keywords,
+              abstract: fileData.abstract,
+              author_aff_map: fileData.author_aff_map
+            }
+          } as MetadataResponse
+        );
+      }
       
       toast.success('Manuscript uploaded successfully!', {
         description: 'Metadata has been extracted and is ready for review.'
@@ -463,6 +508,7 @@ export const useScholarFinderApi = () => {
   return {
     // Upload and metadata
     uploadManuscript: useUploadManuscript(),
+    uploadManuscripts: useUploadManuscripts(),
     useMetadata,
     
     // Keywords

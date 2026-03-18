@@ -37,7 +37,7 @@ const VALIDATION_CONDITIONS = [
   {
     id: 'Publications',
     label: 'Publications',
-    description: 'Check publication count in last 10 years (≥8) and last 5 years, last 2 years and last year'
+    description: 'Check publication count in last 10 years and last 5 years, last 2 years and last 12 months'
   },
   {
     id: 'First/Last Author in publications',
@@ -47,22 +47,17 @@ const VALIDATION_CONDITIONS = [
   {
     id: 'Relevant Publications',
     label: 'Relevant Publications',
-    description: 'Check relevant publications in last 5 years and last 2 years'
+    description: 'Check relevant publications in last 5 years, last 2 years and last 12 months'
   },
   {
     id: 'Publication Types',
     label: 'Publication Types',
-    description: 'Analyze publication types of Clinical Trial, Clinical Study, Case Report and Retracted Publication if any'
+    description: 'Analyze publication types of Clinical Trial, Clinical Study and Case Report if any'
   },
   {
     id: 'T&F Publications last year',
     label: 'Taylor & Francis Publications',
-    description: 'Check Taylor & Francis publications in the last year'
-  },
-  {
-    id: 'Coauthor',
-    label: 'Coauthor Analysis',
-    description: 'Check for coauthorship with manuscript authors'
+    description: 'Check Taylor & Francis publications in the last 12 months'
   },
   {
     id: 'Conflict of Interest',
@@ -70,14 +65,14 @@ const VALIDATION_CONDITIONS = [
     description: 'Detect potential conflicts of interest with manuscript authors'
   },
   {
-    id: 'Affiliation/Country match',
-    label: 'Affiliation/Country Match',
-    description: 'Verify affiliation and country consistency'
+    id: 'Retraction History',
+    label: 'Retraction History',
+    description: 'Check for any retracted publications in author history'
   },
   {
     id: 'Study Type Detection',
     label: 'Study Type Detection',
-    description: 'Analyze study types in author publications'
+    description: 'Analyze study types (In Vivo, In Vitro, In Silico)'
   },
   {
     id: 'Sanction Country',
@@ -140,6 +135,63 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   // Local state for workflow data with localStorage persistence
   const getStorageKey = (key: string) => `process_${processId}_${key}`;
   
+  // Helper function to extract file info from upload response
+  const extractFileInfo = (uploadResponse: any) => {
+    if (!uploadResponse) return null;
+    
+    // Handle new multiple file format
+    if (Array.isArray(uploadResponse.data) && uploadResponse.data.length > 0) {
+      const firstFile = uploadResponse.data[0];
+      return {
+        name: firstFile.file_name || 'uploaded_file',
+        size: 0 // API doesn't return file size, use 0 as placeholder
+      };
+    }
+    
+    // Handle old single file format (backward compatibility)
+    if (uploadResponse.fileName && uploadResponse.fileSize) {
+      return {
+        name: uploadResponse.fileName,
+        size: uploadResponse.fileSize
+      };
+    }
+    
+    // Fallback
+    return {
+      name: 'uploaded_file',
+      size: 0
+    };
+  };
+
+  // Helper function to extract job ID from upload response
+  const extractJobId = (uploadResponse: any): string | null => {
+    if (!uploadResponse) return null;
+    
+    // Handle array format (multiple files)
+    if (Array.isArray(uploadResponse)) {
+      const firstFile = uploadResponse[0];
+      return firstFile?.job_id || null;
+    }
+    
+    // Handle object with data array
+    if (uploadResponse.data && Array.isArray(uploadResponse.data) && uploadResponse.data.length > 0) {
+      const firstFile = uploadResponse.data[0];
+      return firstFile.job_id || null;
+    }
+    
+    // Handle single file format
+    if (uploadResponse.job_id) {
+      return uploadResponse.job_id;
+    }
+    
+    // Handle legacy format
+    if (uploadResponse.fileId) {
+      return uploadResponse.fileId;
+    }
+    
+    return null;
+  };
+  
   const [uploadedFile, setUploadedFile] = useState<File | null>(() => {
     // Initialize uploadedFile from localStorage if available
     const storageKey = `process_${processId}_uploadResponse`;
@@ -149,9 +201,10 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed?.fileName && parsed?.fileSize) {
-          console.log('[ProcessWorkflow] Initializing uploadedFile from localStorage:', parsed.fileName);
-          return { name: parsed.fileName, size: parsed.fileSize } as File;
+        const fileInfo = extractFileInfo(parsed);
+        if (fileInfo) {
+          console.log('[ProcessWorkflow] Initializing uploadedFile from localStorage:', fileInfo.name);
+          return { name: fileInfo.name, size: fileInfo.size } as File;
         }
       } catch (e) {
         console.warn('[ProcessWorkflow] Failed to parse uploadResponse for uploadedFile:', e);
@@ -175,8 +228,9 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       const saved = localStorage.getItem(`process_${processId}_uploadResponse`);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed?.fileName && parsed?.fileSize) {
-          return { name: parsed.fileName, size: parsed.fileSize } as File;
+        const fileInfo = extractFileInfo(parsed);
+        if (fileInfo) {
+          return { name: fileInfo.name, size: fileInfo.size } as File;
         }
       }
     } catch (e) {
@@ -189,7 +243,19 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     try {
       const saved = localStorage.getItem(`process_${processId}_uploadResponse`);
       if (saved) {
-        return JSON.parse(saved);
+        const uploadResponse = JSON.parse(saved);
+        
+        // Extract and store job ID if not already stored
+        const existingJobId = fileService.getJobId(processId);
+        if (!existingJobId) {
+          const jobId = extractJobId(uploadResponse);
+          if (jobId) {
+            console.log('[ProcessWorkflow] Restoring job ID from localStorage:', jobId);
+            fileService.setJobId(processId, jobId);
+          }
+        }
+        
+        return uploadResponse;
       }
     } catch (e) {
       console.warn('[ProcessWorkflow] Failed to read uploadResponse from localStorage:', e);
@@ -198,15 +264,18 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   };
 
   const memoizedUploadedFile = uploadedFile || 
-    (uploadResponse?.fileName && uploadResponse?.fileSize 
-      ? { name: uploadResponse.fileName, size: uploadResponse.fileSize } as File 
-      : null) ||
+    (uploadResponse ? (() => {
+      const fileInfo = extractFileInfo(uploadResponse);
+      return fileInfo ? { name: fileInfo.name, size: fileInfo.size } as File : null;
+    })() : null) ||
     getUploadedFileFromStorage();
   
   const effectiveUploadResponse = uploadResponse || getUploadResponseFromStorage();
   
   console.log('[ProcessWorkflow] memoizedUploadedFile:', memoizedUploadedFile ? memoizedUploadedFile.name : 'null');
   console.log('[ProcessWorkflow] effectiveUploadResponse:', effectiveUploadResponse ? 'present' : 'null');
+  console.log('[ProcessWorkflow] uploadResponse state:', uploadResponse);
+  console.log('[ProcessWorkflow] getUploadResponseFromStorage():', getUploadResponseFromStorage());
   
   // Restore state when processId changes (switching between processes)
   useEffect(() => {
@@ -221,10 +290,11 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         setUploadResponse(parsed);
         
         // Also restore uploadedFile
-        if (parsed?.fileName && parsed?.fileSize) {
+        const fileInfo = extractFileInfo(parsed);
+        if (fileInfo) {
           setUploadedFile({ 
-            name: parsed.fileName, 
-            size: parsed.fileSize 
+            name: fileInfo.name, 
+            size: fileInfo.size 
           } as File);
         }
       } catch (e) {
@@ -422,12 +492,23 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   // Validation conditions state
   const [selectedValidationConditions, setSelectedValidationConditions] = useState<string[]>(() => {
     const saved = localStorage.getItem(`process_${processId}_selectedValidationConditions`);
-    return saved ? JSON.parse(saved) : [
+    const initialConditions = saved ? JSON.parse(saved) : [
       'Publications',
-      'Coauthor',
       'Conflict of Interest',
-      'Affiliation/Country match'
+      'Retraction History'
     ]; // Pre-select common conditions
+    
+    // Filter out any invalid condition IDs that don't exist in VALIDATION_CONDITIONS
+    const validConditions = initialConditions.filter((id: string) => 
+      VALIDATION_CONDITIONS.some(c => c.id === id)
+    );
+    
+    // If we filtered out invalid conditions, save the cleaned array
+    if (validConditions.length !== initialConditions.length) {
+      localStorage.setItem(`process_${processId}_selectedValidationConditions`, JSON.stringify(validConditions));
+    }
+    
+    return validConditions;
   });
   const [showConditionSelection, setShowConditionSelection] = useState(() => {
     const saved = localStorage.getItem(`process_${processId}_showConditionSelection`);
@@ -435,7 +516,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   });
   
   // Ref to prevent auto-check after manual reset
-  const skipValidationCheckRef = useRef(false);
+  const validationResetTimestampRef = useRef(0);
   
   // COI Publications Modal state
   const [coiModalOpen, setCOIModalOpen] = useState(false);
@@ -719,10 +800,10 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   // Check if validation completed while user was away
   useEffect(() => {
     const checkValidationCompletion = async () => {
-      // Skip check if we just manually reset
-      if (skipValidationCheckRef.current) {
-        console.log('[ProcessWorkflow] Skipping validation check after manual reset');
-        skipValidationCheckRef.current = false; // Reset the flag
+      // Skip check if we just manually reset (within last 2 seconds)
+      const timeSinceReset = Date.now() - validationResetTimestampRef.current;
+      if (timeSinceReset < 2000) {
+        console.log('[ProcessWorkflow] Skipping validation check after recent manual reset (first useEffect)');
         return;
       }
       
@@ -786,6 +867,13 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   // Monitor for validation completion from localStorage when navigating back
   useEffect(() => {
     const checkValidationCompletionFromStorage = () => {
+      // Skip check if we just manually reset (within last 2 seconds)
+      const timeSinceReset = Date.now() - validationResetTimestampRef.current;
+      if (timeSinceReset < 2000) {
+        console.log('[ProcessWorkflow] Skipping validation check after recent manual reset (second useEffect)');
+        return;
+      }
+      
       const isValidatingStored = localStorage.getItem(`process_${processId}_isValidating`);
       const validationCompletedStored = localStorage.getItem(`process_${processId}_validationCompleted`);
       const validationIdStored = localStorage.getItem(`process_${processId}_validationId`);
@@ -855,12 +943,15 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     // Only restore if uploadedFile is not already set
     if (!uploadedFile && process?.currentStep) {
       // Try to restore from uploadResponse first (most reliable source)
-      if (uploadResponse?.fileName && uploadResponse?.fileSize) {
-        console.log('[ProcessWorkflow] Restoring uploadedFile from uploadResponse:', uploadResponse.fileName);
-        setUploadedFile({ 
-          name: uploadResponse.fileName, 
-          size: uploadResponse.fileSize 
-        } as File);
+      if (uploadResponse) {
+        const fileInfo = extractFileInfo(uploadResponse);
+        if (fileInfo) {
+          console.log('[ProcessWorkflow] Restoring uploadedFile from uploadResponse:', fileInfo.name);
+          setUploadedFile({ 
+            name: fileInfo.name, 
+            size: fileInfo.size 
+          } as File);
+        }
       }
       // Fallback: Try to get file info from localStorage if uploadResponse is missing
       else {
@@ -869,11 +960,12 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         if (savedUploadResponse) {
           try {
             const parsed = JSON.parse(savedUploadResponse);
-            if (parsed?.fileName && parsed?.fileSize) {
-              console.log('[ProcessWorkflow] Restoring uploadedFile from localStorage:', parsed.fileName);
+            const fileInfo = extractFileInfo(parsed);
+            if (fileInfo) {
+              console.log('[ProcessWorkflow] Restoring uploadedFile from localStorage:', fileInfo.name);
               setUploadedFile({ 
-                name: parsed.fileName, 
-                size: parsed.fileSize 
+                name: fileInfo.name, 
+                size: fileInfo.size 
               } as File);
               // Also restore uploadResponse state if it's missing
               if (!uploadResponse) {
@@ -995,9 +1087,14 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         ? [...prev, conditionId]
         : prev.filter(id => id !== conditionId);
       
+      // Filter out any invalid condition IDs
+      const validConditions = newConditions.filter(id => 
+        VALIDATION_CONDITIONS.some(c => c.id === id)
+      );
+      
       // Save to localStorage
-      localStorage.setItem(`process_${processId}_selectedValidationConditions`, JSON.stringify(newConditions));
-      return newConditions;
+      localStorage.setItem(`process_${processId}_selectedValidationConditions`, JSON.stringify(validConditions));
+      return validConditions;
     });
   }, [processId]);
 
@@ -1061,8 +1158,15 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       console.log('[ProcessWorkflow] Starting validation for jobId:', jobId);
       console.log('[ProcessWorkflow] Selected validation conditions:', selectedValidationConditions);
 
+      // Filter to only valid conditions
+      const validConditions = selectedValidationConditions.filter(id => 
+        VALIDATION_CONDITIONS.some(c => c.id === id)
+      );
+      
+      console.log('[ProcessWorkflow] Valid validation conditions:', validConditions);
+
       // Validate that conditions are selected
-      if (selectedValidationConditions.length === 0) {
+      if (validConditions.length === 0) {
         toast({
           title: 'No Conditions Selected',
           description: 'Please select at least one validation condition to run.',
@@ -1072,7 +1176,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       }
 
       // Call the validate authors API with selected conditions
-      const response = await scholarFinderApiService.validateAuthorsWithConditions(jobId, selectedValidationConditions);
+      const response = await scholarFinderApiService.validateAuthorsWithConditions(jobId, validConditions);
       
       console.log('[ProcessWorkflow] Validation API response:', response);
       
@@ -1091,13 +1195,13 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
           percentage: 100,
           processed: response.total_authors || 0,
           total: response.total_authors || 0,
-          criteria: selectedValidationConditions,
+          criteria: validConditions,
           status: 'completed',
           estimatedCompletion: null
         });
         
         const processedCount = response.total_authors || 0;
-        const criteriaCount = selectedValidationConditions.length;
+        const criteriaCount = validConditions.length;
         
         let description = `Processed ${processedCount} authors against ${criteriaCount} validation criteria.`;
         description += ' Results are now available.';
@@ -1116,7 +1220,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
           percentage: 0,
           processed: 0,
           total: 0,
-          criteria: selectedValidationConditions,
+          criteria: validConditions,
           status: 'in_progress',
           estimatedCompletion: null
         });
@@ -1126,7 +1230,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         
         toast({
           title: 'Validation Started',
-          description: `Author validation has started with ${selectedValidationConditions.length} conditions. This may take several minutes.`,
+          description: `Author validation has started with ${validConditions.length} conditions. This may take several minutes.`,
           duration: 5000,
         });
         
@@ -1175,6 +1279,10 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       // This ensures the user can start a fresh validation if needed
       if (previousStep === 'MANUAL_SEARCH' && newStep === 'VALIDATION') {
         console.log('[ProcessWorkflow] Moving from MANUAL_SEARCH to VALIDATION - resetting validation state');
+        
+        // Set timestamp to skip auto-check after reset
+        validationResetTimestampRef.current = Date.now();
+        
         setValidationCompleted(false);
         setValidationProgress({
           percentage: 0,
@@ -1186,6 +1294,14 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         });
         // Stop any ongoing polling
         stopValidationPolling();
+        
+        // Clear validation-related localStorage keys to prevent stale state
+        localStorage.removeItem(`process_${processId}_validationCompleted`);
+        localStorage.removeItem(`process_${processId}_isValidating`);
+        localStorage.removeItem(`process_${processId}_validationId`);
+        localStorage.removeItem(`process_${processId}_validationProgress`);
+        localStorage.removeItem(`process_${processId}_validationRecommendations`);
+        console.log('[ProcessWorkflow] Cleared validation localStorage keys');
       }
       
       await updateStepMutation.mutateAsync({
@@ -1208,8 +1324,9 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   }, [process, processId, updateStepMutation, toast, stopValidationPolling]);
 
   const handleFileUpload = useCallback(async (uploadResponse: any) => {
-    // Handle file removal (when uploadResponse is null)
-    if (!uploadResponse) {
+    // Handle file removal (when uploadResponse is null, undefined, or empty array)
+    if (!uploadResponse || (Array.isArray(uploadResponse) && uploadResponse.length === 0)) {
+      console.log('[ProcessWorkflow] File removal detected, clearing state');
       setUploadResponse(null);
       setUploadedFile(null);
       localStorage.removeItem(getStorageKey('uploadResponse'));
@@ -1232,14 +1349,26 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     const saved = localStorage.getItem(storageKey);
     console.log('[ProcessWorkflow] Verified localStorage save:', saved ? 'SUCCESS' : 'FAILED');
     
+    // Extract and store job ID from upload response
+    const jobId = extractJobId(uploadResponse);
+    if (jobId) {
+      console.log('[ProcessWorkflow] Extracted job ID:', jobId);
+      fileService.setJobId(processId, jobId);
+    } else {
+      console.warn('[ProcessWorkflow] No job ID found in upload response');
+    }
+    
+    // Extract file info from the response - handle both old and new formats
+    const fileInfo = extractFileInfo(uploadResponse);
+    
     // Use flushSync to force immediate state updates before any re-renders
     // This prevents React Query refetches from causing renders with stale state
     flushSync(() => {
       console.log('[ProcessWorkflow] Setting uploadResponse state:', uploadResponse);
       setUploadResponse(uploadResponse);
       
-      console.log('[ProcessWorkflow] Setting uploadedFile state:', { name: uploadResponse.fileName, size: uploadResponse.fileSize });
-      setUploadedFile({ name: uploadResponse.fileName, size: uploadResponse.fileSize } as File);
+      console.log('[ProcessWorkflow] Setting uploadedFile state:', fileInfo);
+      setUploadedFile({ name: fileInfo.name, size: fileInfo.size } as File);
     });
     
     // Only reset workflow state for steps AFTER upload (keywords, search, validation)
@@ -1513,6 +1642,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
               processTitle={process.title}
               onFileUpload={handleFileUpload}
               uploadedFile={memoizedUploadedFile}
+              uploadResponse={effectiveUploadResponse}
             />
             {memoizedUploadedFile && effectiveUploadResponse && (
               <div className="flex justify-end">
@@ -1528,11 +1658,18 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         );
 
       case "METADATA_EXTRACTION":
+        // Get file names from upload response for better display
+        const fileNames = effectiveUploadResponse 
+          ? (Array.isArray(effectiveUploadResponse) 
+              ? effectiveUploadResponse.map(file => file.file_name).join(', ')
+              : effectiveUploadResponse.file_name || uploadedFile?.name)
+          : uploadedFile?.name;
+          
         return (
           <div className="space-y-4">
             <DataExtraction 
               processId={processId}
-              fileName={uploadedFile?.name}
+              fileName={fileNames}
             />
             {metadata && !metadataLoading && (
               <div className="flex justify-end">
@@ -1712,7 +1849,19 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                             Select None
                           </Button>
                           <div className="ml-auto text-sm text-muted-foreground">
-                            {selectedValidationConditions.length} of {VALIDATION_CONDITIONS.length} selected
+                            {(() => {
+                              const validCount = selectedValidationConditions.filter(id => VALIDATION_CONDITIONS.some(c => c.id === id)).length;
+                              const totalCount = VALIDATION_CONDITIONS.length;
+                              
+                              // Debug log to help identify the issue
+                              if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+                                console.log('[ValidationConditions] Selected conditions:', selectedValidationConditions);
+                                console.log('[ValidationConditions] Valid conditions:', selectedValidationConditions.filter(id => VALIDATION_CONDITIONS.some(c => c.id === id)));
+                                console.log('[ValidationConditions] Invalid conditions:', selectedValidationConditions.filter(id => !VALIDATION_CONDITIONS.some(c => c.id === id)));
+                              }
+                              
+                              return `${validCount} of ${totalCount} selected`;
+                            })()}
                           </div>
                         </div>
 
@@ -1759,7 +1908,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                       onClick={handleValidateAuthors}
                       size="lg"
                       className="px-8"
-                      disabled={isActuallyValidating || isPollingValidation || validationInProgressRef.current || validationProgress.status === 'in_progress' || selectedValidationConditions.length === 0}
+                      disabled={isActuallyValidating || isPollingValidation || validationInProgressRef.current || validationProgress.status === 'in_progress' || selectedValidationConditions.filter(id => VALIDATION_CONDITIONS.some(c => c.id === id)).length === 0}
                     >
                       {isActuallyValidating || isPollingValidation || validationProgress.status === 'in_progress' ? (
                         <>
@@ -1767,10 +1916,10 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                           Validating Authors...
                         </>
                       ) : (
-                        `Validate Authors (${selectedValidationConditions.length} conditions selected)`
+                        `Validate Authors (${selectedValidationConditions.filter(id => VALIDATION_CONDITIONS.some(c => c.id === id)).length} conditions selected)`
                       )}
                     </Button>
-                    {selectedValidationConditions.length === 0 && (
+                    {selectedValidationConditions.filter(id => VALIDATION_CONDITIONS.some(c => c.id === id)).length === 0 && (
                       <p className="text-sm text-muted-foreground text-center">
                         Please select at least one validation condition to proceed
                       </p>
@@ -1821,8 +1970,8 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                         onClick={() => {
                           console.log('[ProcessWorkflow] User requested re-validation');
                           
-                          // Set flag to skip auto-check
-                          skipValidationCheckRef.current = true;
+                          // Set timestamp to skip auto-check
+                          validationResetTimestampRef.current = Date.now();
                           
                           // Reset all validation states
                           setValidationCompleted(false);

@@ -8,11 +8,12 @@ import { StepComponentProps } from '../../types/workflow';
 interface ValidationStepProps extends StepComponentProps {}
 
 // Available validation conditions from backend
+// Available validation conditions from backend
 const VALIDATION_CONDITIONS = [
   {
     id: 'Publications',
     label: 'Publications',
-    description: 'Check publication count in last 10 years (≥8) and last 5 years, last 2 years and last year'
+    description: 'Check publication count in last 10 years and last 5 years, last 2 years and last 12 months'
   },
   {
     id: 'First/Last Author in publications',
@@ -22,22 +23,17 @@ const VALIDATION_CONDITIONS = [
   {
     id: 'Relevant Publications',
     label: 'Relevant Publications',
-    description: 'Check relevant publications in last 5 years and last 2 years'
+    description: 'Check relevant publications in last 5 years, last 2 years and last 12 months'
   },
   {
     id: 'Publication Types',
     label: 'Publication Types',
-    description: 'Analyze publication types of Clinical Trial, Clinical Study, Case Report and Retracted Publication if any'
+    description: 'Analyze publication types of Clinical Trial, Clinical Study and Case Report if any'
   },
   {
     id: 'T&F Publications last year',
     label: 'Taylor & Francis Publications',
-    description: 'Check Taylor & Francis publications in the last year'
-  },
-  {
-    id: 'Coauthor',
-    label: 'Coauthor Analysis',
-    description: 'Check for coauthorship with manuscript authors'
+    description: 'Check Taylor & Francis publications in the last 12 months'
   },
   {
     id: 'Conflict of Interest',
@@ -45,14 +41,14 @@ const VALIDATION_CONDITIONS = [
     description: 'Detect potential conflicts of interest with manuscript authors'
   },
   {
-    id: 'Affiliation/Country match',
-    label: 'Affiliation/Country Match',
-    description: 'Verify affiliation and country consistency'
+    id: 'Retraction History',
+    label: 'Retraction History',
+    description: 'Check for any retracted publications in author history'
   },
   {
     id: 'Study Type Detection',
     label: 'Study Type Detection',
-    description: 'Analyze study types in author publications'
+    description: 'Analyze study types (In Vivo, In Vitro, In Silico)'
   },
   {
     id: 'Sanction Country',
@@ -71,9 +67,8 @@ export const ValidationStepSimple: React.FC<ValidationStepProps> = ({
 }) => {
   const [selectedConditions, setSelectedConditions] = useState<string[]>([
     'Publications',
-    'Coauthor',
     'Conflict of Interest',
-    'Affiliation/Country match'
+    'Retraction History'
   ]);
 
   const handleConditionToggle = (conditionId: string, checked: boolean) => {

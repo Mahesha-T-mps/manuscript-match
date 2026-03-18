@@ -924,14 +924,15 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                       {/* Research Focus Areas - Show different parts based on selected conditions */}
                       {(!selectedValidationConditions || selectedValidationConditions.length === 0 || 
                         selectedValidationConditions.includes('Publication Types') || 
-                        selectedValidationConditions.includes('T&F Publications last year')) && (
+                        selectedValidationConditions.includes('T&F Publications last year') ||
+                        selectedValidationConditions.includes('Retraction History')) && (
                         <div>
                           <div className="flex items-center mb-3">
                             <div className="w-2 h-2 bg-purple-500 rounded-full mr-2"></div>
                             <h5 className="text-sm font-medium text-gray-700">Research Focus Areas</h5>
                           </div>
                           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                            {/* Publication Types related items */}
+                            {/* Publication Types related items - only show if Publication Types is selected */}
                             {(!selectedValidationConditions || selectedValidationConditions.length === 0 || selectedValidationConditions.includes('Publication Types')) && (
                               <>
                                 <div className="p-3 bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-lg border border-indigo-200 text-center">
@@ -951,13 +952,16 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                                   <div className="text-lg font-bold text-teal-900">{reviewer.Case_reports_no || 0}</div>
                                   <div className="text-xs text-teal-600">Case studies</div>
                                 </div>
-                                
-                                <div className="p-3 bg-gradient-to-br from-red-50 to-red-100 rounded-lg border border-red-200 text-center">
-                                  <div className="text-xs font-medium text-red-700 mb-1">Retractions</div>
-                                  <div className="text-lg font-bold text-red-900">{reviewer.Retracted_Pubs_no || 0}</div>
-                                  <div className="text-xs text-red-600">Quality indicator</div>
-                                </div>
                               </>
+                            )}
+                            
+                            {/* Retractions - only show if Retraction History is selected */}
+                            {(!selectedValidationConditions || selectedValidationConditions.length === 0 || selectedValidationConditions.includes('Retraction History')) && (
+                              <div className="p-3 bg-gradient-to-br from-red-50 to-red-100 rounded-lg border border-red-200 text-center">
+                                <div className="text-xs font-medium text-red-700 mb-1">Retractions</div>
+                                <div className="text-lg font-bold text-red-900">{reviewer.Retracted_Pubs_no || 0}</div>
+                                <div className="text-xs text-red-600">Quality indicator</div>
+                              </div>
                             )}
                             
                             {/* T&F Publications - controlled by T&F Publications last year condition */}
@@ -1175,6 +1179,13 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                                   <div key="sanction-country" className="flex items-center space-x-2">
                                     {getValidationIcon((reviewer.sanction_country || 'no').toLowerCase() !== 'yes')}
                                     <span>Not from Sanctioned Country</span>
+                                  </div>
+                                );
+                              case 'Retraction History':
+                                return (
+                                  <div key="retraction-history" className="flex items-center space-x-2">
+                                    {getValidationIcon((reviewer.Retracted_Pubs_no || 0) === 0)}
+                                    <span>No Retracted Publications</span>
                                   </div>
                                 );
                               default:
