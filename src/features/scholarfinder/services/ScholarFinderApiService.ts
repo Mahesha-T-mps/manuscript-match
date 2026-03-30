@@ -663,7 +663,7 @@ export class ScholarFinderApiService {
             acc[db] = 'success';
             return acc;
           }, {} as Record<string, 'success' | 'failed' | 'in_progress'>),
-          preview_reviewers: response.author_email_affiliation_preview?.slice(0, 5).map(author => ({
+          preview_reviewers: response.author_email_affiliation_preview?.map(author => ({
             reviewer: author.author || '',
             email: author.email || '',
             aff: author.aff || '',
