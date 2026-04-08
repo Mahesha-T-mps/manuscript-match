@@ -10,6 +10,7 @@ import { ProfileButton } from "@/components/profile/ProfileButton";
 import { queryKeys } from "@/lib/queryClient";
 import logo from "@/assets/s3 2.png";
 import Reports from "./Reports";
+import { NotificationPermissionBanner } from "@/components/notifications/NotificationPermissionBanner";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -95,6 +96,7 @@ const Index = () => {
           </TabsList>
           
           <TabsContent value="processes">
+            <NotificationPermissionBanner />
             {viewMode === 'dashboard' ? (
               <ProcessDashboard onSelectProcess={handleSelectProcess} />
             ) : selectedProcess ? (

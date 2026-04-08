@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,7 @@ export const ReviewerSearch = ({
   onSearchComplete 
 }: ReviewerSearchProps) => {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   
   // Search mutations and status
   const initiateSearchMutation = useInitiateSearch();
@@ -54,6 +56,16 @@ export const ReviewerSearch = ({
     isLoading: isLoadingStatus,
     error: searchError 
   } = useSearchProgress(processId);
+
+  // Debug search status
+  useEffect(() => {
+    console.log('[ReviewerSearch] Search status changed:', {
+      searchStatus,
+      isCompleted,
+      isSearching,
+      progressPercentage
+    });
+  }, [searchStatus, isCompleted, isSearching, progressPercentage]);
 
   const [databases, setDatabases] = useState<SearchDatabase[]>([
     {
@@ -538,6 +550,10 @@ export const ReviewerSearch = ({
       // Set searching state in localStorage before starting with search ID
       localStorage.setItem(`process_${processId}_isSearching`, JSON.stringify(true));
       localStorage.setItem(`process_${processId}_searchId`, searchId);
+      
+      // Clear notification flag for new search
+      localStorage.removeItem(`process_${processId}_searchNotified`);
+      
       console.log('[ReviewerSearch] Set isSearching to true in localStorage with searchId:', searchId);
       
       // First, save the keyword string to the API
@@ -637,6 +653,10 @@ export const ReviewerSearch = ({
       setSearchPerformedInSession(true);
       console.log('[ReviewerSearch] Search performed in current session, setting completion status');
       
+      // Invalidate search status query to trigger completion detection
+      queryClient.invalidateQueries({ queryKey: ['search', 'status', processId] });
+      console.log('[ReviewerSearch] Invalidated search status query to trigger completion detection');
+      
       // Calculate the actual count of results found
       let resultsCount = 0;
       if (searchResponse?.author_email_affiliation_preview && Array.isArray(searchResponse.author_email_affiliation_preview)) {
@@ -672,7 +692,13 @@ export const ReviewerSearch = ({
 
   // Handle search completion
   useEffect(() => {
+    console.log('[ReviewerSearch] Search completion useEffect triggered:', {
+      isCompleted,
+      onSearchComplete: !!onSearchComplete
+    });
+    
     if (isCompleted && onSearchComplete) {
+      console.log('[ReviewerSearch] Calling onSearchComplete callback');
       onSearchComplete();
     }
   }, [isCompleted, onSearchComplete]);

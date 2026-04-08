@@ -20,6 +20,7 @@ import NotFound from "./pages/NotFound";
 import AcceptInvitation from "./pages/AcceptInvitation";
 import Reports from "./pages/Reports";
 import { ScholarFinderApp } from "./features/scholarfinder";
+import { GlobalNotificationProvider } from "./components/notifications/GlobalNotificationProvider";
 
 // Initialize global error handlers
 initializeGlobalErrorHandlers();
@@ -39,6 +40,7 @@ const App = () => (
           <Sonner />
           <NetworkStatusToast />
           <GlobalErrorToastHandler />
+          <GlobalNotificationProvider />
           <BrowserRouter>
             <ErrorBoundary enableReporting={true}>
               <Routes>

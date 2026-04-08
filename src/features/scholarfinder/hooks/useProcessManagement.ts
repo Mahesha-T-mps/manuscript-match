@@ -3,6 +3,7 @@
  * Provides caching, error handling, and state management for process operations
  */
 
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { 
@@ -59,7 +60,7 @@ export const useCreateProcess = () => {
  * Hook for getting a specific process
  */
 export const useProcess = (processId: string, enabled: boolean = true) => {
-  return useQuery({
+  const query = useQuery({
     queryKey: processQueryKeys.detail(processId),
     queryFn: () => processManagementService.getProcess(processId),
     enabled: enabled && !!processId,
@@ -73,6 +74,35 @@ export const useProcess = (processId: string, enabled: boolean = true) => {
       return failureCount < 3;
     },
   });
+
+  // Store process title for global notifications when data is available
+  useEffect(() => {
+    if (query.data?.title) {
+      // Only cache if this looks like a process title, not a document title
+      const title = query.data.title;
+      const isLikelyProcessTitle = title.length < 100 && 
+        !title.includes('Enhanced') && 
+        !title.includes('Analysis') && 
+        !title.includes('Control') &&
+        !title.includes('Microstructural') &&
+        !title.includes('Investigation') &&
+        !title.includes('Study') &&
+        !title.includes(':') && // Academic papers often have colons
+        !title.includes('Effect') &&
+        !title.includes('Evaluation');
+      
+      if (isLikelyProcessTitle) {
+        console.log('[useProcess] Caching process title:', title);
+        localStorage.setItem(`process_${processId}_title`, title);
+      } else {
+        console.log('[useProcess] Skipping document-like title:', title.substring(0, 50) + '...');
+        // Don't cache document titles, but also clear any existing cache
+        localStorage.removeItem(`process_${processId}_title`);
+      }
+    }
+  }, [query.data?.title, processId]);
+
+  return query;
 };/**
  * H
 ook for updating a process

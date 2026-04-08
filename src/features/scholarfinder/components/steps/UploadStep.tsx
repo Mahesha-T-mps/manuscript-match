@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { FileUpload } from '../common/FileUpload';
 import { useScholarFinderApi } from '../../hooks/useScholarFinderApi';
-import { useUpdateProcessStep } from '../../hooks/useProcessManagement';
+import { useProcess, useUpdateProcessStep } from '../../hooks/useProcessManagement';
 import { ProcessStep } from '../../types/process';
 import { cn } from '@/lib/utils';
 import { FileText, AlertCircle, CheckCircle2, Upload } from 'lucide-react';
@@ -14,6 +14,7 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { useAccessibilityContext } from '../accessibility/AccessibilityProvider';
 import { responsiveText, responsiveSpacing, responsiveFormLayout } from '../../utils/responsive';
 import { getButtonAria } from '../../utils/accessibility';
+import { useWorkflowNotifications } from '@/hooks/useGlobalNotifications';
 
 interface UploadStepProps extends StepComponentProps {}
 
@@ -47,6 +48,13 @@ export const UploadStep: React.FC<UploadStepProps> = ({
   
   const { uploadManuscripts } = useScholarFinderApi();
   const updateProcessStep = useUpdateProcessStep();
+  
+  // Load process data to cache the title in localStorage for global notifications
+  const { data: process } = useProcess(processId);
+  
+  // Get process title for notifications
+  const processTitle = process?.title || stepData?.title || `Process ${processId}`;
+  const { notifyStepError } = useWorkflowNotifications(processId, processTitle);
   
   const isUploading = uploadManuscripts.isPending;
   const isLoading = externalLoading || isUploading;
@@ -239,9 +247,13 @@ export const UploadStep: React.FC<UploadStepProps> = ({
       const errorMessage = error.message || 'Upload failed. Please try again.';
       setUploadError(errorMessage);
       announceMessage(`Upload failed: ${errorMessage}`, 'assertive');
+      
+      // Notify global error
+      notifyStepError('UPLOAD', errorMessage);
+      
       console.error('Upload error:', error);
     }
-  }, [uploadManuscripts, updateProcessStep, processId, acceptedTypes, maxFileSize, announceMessage, saveUploadState, clearUploadState]);
+  }, [uploadManuscripts, updateProcessStep, processId, acceptedTypes, maxFileSize, announceMessage, saveUploadState, clearUploadState, notifyStepError]);
 
   const handleFileRemove = useCallback((fileIndex?: number) => {
     if (typeof fileIndex === 'number') {
