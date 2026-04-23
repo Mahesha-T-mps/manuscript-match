@@ -45,7 +45,11 @@ if (config.env === 'development') {
 // CORS configuration
 app.use(cors({
   origin: config.env === 'production' 
-    ? ['https://your-frontend-domain.com'] // Replace with actual frontend domain
+    ? [
+        'https://your-frontend-domain.com',
+        'http://172.30.3.30:8080',
+        'http://172.30.3.30:3000',
+      ] // Replace with actual frontend domain
     : [
         'http://localhost:3000',
         'http://localhost:8080',
@@ -64,6 +68,8 @@ app.use(cors({
         'http://10.1.0.103:3001',
         'http://10.1.0.103:8081',
         'http://10.1.0.103:8082',
+        'http://172.30.3.30:8080',
+        'http://172.30.3.30:3000',
         // Allow any origin from local network for development
         /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}:\d+$/,
         /^http:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+$/

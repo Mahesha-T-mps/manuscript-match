@@ -50,7 +50,8 @@ async function createNewMPSUsers() {
       { name: 'Saritha', email: 'saritha.m@mpslimited.com', password: 'Saritha@6184', role: 'USER' },
       { name: 'Srimaghi', email: 'srimaghi.c@mpslimited.com', password: 'Srimaghi@4527', role: 'USER' },
       { name: 'Surya', email: 'surya.radhakrishnan@mpslimited.com', password: 'Surya@9361', role: 'USER' },
-      { name: 'Tamil Bharathi', email: 'tamilbharathi.p@mpslimited.com', password: 'Tamil@7845', role: 'USER' }
+      { name: 'Tamil Bharathi', email: 'tamilbharathi.p@mpslimited.com', password: 'Tamil@7845', role: 'USER' },
+      { name: 'Vijayalakshmi', email: 'vijayalakshmi.r@mpslimited.com', password: 'Vijayalakshmi3049', role: 'USER' }
     ];
 
     let successCount = 0;

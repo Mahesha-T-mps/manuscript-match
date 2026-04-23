@@ -24,7 +24,7 @@ export default defineConfig(({ mode, command }) => {
     // Preview server configuration
     preview: {
       host: "::",
-      port: 4173,
+      port: 8080,
       cors: true,
     },
     
