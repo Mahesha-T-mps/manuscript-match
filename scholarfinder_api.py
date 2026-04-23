@@ -672,7 +672,7 @@ def database_search(
         "selected_websites": selected_websites_list,
         "reviewers_count": len(final_df),
         "reviewers_raw_data_preview": final_df_1.head(10).to_dict(orient='records'),
-        "author_email_affiliation_preview": author_email_df.head(10).to_dict(orient='records')
+        "author_email_affiliation_preview": author_email_df.head(50).to_dict(orient='records')
     })
 
 

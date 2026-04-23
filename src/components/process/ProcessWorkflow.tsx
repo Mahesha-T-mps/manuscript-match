@@ -31,6 +31,7 @@ import { ShortlistManager } from '@/components/shortlist/ShortlistManager';
 import { COIPublicationsModal } from '@/components/coi/COIPublicationsModal';
 import type { Reviewer } from '@/types/api';
 import type { EnhancedKeywords } from '@/services/keywordService';
+import { useWorkflowNotifications } from '@/hooks/useGlobalNotifications';
 
 // Available validation conditions from backend
 const VALIDATION_CONDITIONS = [
@@ -109,6 +110,42 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   const { data: process, isLoading, error } = useProcess(processId);
   
   console.log('[ProcessWorkflow] Process data:', process);
+  
+  // Explicitly store process title for global notifications
+  useEffect(() => {
+    if (process?.title) {
+      console.log('[ProcessWorkflow] Storing process title for notifications:', process.title);
+      
+      // Store in multiple keys to ensure notification system finds it
+      localStorage.setItem(`process_${processId}_title`, process.title);
+      localStorage.setItem(`process_title_${processId}`, process.title);
+      localStorage.setItem(`processTitle_${processId}`, process.title);
+      
+      // Also store with process data for backup
+      const processData = {
+        id: processId,
+        title: process.title,
+        description: process.description,
+        status: process.status,
+        userId: process.userId
+      };
+      localStorage.setItem(`processData_${processId}`, JSON.stringify(processData));
+      
+      console.log('[ProcessWorkflow] Process title stored in multiple keys for notifications');
+    }
+  }, [process?.title, processId]);
+  
+  // Initialize workflow notifications with dynamic title
+  // Ensure we always use the most current process title, preferring the real title over fallback
+  const processTitle = process?.title || `Process ${processId}`;
+  
+  console.log('[ProcessWorkflow] Using process title for notifications:', processTitle, 'isRealTitle:', !!process?.title);
+  
+  const { 
+    notifyValidationComplete, 
+    notifyKeywordsComplete,
+    notifyStepError 
+  } = useWorkflowNotifications(processId, processTitle);
   
   const updateStepMutation = useUpdateProcessStep();
   
@@ -593,6 +630,9 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
             duration: 8000,
           });
           
+          // Notify global completion
+          notifyValidationComplete(validationRecommendations?.data?.reviewers?.length);
+          
           return true; // Stop polling
         }
         
@@ -654,6 +694,9 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
               description: `Found ${recommendations.data.reviewers.length} recommended reviewers. Results are now available.`,
               duration: 8000,
             });
+            
+            // Notify global completion
+            notifyValidationComplete(recommendations.data.reviewers.length);
             
             return true; // Stop polling
           } else if (recommendations.message?.includes('not ready')) {
@@ -841,6 +884,9 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                 description: `Found ${recommendations.data.reviewers.length} recommended reviewers. Results are now available.`,
                 duration: 8000,
               });
+              
+              // Notify global completion
+              notifyValidationComplete(recommendations.data.reviewers.length);
             } else if (recommendations.message?.includes('not ready')) {
               console.log('[ProcessWorkflow] Validation still in progress');
               // If validation is still in progress, ensure we're polling
@@ -862,7 +908,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     };
 
     checkValidationCompletion();
-  }, [process?.currentStep, validationCompleted, isValidating, isPollingValidation, validationProgress.status, processId, toast, startValidationPolling]);
+  }, [process?.currentStep, validationCompleted, isValidating, isPollingValidation, validationProgress.status, processId, toast, startValidationPolling, notifyValidationComplete]);
   
   // Monitor for validation completion from localStorage when navigating back
   useEffect(() => {
@@ -981,13 +1027,27 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     }
   }, [uploadResponse, process?.currentStep, processId]);
 
+  // Check for completed uploads that haven't been notified yet (when user navigates back)
+  useEffect(() => {
+    // Note: Upload and search completion notifications are now handled by GlobalNotificationProvider
+    // This ensures notifications work even when ProcessWorkflow is unmounted (e.g., when on home page)
+  }, [processId]);
+
   // Auto-save workflow state to localStorage
   useEffect(() => {
     if (uploadResponse) {
       console.log('[ProcessWorkflow] Saving uploadResponse to localStorage:', uploadResponse);
       localStorage.setItem(getStorageKey('uploadResponse'), JSON.stringify(uploadResponse));
+      
+      // Note: Upload completion notification will be triggered by GlobalNotificationProvider
     }
   }, [uploadResponse, processId]);
+
+  // Trigger search completion notification when searchCompleted changes
+  useEffect(() => {
+    // Note: Search completion notifications are now handled by GlobalNotificationProvider
+    // This ensures notifications work even when ProcessWorkflow is unmounted
+  }, [searchCompleted, processId]);
 
   useEffect(() => {
     if (enhancedKeywords) {
@@ -1078,6 +1138,10 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       'searchCompleted', 'validationCompleted', 'validationProgress', 'validationRecommendations'
     ];
     keys.forEach(key => localStorage.removeItem(getStorageKey(key)));
+    
+    // Clear notification flags
+    localStorage.removeItem(`process_${processId}_uploadNotified`);
+    localStorage.removeItem(`process_${processId}_searchNotified`);
   }, [stopValidationPolling, getStorageKey]);
 
   // Validation condition handlers
@@ -1211,6 +1275,9 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
           description,
           duration: 8000,
         });
+        
+        // Notify global completion
+        notifyValidationComplete();
       } else {
         // Fallback: If response doesn't have total_authors, assume it's still processing
         console.log('[ProcessWorkflow] Validation response unclear, assuming still processing');
@@ -1330,6 +1397,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       setUploadResponse(null);
       setUploadedFile(null);
       localStorage.removeItem(getStorageKey('uploadResponse'));
+      localStorage.removeItem(`process_${processId}_uploadNotified`); // Clear notification flag
       // Reset all workflow state when file is removed
       resetWorkflowState();
       // Reset to upload step when file is removed
@@ -1371,6 +1439,9 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       setUploadedFile({ name: fileInfo.name, size: fileInfo.size } as File);
     });
     
+    // Clear notification flag for new upload
+    localStorage.removeItem(`process_${processId}_uploadNotified`);
+    
     // Only reset workflow state for steps AFTER upload (keywords, search, validation)
     // Don't clear the upload data itself
     console.log('[ProcessWorkflow] New file uploaded - resetting downstream workflow state');
@@ -1396,6 +1467,9 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       'searchCompleted', 'validationCompleted', 'validationProgress', 'validationRecommendations'
     ];
     keys.forEach(key => localStorage.removeItem(getStorageKey(key)));
+    
+    // Clear notification flags for downstream steps
+    localStorage.removeItem(`process_${processId}_searchNotified`);
     
     // Show notification about workflow reset
       toast({
@@ -1430,6 +1504,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     // Old search results are no longer valid with new keyword string
     setSearchCompleted(false);
     localStorage.removeItem(`process_${processId}_searchCompleted`);
+    localStorage.removeItem(`process_${processId}_searchNotified`); // Clear notification flag
     localStorage.removeItem(`process_${processId}_searchResults`);
     localStorage.removeItem(`process_${processId}_isSearching`);
     localStorage.removeItem(`process_${processId}_searchId`);
@@ -1500,6 +1575,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
       console.log('[ProcessWorkflow] Clearing old search results due to new keyword enhancement');
       setSearchCompleted(false);
       localStorage.removeItem(`process_${processId}_searchCompleted`);
+      localStorage.removeItem(`process_${processId}_searchNotified`); // Clear notification flag
       localStorage.removeItem(`process_${processId}_searchResults`);
       localStorage.removeItem(`process_${processId}_isSearching`);
       localStorage.removeItem(`process_${processId}_searchId`);
@@ -1529,6 +1605,9 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         title: process?.title || 'Process',
         description: `Keywords Enhanced\nGenerated ${result.enhanced.length} enhanced keywords and ${result.meshTerms.length} MeSH terms.\nPrevious search results have been cleared.`,
       });
+      
+      // Notify global completion
+      notifyKeywordsComplete();
     } catch (error: any) {
       console.error('[ProcessWorkflow] Keyword enhancement failed:', error);
       
@@ -1542,7 +1621,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         variant: 'destructive',
       });
     }
-  }, [processId, enhanceKeywordsMutation, handleKeywordEnhancement, toast]);
+  }, [processId, enhanceKeywordsMutation, handleKeywordEnhancement, toast, notifyKeywordsComplete]);
 
   // Reset the trigger when leaving the KEYWORD_ENHANCEMENT step
   useEffect(() => {
@@ -1582,6 +1661,8 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         title: 'Search completed',
         description: 'Database search has been initiated. Results will be available shortly.',
       });
+      
+      // Note: Search completion notification will be triggered by GlobalNotificationProvider
     } catch (error) {
       toast({
         title: 'Search failed',
@@ -1589,7 +1670,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         variant: 'destructive',
       });
     }
-  }, [handleStepChange, toast]);
+  }, [toast]);
 
   const fetchValidationRecommendations = useCallback(async () => {
     try {
@@ -1716,15 +1797,19 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
               processId={processId}
               keywordString={keywordString}
               onSearchComplete={() => {
-                // Only update if not already completed to prevent infinite loop
+                console.log('[ProcessWorkflow] onSearchComplete callback called, searchCompleted:', searchCompleted);
+                
+                // Always ensure searchCompleted is true
                 if (!searchCompleted) {
-                  console.log('[ProcessWorkflow] Search completed, setting searchCompleted to true');
+                  console.log('[ProcessWorkflow] Setting searchCompleted to true');
                   setSearchCompleted(true);
                   toast({
                     title: process?.title || 'Process',
                     description: 'Search Completed & Saved\nDatabase search results have been saved automatically.',
                   });
                 }
+                
+                // Note: Search completion notification will be triggered by GlobalNotificationProvider
               }}
             />
             {searchCompleted && (
