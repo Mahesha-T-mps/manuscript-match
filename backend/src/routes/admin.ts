@@ -205,6 +205,32 @@ router.delete('/users/:id',
 );
 
 /**
+ * @route   PUT /api/admin/users/:id/customer-type
+ * @desc    Update user customer type
+ * @access  Admin only
+ * @body    { customerType: UserType }
+ */
+router.put('/users/:id/customer-type',
+  sensitiveAdminRateLimiter,
+  requirePermission('users.update'),
+  logActivity('ADMIN_UPDATE_USER_CUSTOMER_TYPE', { includeParams: true, includeBody: true }),
+  adminController.updateUserCustomerType
+);
+
+/**
+ * @route   PUT /api/admin/users/:id/msxpert-access
+ * @desc    Update user MSXpert access
+ * @access  Admin only
+ * @body    { msxpertAccess: boolean }
+ */
+router.put('/users/:id/msxpert-access',
+  sensitiveAdminRateLimiter,
+  requirePermission('users.update'),
+  logActivity('ADMIN_UPDATE_USER_MSXPERT_ACCESS', { includeParams: true, includeBody: true }),
+  adminController.updateUserMSXpertAccess
+);
+
+/**
  * @route   PUT /api/admin/users/:id
  * @desc    Update user information
  * @access  Admin only

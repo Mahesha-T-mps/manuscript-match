@@ -23,7 +23,8 @@ import {
   Workflow,
   Eye,
   Download,
-  Activity
+  Activity,
+  Globe
 } from "lucide-react";
 import { format } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -42,6 +43,7 @@ import { cn } from "@/lib/utils";
 import { UserManagement } from "./UserManagement";
 import { PermissionManagement } from "./PermissionManagement";
 import { ActivityLogViewer } from "./ActivityLogViewer";
+import { SanctionCountryManagement } from "./SanctionCountryManagement";
 import { ProfileButton } from "../profile/ProfileButton";
 
 
@@ -106,7 +108,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       description: "Manage permissions and access",
       requiredPermissions: ["permission.manage"]
     },
-
+    {
+      id: "sanctions",
+      label: "Sanction Countries",
+      icon: Globe,
+      description: "Manage sanctioned countries by user type",
+      requiredPermissions: []
+    },
     {
       id: "activity",
       label: "Activity Log",
@@ -507,7 +515,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <PermissionManagement />
             )}
 
-
+            {activeTab === "sanctions" && (
+              <SanctionCountryManagement />
+            )}
 
             {activeTab === "activity" && (
               <ActivityLogViewer />

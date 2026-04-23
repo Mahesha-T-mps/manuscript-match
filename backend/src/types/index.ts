@@ -136,6 +136,8 @@ export interface AuthUser {
   id: string;
   email: string;
   role?: UserRole;
+  userType?: UserType;
+  msxpertAccess?: boolean;
   name?: string | null;
   phone?: string | null;
   department?: string | null;
@@ -150,6 +152,14 @@ export enum UserRole {
   QC = 'QC',
   MANAGER = 'MANAGER',
   ADMIN = 'ADMIN',
+}
+
+export enum UserType {
+  SPRINGER = 'SPRINGER',
+  WILEY = 'WILEY',
+  F1000 = 'F1000',
+  DMP = 'DMP',
+  AJE_RQE = 'AJE RQE',
 }
 
 export enum UserStatus {

@@ -172,7 +172,7 @@ export function ipAccessControl(options: {
  */
 export const adminRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per window for admin operations
+  max: config.env === 'development' ? 1000 : 100, // More lenient in development
   message: {
     success: false,
     error: {
@@ -188,7 +188,7 @@ export const adminRateLimiter = rateLimit({
     const ip = getClientIP(req);
     await logSecurityEvent(SecurityEventType.RATE_LIMIT_EXCEEDED, req, { 
       endpoint: 'admin',
-      limit: 100,
+      limit: config.env === 'development' ? 1000 : 100,
       window: '15 minutes'
     });
     
@@ -206,7 +206,7 @@ export const adminRateLimiter = rateLimit({
  */
 export const sensitiveAdminRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 20, // 20 sensitive operations per hour
+  max: config.env === 'development' ? 200 : 20, // More lenient in development
   message: {
     success: false,
     error: {
@@ -227,7 +227,7 @@ export const sensitiveAdminRateLimiter = rateLimit({
   handler: async (req, _res, next) => {
     await logSecurityEvent(SecurityEventType.RATE_LIMIT_EXCEEDED, req, { 
       endpoint: 'sensitive_admin',
-      limit: 20,
+      limit: config.env === 'development' ? 200 : 20,
       window: '1 hour'
     });
     

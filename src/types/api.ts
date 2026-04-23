@@ -72,6 +72,8 @@ export interface UserProfile {
   bio?: string;
   profileImage?: string | null;
   role: 'USER' | 'QC' | 'MANAGER' | 'ADMIN';
+  userType: 'SPRINGER' | 'WILEY' | 'F1000' | 'DMP';
+  msxpertAccess?: boolean;
   createdAt: string;
   updatedAt: string;
 }

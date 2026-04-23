@@ -391,10 +391,12 @@ export class AdminService {
       // Format users for admin view
       const formattedUsers = usersWithCounts.map(user => ({
         id: user.id,
-        email: this.sanitizeEmail(user.email),
+        email: user.email, // Show full email for admin management
         name: user.name,
         role: user.role,
         status: user.status,
+        userType: user.userType, // Add userType field
+        msxpertAccess: user.msxpertAccess, // Add msxpertAccess field
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
         processCount: user.processCount

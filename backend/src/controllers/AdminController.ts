@@ -210,8 +210,8 @@ export class AdminController {
           limit,
           total: result.total,
           totalPages: Math.ceil(result.total / limit),
-          hasNextPage: page * limit < result.total,
-          hasPreviousPage: page > 1
+          hasNext: page * limit < result.total,
+          hasPrev: page > 1
         }
       };
 
@@ -268,8 +268,8 @@ export class AdminController {
           limit,
           total: result.total,
           totalPages: Math.ceil(result.total / limit),
-          hasNextPage: page * limit < result.total,
-          hasPreviousPage: page > 1
+          hasNext: page * limit < result.total,
+          hasPrev: page > 1
         }
       };
 
@@ -545,6 +545,126 @@ export class AdminController {
           status: user.status,
           updatedAt: user.updatedAt
         }
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  /**
+   * Update user customer type
+   * PUT /api/admin/users/:id/customer-type
+   */
+  updateUserCustomerType = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const { customerType } = req.body;
+
+      if (!id) {
+        throw new CustomError(
+          ErrorType.VALIDATION_ERROR,
+          'User ID is required',
+          400
+        );
+      }
+
+      if (!customerType || !['SPRINGER', 'WILEY', 'F1000', 'DMP', 'AJE RQE'].includes(customerType)) {
+        throw new CustomError(
+          ErrorType.VALIDATION_ERROR,
+          'Valid customer type is required (SPRINGER, WILEY, F1000, DMP, AJE RQE)',
+          400
+        );
+      }
+
+      // Update user customer type in database
+      const user = await this.userRepository.update(id, {
+        userType: customerType,
+        updatedAt: new Date()
+      });
+
+      if (!user) {
+        throw new CustomError(
+          ErrorType.NOT_FOUND,
+          'User not found',
+          404
+        );
+      }
+
+      const response: ApiResponse<any> = {
+        success: true,
+        data: {
+          id: user.id,
+          email: user.email,
+          userType: user.userType,
+          updatedAt: user.updatedAt
+        },
+        message: `Customer type updated to ${customerType}`
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  /**
+   * Update user MSXpert access
+   * PUT /api/admin/users/:id/msxpert-access
+   */
+  updateUserMSXpertAccess = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const { msxpertAccess } = req.body;
+
+      if (!id) {
+        throw new CustomError(
+          ErrorType.VALIDATION_ERROR,
+          'User ID is required',
+          400
+        );
+      }
+
+      if (typeof msxpertAccess !== 'boolean') {
+        throw new CustomError(
+          ErrorType.VALIDATION_ERROR,
+          'MSXpert access must be a boolean value',
+          400
+        );
+      }
+
+      // Update user MSXpert access in database
+      const user = await this.userRepository.update(id, {
+        msxpertAccess: msxpertAccess,
+        updatedAt: new Date()
+      });
+
+      if (!user) {
+        throw new CustomError(
+          ErrorType.NOT_FOUND,
+          'User not found',
+          404
+        );
+      }
+
+      const response: ApiResponse<any> = {
+        success: true,
+        data: {
+          id: user.id,
+          email: user.email,
+          msxpertAccess: user.msxpertAccess,
+          updatedAt: user.updatedAt
+        },
+        message: `MSXpert access ${msxpertAccess ? 'granted' : 'revoked'}`
       };
 
       res.json(response);

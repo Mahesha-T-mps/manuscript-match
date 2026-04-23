@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, lazy, Suspense } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +34,9 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+
+// Lazy load the UserTypeManagement component for better performance
+const UserTypeManagement = lazy(() => import('./UserTypeManagement').then(module => ({ default: module.UserTypeManagement })));
 
 // Types
 interface Permission {
@@ -413,10 +416,11 @@ export const PermissionManagement: React.FC<PermissionManagementProps> = ({ clas
 
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="matrix">Permission Matrix</TabsTrigger>
           <TabsTrigger value="roles">Role Management</TabsTrigger>
           <TabsTrigger value="users">User Permissions</TabsTrigger>
+          <TabsTrigger value="customer-types">Customer Types</TabsTrigger>
         </TabsList>
 
         {/* Permission Matrix Tab */}
@@ -698,6 +702,22 @@ export const PermissionManagement: React.FC<PermissionManagementProps> = ({ clas
               </ScrollArea>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Customer Types & MSXpert Access Tab */}
+        <TabsContent value="customer-types" className="space-y-4">
+          <Suspense fallback={
+            <Card>
+              <CardContent className="py-8">
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <span className="ml-2 text-gray-600">Loading Customer Types Management...</span>
+                </div>
+              </CardContent>
+            </Card>
+          }>
+            <UserTypeManagement />
+          </Suspense>
         </TabsContent>
       </Tabs>
 

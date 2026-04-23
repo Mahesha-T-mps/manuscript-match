@@ -1381,9 +1381,9 @@ export class ScholarFinderApiService {
   }
 
   /**
-   * Step 6: Validate authors with selected conditions
+   * Step 6: Validate authors with selected conditions and optional user type
    */
-  async validateAuthorsWithConditions(jobId: string, selectedConditions: string[]): Promise<{
+  async validateAuthorsWithConditions(jobId: string, selectedConditions: string[], userType?: string): Promise<{
     message: string;
     job_id: string;
     total_authors: number;
@@ -1406,12 +1406,22 @@ export class ScholarFinderApiService {
     }
 
     console.log('[ScholarFinderApiService.validateAuthorsWithConditions] 🔍 Starting validation with conditions:', selectedConditions);
+    if (userType) {
+      console.log('[ScholarFinderApiService.validateAuthorsWithConditions] 🔍 User type:', userType);
+    }
 
     // The API expects application/x-www-form-urlencoded format
     const formData = new URLSearchParams();
     selectedConditions.forEach(condition => {
       formData.append('selected_conditions', condition);
     });
+
+    // Build query parameters
+    const queryParams = new URLSearchParams();
+    queryParams.append('job_id', jobId);
+    if (userType) {
+      queryParams.append('user_type', userType);
+    }
 
     try {
       // Use extended timeout for validation - this operation can take 10-20 minutes
@@ -1422,7 +1432,7 @@ export class ScholarFinderApiService {
         top_5_preview: any[];
       }>({
         method: 'POST',
-        url: `/validate_authors?job_id=${encodeURIComponent(jobId)}`,
+        url: `/validate_authors?${queryParams.toString()}`,
         data: formData.toString(),
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded'
@@ -1454,15 +1464,14 @@ export class ScholarFinderApiService {
         
         // Return a partial success response
         return {
-          message: 'Author validation initiated successfully and may still be processing',
+          message: 'Validation started but may still be processing. Please check results later.',
           job_id: jobId,
           total_authors: 0,
           top_5_preview: []
         };
       }
       
-      const scholarFinderError = this.handleApiError(error, 'author validation');
-      throw scholarFinderError;
+      throw this.handleError(error, 'validateAuthorsWithConditions');
     }
   }
 }

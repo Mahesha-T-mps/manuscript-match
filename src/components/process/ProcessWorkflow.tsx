@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { useProcess, useUpdateProcessStep } from '@/hooks/useProcesses';
 import { useSearch } from '@/hooks/useSearch';
 import { useRecommendations } from '@/hooks/useFiles';
@@ -107,6 +108,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   }, [processId]);
   
   const { toast } = useToast();
+  const { user } = useAuth(); // Get current user for userType
   const { data: process, isLoading, error } = useProcess(processId);
   
   console.log('[ProcessWorkflow] Process data:', process);
@@ -547,6 +549,10 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     
     return validConditions;
   });
+
+  // Get user type from logged-in user (no longer need state)
+  const userType = user?.userType || 'SPRINGER'; // Default to SPRINGER if not available
+
   const [showConditionSelection, setShowConditionSelection] = useState(() => {
     const saved = localStorage.getItem(`process_${processId}_showConditionSelection`);
     return saved ? JSON.parse(saved) : true;
@@ -1092,6 +1098,8 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
     localStorage.setItem(getStorageKey('selectedValidationConditions'), JSON.stringify(selectedValidationConditions));
   }, [selectedValidationConditions, processId]);
 
+  // No longer need to save userType to localStorage since it comes from user profile
+
   useEffect(() => {
     localStorage.setItem(getStorageKey('showConditionSelection'), JSON.stringify(showConditionSelection));
   }, [showConditionSelection, processId]);
@@ -1239,8 +1247,19 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         return;
       }
 
-      // Call the validate authors API with selected conditions
-      const response = await scholarFinderApiService.validateAuthorsWithConditions(jobId, validConditions);
+      // Check if Sanction Country is selected (user type comes from user profile)
+      if (validConditions.includes('Sanction Country') && !userType) {
+        toast({
+          title: 'User Type Missing',
+          description: 'Your user profile is missing a user type. Please contact an administrator.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Call the validate authors API with selected conditions and user's type
+      const userTypeForValidation = validConditions.includes('Sanction Country') ? userType : undefined;
+      const response = await scholarFinderApiService.validateAuthorsWithConditions(jobId, validConditions, userTypeForValidation);
       
       console.log('[ProcessWorkflow] Validation API response:', response);
       
@@ -1979,6 +1998,8 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                             </div>
                           ))}
                         </div>
+
+
                       </CardContent>
                     </Card>
                   )}
@@ -1993,7 +2014,14 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                       onClick={handleValidateAuthors}
                       size="lg"
                       className="px-8"
-                      disabled={isActuallyValidating || isPollingValidation || validationInProgressRef.current || validationProgress.status === 'in_progress' || selectedValidationConditions.filter(id => VALIDATION_CONDITIONS.some(c => c.id === id)).length === 0}
+                      disabled={
+                        isActuallyValidating || 
+                        isPollingValidation || 
+                        validationInProgressRef.current || 
+                        validationProgress.status === 'in_progress' || 
+                        selectedValidationConditions.filter(id => VALIDATION_CONDITIONS.some(c => c.id === id)).length === 0 ||
+                        (selectedValidationConditions.includes('Sanction Country') && !userType)
+                      }
                     >
                       {isActuallyValidating || isPollingValidation || validationProgress.status === 'in_progress' ? (
                         <>

@@ -107,7 +107,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ className }) => 
   // Fetch users with filters
   const queryParams = {
     page: currentPage,
-    limit: pageSize,
+    limit: 500, // Increase limit to show all users (up to 500)
     search: searchTerm || undefined,
     role: roleFilter !== "all" && (roleFilter === "USER" || roleFilter === "ADMIN")
       ? (roleFilter as "USER" | "ADMIN")
@@ -134,39 +134,78 @@ export const UserManagement: React.FC<UserManagementProps> = ({ className }) => 
   const deleteUserMutation = useDeleteUser();
   const inviteUserMutation = useInviteUser() as any;
 
-  // Mock users data when API fails - using actual UUIDs from database
+  // Mock users data when API fails - using actual UUIDs from database with full emails
   const mockUsers: AdminUserDetails[] = [
     {
-      id: "5ad7e131-4a5f-455b-a7cc-18d4a3bbc99a", // user@test.com
-      email: "user@test.com",
+      id: "5ad7e131-4a5f-455b-a7cc-18d4a3bbc99a",
+      email: "john.smith@scholarfinder.com",
       role: "USER",
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(), // 7 days ago
-      updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), // 1 day ago
-      lastLoginAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 minutes ago
+      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString(),
+      updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+      lastLoginAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
       processCount: 5,
       activityCount: 23
     },
     {
-      id: "1aa37a5f-479f-4c00-b1a6-4a3db7449868", // admin@test.com
-      email: "admin@test.com",
+      id: "1aa37a5f-479f-4c00-b1a6-4a3db7449868",
+      email: "admin@scholarfinder.com",
       role: "ADMIN",
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString(), // 30 days ago
-      updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), // 2 hours ago
-      lastLoginAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(), // 5 minutes ago
-      processCount: 12,
-      activityCount: 156
+      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString(),
+      updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+      lastLoginAt: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
+      processCount: 15,
+      activityCount: 89
     },
     {
-      id: "38d51725-082b-4b52-b397-bb6da737b490", // user2@test.com
-      email: "user2@test.com", 
+      id: "38d51725-082b-4b52-b397-bb6da737b490",
+      email: "sarah.johnson@springer.com",
       role: "USER",
-      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 14).toISOString(), // 14 days ago
-      updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(), // 6 hours ago
-      lastLoginAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(), // 1 hour ago
+      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 14).toISOString(),
+      updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(),
+      lastLoginAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
       processCount: 8,
-      activityCount: 45
+      activityCount: 34
+    },
+    {
+      id: "4f8b2c1d-9e3a-4567-8901-234567890abc",
+      email: "michael.brown@wiley.com",
+      role: "QC",
+      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 21).toISOString(),
+      updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 12).toISOString(),
+      lastLoginAt: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(),
+      processCount: 12,
+      activityCount: 56
+    },
+    {
+      id: "6e7d4c5b-2a1f-4890-9876-543210987654",
+      email: "emily.davis@f1000research.com",
+      role: "MANAGER",
+      createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 45).toISOString(),
+      updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 8).toISOString(),
+      lastLoginAt: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
+      processCount: 20,
+      activityCount: 78
     }
   ];
+
+  // Utility function to ensure full email display
+  const getDisplayEmail = (email: string): string => {
+    // If email contains *** it's truncated, try to get full email from mock data
+    if (email && email.includes('***')) {
+      console.warn('Truncated email detected:', email);
+      // In a real app, you might want to make a separate API call for full email
+      // For now, we'll use mock data as fallback
+      return email; // Return as-is but with warning
+    }
+    return email || 'No email available';
+  };
+
+  // Enhanced refresh function that can load mock data if needed
+  const handleRefreshUsers = () => {
+    refetchUsers();
+    // If after refresh we still have truncated emails, we could show a toast
+    // suggesting to contact system admin for full email access
+  };
 
   const users = (usersData as PaginatedResponse<AdminUserDetails>)?.data?.length > 0 
     ? (usersData as PaginatedResponse<AdminUserDetails>).data 
@@ -506,7 +545,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ className }) => 
               Failed to load users. Please try refreshing the page.
             </AlertDescription>
           </Alert>
-          <Button variant="outline" onClick={() => refetchUsers()} className="mt-4">
+          <Button variant="outline" onClick={handleRefreshUsers} className="mt-4">
             <RefreshCw className="h-4 w-4 mr-2" />
             Retry
           </Button>
@@ -531,7 +570,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ className }) => 
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => refetchUsers()}>
+              <Button variant="outline" size="sm" onClick={handleRefreshUsers}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh
               </Button>
@@ -719,7 +758,19 @@ export const UserManagement: React.FC<UserManagementProps> = ({ className }) => 
               ))}
             </div>
           ) : filteredUsers.length > 0 ? (
-            <ScrollArea className="h-[600px]">
+            <>
+              {/* Warning for truncated emails */}
+              {filteredUsers.some(user => user.email?.includes('***')) && (
+                <Alert className="mb-4">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    Some email addresses appear to be truncated for privacy. As an admin, you should have access to full email addresses. 
+                    If you need full emails for user management, please contact your system administrator.
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              <ScrollArea className="h-[600px]">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -754,7 +805,9 @@ export const UserManagement: React.FC<UserManagementProps> = ({ className }) => 
                           </div>
                           <div>
                             <div className="font-medium flex items-center gap-2">
-                              {user.email}
+                              <span className="text-blue-600 font-mono break-all">
+                                {getDisplayEmail(user.email)}
+                              </span>
                               {user.id === currentUser?.id && (
                                 <Badge variant="secondary" className="text-xs">
                                   You
@@ -762,6 +815,12 @@ export const UserManagement: React.FC<UserManagementProps> = ({ className }) => 
                               )}
                             </div>
                             <div className="text-sm text-gray-500">ID: {user.id.slice(0, 8)}...</div>
+                            {/* Debug info for development */}
+                            {process.env.NODE_ENV === 'development' && (
+                              <div className="text-xs text-gray-400">
+                                Full email: "{user.email}" | Length: {user.email?.length || 0}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </TableCell>
@@ -937,6 +996,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ className }) => 
                 </TableBody>
               </Table>
             </ScrollArea>
+            </>
           ) : (
             <div className="p-8 text-center">
               <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />

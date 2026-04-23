@@ -8,6 +8,7 @@ import { queryClient } from "./lib/queryClient";
 import { config } from "./lib/config";
 import { AuthProviderWithErrorBoundary } from "./components/auth/AuthProviderWithErrorBoundary";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
+import { SecureRoute, MaskedRouteHandler } from "./components/auth/SecureRoute";
 import { LoginForm } from "./components/auth/LoginForm";
 import { 
   ErrorBoundary, 
@@ -15,11 +16,14 @@ import {
   GlobalErrorToastHandler,
   initializeGlobalErrorHandlers 
 } from "./components/error";
+import AppSelector from "./pages/AppSelector";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import AcceptInvitation from "./pages/AcceptInvitation";
 import Reports from "./pages/Reports";
+import AuthenticatedAppSelector from "./pages/AuthenticatedAppSelector";
 import { ScholarFinderApp } from "./features/scholarfinder";
+import { MSXpertApp } from "./components/msxpert/MSXpertApp";
 import { GlobalNotificationProvider } from "./components/notifications/GlobalNotificationProvider";
 
 // Initialize global error handlers
@@ -34,41 +38,92 @@ const App = () => (
     enableReporting={true}
   >
     <QueryClientProvider client={queryClient}>
-      <AuthProviderWithErrorBoundary enableAutoRecovery={true} maxRecoveryAttempts={3}>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <NetworkStatusToast />
-          <GlobalErrorToastHandler />
-          <GlobalNotificationProvider />
-          <BrowserRouter>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <NetworkStatusToast />
+        <GlobalErrorToastHandler />
+        <GlobalNotificationProvider />
+        <BrowserRouter>
             <ErrorBoundary enableReporting={true}>
               <Routes>
-                <Route path="/login" element={<LoginForm />} />
+                {/* Login as default route */}
                 <Route path="/" element={
-                  <ProtectedRoute>
-                    <Index />
-                  </ProtectedRoute>
+                  <AuthProviderWithErrorBoundary enableAutoRecovery={true} maxRecoveryAttempts={3}>
+                    <LoginForm />
+                  </AuthProviderWithErrorBoundary>
+                } />
+                
+                {/* Public App Selector (if needed) */}
+                <Route path="/select" element={<AppSelector />} />
+                
+                {/* Authenticated App Selector - After login */}
+                <Route path="/apps" element={
+                  <AuthProviderWithErrorBoundary enableAutoRecovery={true} maxRecoveryAttempts={3}>
+                    <ProtectedRoute>
+                      <AuthenticatedAppSelector />
+                    </ProtectedRoute>
+                  </AuthProviderWithErrorBoundary>
+                } />
+                
+                {/* ScholarFinder Routes - Use ScholarFinder Auth Context */}
+                <Route path="/login" element={
+                  <AuthProviderWithErrorBoundary enableAutoRecovery={true} maxRecoveryAttempts={3}>
+                    <LoginForm />
+                  </AuthProviderWithErrorBoundary>
+                } />
+                
+                {/* Masked Route Handler */}
+                <Route path="/app/:maskedPath" element={
+                  <AuthProviderWithErrorBoundary enableAutoRecovery={true} maxRecoveryAttempts={3}>
+                    <MaskedRouteHandler />
+                  </AuthProviderWithErrorBoundary>
+                } />
+                
+                {/* Secure ScholarFinder Routes */}
+                <Route path="/scholarfinder" element={
+                  <AuthProviderWithErrorBoundary enableAutoRecovery={true} maxRecoveryAttempts={3}>
+                    <SecureRoute originalPath="/scholarfinder">
+                      <Index />
+                    </SecureRoute>
+                  </AuthProviderWithErrorBoundary>
                 } />
                 <Route path="/reports" element={
-                  <ProtectedRoute>
-                    <Reports />
-                  </ProtectedRoute>
+                  <AuthProviderWithErrorBoundary enableAutoRecovery={true} maxRecoveryAttempts={3}>
+                    <SecureRoute originalPath="/reports">
+                      <Reports />
+                    </SecureRoute>
+                  </AuthProviderWithErrorBoundary>
                 } />
-                <Route path="/accept-invitation" element={<AcceptInvitation />} />
+                <Route path="/accept-invitation" element={
+                  <AuthProviderWithErrorBoundary enableAutoRecovery={true} maxRecoveryAttempts={3}>
+                    <AcceptInvitation />
+                  </AuthProviderWithErrorBoundary>
+                } />
                 <Route path="/scholarfinder/*" element={
-                  <ProtectedRoute>
-                    <ScholarFinderApp />
-                  </ProtectedRoute>
+                  <AuthProviderWithErrorBoundary enableAutoRecovery={true} maxRecoveryAttempts={3}>
+                    <SecureRoute originalPath="/scholarfinder">
+                      <ScholarFinderApp />
+                    </SecureRoute>
+                  </AuthProviderWithErrorBoundary>
                 } />
-                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                
+                {/* MSXpert Routes - Now use ScholarFinder Auth Context */}
+                <Route path="/msxpert/app" element={
+                  <AuthProviderWithErrorBoundary enableAutoRecovery={true} maxRecoveryAttempts={3}>
+                    <SecureRoute originalPath="/msxpert/app">
+                      <MSXpertApp />
+                    </SecureRoute>
+                  </AuthProviderWithErrorBoundary>
+                } />
+                
+                {/* Catch-all route */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </ErrorBoundary>
           </BrowserRouter>
           {config.enableDevTools && <ReactQueryDevtools initialIsOpen={false} />}
         </TooltipProvider>
-      </AuthProviderWithErrorBoundary>
     </QueryClientProvider>
   </ErrorBoundary>
 );

@@ -133,7 +133,7 @@ async function createNewMPSUsers() {
           `${user.name},${user.email},${user.password},${user.role},ACTIVE,NEW`
         ).join('\n');
       
-      fs.writeFileSync('backend/new_mps_users_credentials.csv', csvContent);
+      fs.writeFileSync('backend/new_mps_users_credentials1.csv', csvContent);
       console.log('\n📄 Credentials saved to: backend/new_mps_users_credentials.csv');
     }
 

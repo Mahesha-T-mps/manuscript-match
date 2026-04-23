@@ -5,10 +5,12 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/authService';
 import { jwtValidator } from '../utils/jwtValidator';
 import { createTokenRefreshManager, type TokenRefreshManager } from '../utils/tokenRefreshManager';
 import { authLogger } from '../utils/authLogger';
+import { createSecureSession, clearSecureSession, generateMaskedUrl } from '../utils/urlMasking';
 import type { LoginCredentials, UserProfile } from '../types/api';
 
 // Enhanced error state interface with retry tracking
@@ -52,6 +54,9 @@ export interface AuthContextType {
   // Profile methods
   updateProfile: (profileData: Partial<UserProfile>) => Promise<void>;
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
+
+  // Secure navigation
+  navigateSecurely: (path: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -65,6 +70,7 @@ export interface AuthProviderProps {
  */
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -849,8 +855,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const freshProfile = await authService.getProfile();
         setUser(freshProfile);
         
-        console.log('Login successful with fresh profile', {
+        // Create secure session after successful login
+        const secureToken = createSecureSession(freshProfile.id);
+        
+        console.log('Login successful with fresh profile and secure session', {
           userId: freshProfile.id,
+          msxpertAccess: freshProfile.msxpertAccess,
           expiresAt: expirationTime ? new Date(expirationTime).toISOString() : 'no expiration',
           timestamp: new Date().toISOString(),
         });
@@ -871,7 +881,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         console.warn('Failed to fetch fresh profile after login, using login response:', profileError);
         setUser(authResponse.user);
         
-        console.log('Login successful with login response user', {
+        // Create secure session with fallback user
+        const secureToken = createSecureSession(authResponse.user.id);
+        
+        console.log('Login successful with login response user and secure session', {
           userId: authResponse.user.id,
           expiresAt: expirationTime ? new Date(expirationTime).toISOString() : 'no expiration',
           timestamp: new Date().toISOString(),
@@ -987,6 +1000,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         lastValidated: null,
         validationError: null,
       });
+      
+      // Clear secure session data
+      clearSecureSession();
+      
       // Clear auth error and recovery state after logout
       setAuthError(null);
       setIsRecovering(false);
@@ -1190,6 +1207,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
   }, [logout, clearError, recoverFromError]);
 
+  /**
+   * Secure navigation with URL masking
+   */
+  const navigateSecurely = (path: string): void => {
+    if (!user) {
+      navigate('/login?app=scholarfinder', { replace: true });
+      return;
+    }
+
+    const sessionToken = sessionStorage.getItem('session_token');
+    if (!sessionToken) {
+      navigate('/login?app=scholarfinder', { replace: true });
+      return;
+    }
+
+    // Generate masked URL and navigate
+    const maskedUrl = generateMaskedUrl(path, sessionToken);
+    navigate(maskedUrl, { replace: true });
+  };
+
   // Context value
   const contextValue: AuthContextType = {
     // State
@@ -1209,6 +1246,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     recoverFromError,
     updateProfile,
     changePassword,
+    navigateSecurely,
   };
 
   return (

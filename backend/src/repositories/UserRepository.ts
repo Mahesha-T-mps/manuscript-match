@@ -11,6 +11,9 @@ export interface UpdateUserInput {
   email?: string;
   passwordHash?: string;
   role?: string;
+  userType?: string;
+  msxpertAccess?: boolean;
+  updatedAt?: Date;
 }
 
 export interface UserWithProcesses extends User {

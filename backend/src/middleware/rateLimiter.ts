@@ -5,7 +5,7 @@ import { ErrorType, CustomError } from './errorHandler';
 // General API rate limiter
 export const apiRateLimiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
-  max: config.rateLimit.maxRequests,
+  max: config.env === 'development' ? config.rateLimit.maxRequests * 10 : config.rateLimit.maxRequests, // 10x more lenient in dev
   message: {
     success: false,
     error: {
@@ -30,7 +30,7 @@ export const apiRateLimiter = rateLimit({
 // Stricter rate limiter for authentication endpoints
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 attempts per window
+  max: config.env === 'development' ? 50 : 5, // More lenient in development
   message: {
     success: false,
     error: {

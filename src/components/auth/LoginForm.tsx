@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import type { LoginCredentials } from '../../types/api';
 import logo from '@/assets/s3 1.png';
@@ -19,7 +19,8 @@ export interface LoginFormProps {
  */
 export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, className = '' }) => {
   const navigate = useNavigate();
-  const { login, isLoading, error, clearError, isAuthenticated } = useAuth();
+  const [searchParams] = useSearchParams();
+  const { login, isLoading, error, clearError, isAuthenticated, navigateSecurely } = useAuth();
   const [credentials, setCredentials] = useState<LoginCredentials>({
     email: '',
     password: ''
@@ -27,10 +28,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, className = '' })
   const [showPassword, setShowPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
 
-  // Redirect to home if already authenticated
+  // Redirect to app selector if already authenticated
   useEffect(() => {
     if (isAuthenticated && !isLoading) {
-      navigate('/', { replace: true });
+      // Always redirect to authenticated app selector after login
+      navigate('/apps', { replace: true });
     }
   }, [isAuthenticated, isLoading, navigate]);
 
@@ -86,7 +88,9 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, className = '' })
       
       // Only navigate and call onLogin if login was successful
       onLogin?.();
-      navigate('/', { replace: true });
+      
+      // Always redirect to authenticated app selector after successful login
+      navigate('/apps', { replace: true });
     } catch (err) {
       // Error is handled by AuthContext
       // Stay on login page to show error message
@@ -106,9 +110,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, className = '' })
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
-            <img src={logo} alt="ScholarFinder Logo" className="h-64 w-auto object-contain" />
+            <img src={logo} alt="Application Logo" className="h-64 w-auto object-contain" />
           </div>
-          <p className="text-gray-600">Sign in to your account</p>
+          <p className="text-gray-600">
+            Sign in to access your applications
+          </p>
         </div>
         
         {/* Login Form Card */}

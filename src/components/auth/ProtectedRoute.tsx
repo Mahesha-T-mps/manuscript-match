@@ -59,7 +59,13 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      navigate('/login', { replace: true });
+      // Preserve app context based on current path
+      const currentPath = window.location.pathname;
+      if (currentPath.startsWith('/scholarfinder')) {
+        navigate('/', { replace: true }); // Go to login page
+      } else {
+        navigate('/', { replace: true }); // Go to login page
+      }
     }
   }, [isAuthenticated, isLoading, navigate]);
 

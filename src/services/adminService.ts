@@ -3,7 +3,8 @@
  * Provides methods for admin dashboard functionality and system monitoring
  */
 
-import { apiService } from './apiService';
+import { apiService, ApiService } from './apiService';
+import { config } from '../lib/config';
 import type {
   ApiResponse,
   PaginatedResponse,
@@ -14,6 +15,13 @@ import type {
   UserProfile,
   ProcessTemplate
 } from '../types/api';
+
+// Create a separate API service instance for FastAPI backend (sanction countries)
+const fastApiService = new ApiService({
+  baseURL: config.scholarFinderApiUrl,
+  timeout: config.apiTimeout,
+  retries: config.apiRetryAttempts
+});
 
 export interface AdminUserDetails extends UserProfile {
   lastLoginAt?: string;
@@ -741,6 +749,77 @@ export class AdminService {
       return response.data;
     } catch (error) {
       console.error('Failed to get user effective permissions:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get sanctioned countries for a user type
+   */
+  async getSanctionedCountries(userType: string): Promise<string[]> {
+    try {
+      console.log(`[AdminService] Fetching sanctioned countries for: ${userType}`);
+      const response = await fastApiService.get(`/countries/${userType}`);
+      console.log(`[AdminService] Full API response:`, response);
+      console.log(`[AdminService] Response data:`, response.data);
+      console.log(`[AdminService] Response data type:`, typeof response.data);
+      
+      // The API service is returning the array directly, not wrapped in a data property
+      return response;
+    } catch (error) {
+      console.error('Failed to get sanctioned countries:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add a sanctioned country for a user type
+   */
+  async addSanctionedCountry(userType: string, country: string): Promise<{ message: string; country?: string }> {
+    try {
+      const response = await fastApiService.post('/add-country', {
+        user_type: userType,
+        country: country
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Failed to add sanctioned country:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add multiple sanctioned countries for a user type
+   */
+  async addMultipleSanctionedCountries(userType: string, countries: string[]): Promise<{ added: string[] }> {
+    try {
+      const response = await fastApiService.post('/add-countries', {
+        user_type: userType,
+        countries: countries
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Failed to add multiple sanctioned countries:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a sanctioned country for a user type
+   */
+  async deleteSanctionedCountry(userType: string, country: string): Promise<{ message: string }> {
+    try {
+      const response = await fastApiService.request({
+        method: 'DELETE',
+        url: '/delete-country',
+        data: {
+          user_type: userType,
+          country: country
+        }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Failed to delete sanctioned country:', error);
       throw error;
     }
   }

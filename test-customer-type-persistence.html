@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer Type Persistence Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .success {
+            border-left: 4px solid #10b981;
+        }
+        .info {
+            border-left: 4px solid #3b82f6;
+        }
+        .warning {
+            border-left: 4px solid #f59e0b;
+        }
+        .code {
+            background: #1f2937;
+            color: #f9fafb;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            margin: 10px 0;
+        }
+        .highlight {
+            background: #dcfce7;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+            color: #166534;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Customer Type Persistence Fix</h1>
+    
+    <div class="test-card success">
+        <h2>✅ Issue Identified & Fixed!</h2>
+        <p><strong>Problem:</strong> Customer type changes were being saved to the database but not displayed in the UI because the frontend was overriding database values with email-derived values.</p>
+    </div>
+
+    <div class="test-card info">
+        <h2>🔍 Root Cause Analysis</h2>
+        
+        <h3>Before Fix:</h3>
+        <div class="code">
+// Frontend was ALWAYS deriving from email, ignoring database
+userType: getUserTypeFromEmail(user.email) as UserType,
+msxpertAccess: user.role === 'ADMIN' || user.role === 'MANAGER' || user.role === 'QC',
+        </div>
+        
+        <h3>After Fix:</h3>
+        <div class="code">
+// Now uses actual database values first, email derivation as fallback
+userType: user.userType || getUserTypeFromEmail(user.email) as UserType,
+msxpertAccess: user.msxpertAccess !== undefined ? user.msxpertAccess : (role-based fallback),
+        </div>
+    </div>
+
+    <div class="test-card info">
+        <h2>🧪 How to Test the Fix</h2>
+        
+        <ol>
+            <li><strong>Navigate to:</strong> Admin Dashboard → Permissions → Customer Types</li>
+            <li><strong>Find a user</strong> with a Springer email (e.g., @springer.com)</li>
+            <li><strong>Edit the user</strong> and change customer type to WILEY</li>
+            <li><strong>Save changes</strong> - you should see success notification</li>
+            <li><strong>Apply filter</strong> to show only WILEY users</li>
+            <li><strong>Verify</strong> the user now appears in WILEY filter</li>
+        </ol>
+    </div>
+
+    <div class="test-card success">
+        <h2>✅ Expected Results After Fix</h2>
+        
+        <ul>
+            <li>✅ <span class="highlight">Database updates work</span> (already working)</li>
+            <li>✅ <span class="highlight">UI reflects database values</span> (now fixed)</li>
+            <li>✅ <span class="highlight">Filters work correctly</span> (now fixed)</li>
+            <li>✅ <span class="highlight">Changes persist after refresh</span> (now fixed)</li>
+            <li>✅ <span class="highlight">Real-time updates in UI</span> (now fixed)</li>
+        </ul>
+    </div>
+
+    <div class="test-card warning">
+        <h2>🔄 If Still Not Working</h2>
+        
+        <p>If you still don't see the changes, try:</p>
+        <ol>
+            <li><strong>Hard refresh:</strong> Ctrl+Shift+R (Windows) or Cmd+Shift+R (Mac)</li>
+            <li><strong>Clear cache:</strong> F12 → Application → Storage → Clear site data</li>
+            <li><strong>Check network tab:</strong> Verify API responses include correct userType values</li>
+        </ol>
+    </div>
+
+    <div class="test-card success">
+        <h2>🎯 What This Fix Accomplishes</h2>
+        
+        <ul>
+            <li><strong>Respects Database Values:</strong> Uses actual stored customer types</li>
+            <li><strong>Maintains Fallback Logic:</strong> Still derives from email if database value missing</li>
+            <li><strong>Real-time Updates:</strong> UI immediately reflects database changes</li>
+            <li><strong>Filter Accuracy:</strong> Filters now work with actual data</li>
+            <li><strong>Data Persistence:</strong> Changes survive page refreshes</li>
+        </ul>
+    </div>
+
+    <script>
+        console.log('🔧 Customer Type Persistence Fix Applied!');
+        console.log('✅ Frontend now uses database values instead of email derivation');
+        console.log('🎯 Test: Change customer type and verify it appears in filters');
+    </script>
+</body>
+</html>

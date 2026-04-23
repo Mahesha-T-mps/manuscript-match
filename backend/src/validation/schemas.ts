@@ -426,7 +426,7 @@ export const validatePagination = (page?: number, limit?: number) => {
 // Admin validation schemas
 export const adminPaginationSchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
-  limit: Joi.number().integer().min(1).max(100).default(20),
+  limit: Joi.number().integer().min(1).max(1000).default(20), // Increased from 100 to 1000 for admin operations
   sortBy: Joi.string().optional(),
   sortOrder: Joi.string().valid('asc', 'desc').default('desc'),
   userId: uuidSchema.optional(),

@@ -15,7 +15,9 @@ model User {
   email     String   @unique
   passwordHash String @map("password_hash")
   role      String   @default("USER") // UserRole as string
+  userType  String   @default("SPRINGER") @map("user_type") // UserType as string
   status    String   @default("ACTIVE") // UserStatus as string
+  msxpertAccess Boolean @default(false) @map("msxpert_access") // MSXpert access permission
   name      String?
   phone     String?
   department String?

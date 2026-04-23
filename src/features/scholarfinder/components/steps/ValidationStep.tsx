@@ -65,6 +65,9 @@ const VALIDATION_CONDITIONS = [
   }
 ];
 
+// User types for sanction country check
+const USER_TYPES = ['Springer', 'Wiley', 'F1000', 'DMP'];
+
 export const ValidationStep: React.FC<ValidationStepProps> = ({
   processId,
   jobId,
@@ -85,6 +88,7 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({
     'Conflict of Interest',
     'Retraction History'
   ]); // Pre-select some common conditions
+  const [selectedUserType, setSelectedUserType] = useState<string>(''); // New state for user type
   const [isValidating, setIsValidating] = useState(false);
   const [validationResults, setValidationResults] = useState<any>(null);
   const [showConditionSelection, setShowConditionSelection] = useState(true);
@@ -92,6 +96,7 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({
   console.log('[ValidationStep] Potential reviewers state:', potentialReviewers);
   console.log('[ValidationStep] showConditionSelection:', showConditionSelection);
   console.log('[ValidationStep] selectedConditions:', selectedConditions);
+  console.log('[ValidationStep] selectedUserType:', selectedUserType);
   console.log('[ValidationStep] validationResults:', validationResults);
 
   // Load potential reviewers from Database Search step
@@ -196,18 +201,32 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({
       return;
     }
 
+    // Check if Sanction Country is selected and user type is required
+    if (selectedConditions.includes('Sanction Country') && !selectedUserType) {
+      toast({
+        title: 'User Type Required',
+        description: 'Please select a user type for Sanction Country Check.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     setIsValidating(true);
     
     try {
       const apiService = new ScholarFinderApiService();
-      const response = await apiService.validateAuthorsWithConditions(jobId, selectedConditions);
+      
+      // Use the single method with optional user type parameter
+      const userType = selectedConditions.includes('Sanction Country') ? selectedUserType : undefined;
+      const response = await apiService.validateAuthorsWithConditions(jobId, selectedConditions, userType);
       
       setValidationResults(response);
+      
       setShowConditionSelection(false);
       
       toast({
         title: 'Validation Complete',
-        description: `Successfully validated ${response.total_authors} authors with ${selectedConditions.length} conditions.`,
+        description: `Successfully validated authors with ${selectedConditions.length} conditions.`,
       });
     } catch (error: any) {
       console.error('[ValidationStep] Validation error:', error);
@@ -339,6 +358,14 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({
             selectedConditions: {JSON.stringify(selectedConditions)}
             <br />
             VALIDATION_CONDITIONS.length: {VALIDATION_CONDITIONS.length}
+            <br />
+            <strong>Sanction Country Check:</strong>
+            <br />
+            - Is "Sanction Country" in selectedConditions? {selectedConditions.includes('Sanction Country') ? 'YES' : 'NO'}
+            <br />
+            - selectedUserType: "{selectedUserType}"
+            <br />
+            - USER_TYPES: {JSON.stringify(USER_TYPES)}
           </div>
 
           {/* Select All/None buttons */}
@@ -395,11 +422,60 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({
             ))}
           </div>
 
+          {/* User Type Selection for Sanction Country Check */}
+          {/* DEBUG: Always show this section for testing */}
+          <div style={{ backgroundColor: 'pink', padding: '10px', border: '2px solid red' }}>
+            <strong>USER TYPE SELECTION DEBUG:</strong>
+            <br />
+            selectedConditions.includes('Sanction Country'): {selectedConditions.includes('Sanction Country') ? 'TRUE' : 'FALSE'}
+            <br />
+            Condition should show: {selectedConditions.includes('Sanction Country') ? 'YES - SHOULD BE VISIBLE' : 'NO - WILL BE HIDDEN'}
+          </div>
+          
+          {/* FORCE SHOW USER TYPES FOR TESTING - Remove this condition temporarily */}
+          {true && (
+            <div className="pt-4 border-t" style={{ backgroundColor: 'lightgreen', padding: '15px', border: '3px solid green' }}>
+              <div className="space-y-3">
+                <div>
+                  <h4 className="text-sm font-medium text-gray-900 mb-2">
+                    🎯 Select User Type for Sanction Country Check (FORCED VISIBLE FOR TESTING)
+                  </h4>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Choose the user type to determine which sanctioned countries to check against
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {USER_TYPES.map((userType) => (
+                    <Button
+                      key={userType}
+                      variant={selectedUserType === userType ? "default" : "outline"}
+                      onClick={() => setSelectedUserType(userType)}
+                      disabled={isValidating}
+                      className="h-12 flex flex-col items-center justify-center"
+                      style={{ backgroundColor: selectedUserType === userType ? 'blue' : 'white', color: selectedUserType === userType ? 'white' : 'black' }}
+                    >
+                      <span className="text-sm font-medium">{userType}</span>
+                    </Button>
+                  ))}
+                </div>
+                {selectedConditions.includes('Sanction Country') && !selectedUserType && (
+                  <p className="text-sm text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+                    ⚠️ Please select a user type to enable Sanction Country Check
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Validate Authors Button */}
           <div className="pt-4 border-t">
             <Button
               onClick={handleRunValidation}
-              disabled={isValidating || selectedConditions.length === 0}
+              disabled={
+                isValidating || 
+                selectedConditions.length === 0 || 
+                (selectedConditions.includes('Sanction Country') && !selectedUserType)
+              }
               className="w-full"
               size="lg"
               style={{ backgroundColor: 'green', color: 'white' }}
@@ -419,6 +495,11 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({
             {selectedConditions.length === 0 && (
               <p className="text-sm text-muted-foreground text-center mt-2">
                 Please select at least one validation condition to proceed
+              </p>
+            )}
+            {selectedConditions.includes('Sanction Country') && !selectedUserType && (
+              <p className="text-sm text-amber-600 text-center mt-2">
+                Please select a user type for Sanction Country Check
               </p>
             )}
           </div>

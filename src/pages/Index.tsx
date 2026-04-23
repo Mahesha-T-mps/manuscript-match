@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQueryClient } from '@tanstack/react-query';
 import { AdminDashboard } from "@/components/admin/AdminDashboard";
 import { ProcessDashboard, ProcessWorkflow } from "@/components/process";
@@ -23,6 +24,7 @@ const Index = () => {
   const [selectedProcess, setSelectedProcess] = useState<Process | null>(null);
   const { toast } = useToast();
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const handleSelectProcess = (process: Process) => {
@@ -45,6 +47,10 @@ const Index = () => {
       await logout();
       setViewMode('dashboard');
       setSelectedProcess(null);
+      
+      // Navigate to login page after logout
+      navigate('/', { replace: true });
+      
       toast({
         title: 'Logged out',
         description: 'You have been successfully logged out.',

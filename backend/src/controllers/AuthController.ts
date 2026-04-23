@@ -269,6 +269,8 @@ export class AuthController {
         id: user.id,
         email: user.email,
         role: user.role as any,
+        userType: user.userType as any,
+        msxpertAccess: user.msxpertAccess,
         name: user.name,
         phone: user.phone,
         department: user.department,

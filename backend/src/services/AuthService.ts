@@ -75,6 +75,8 @@ export class AuthService {
         id: user.id,
         email: user.email,
         role: user.role as UserRole,
+        userType: user.userType as any,
+        msxpertAccess: user.msxpertAccess,
       },
       token,
       expiresIn: config.jwt.expiresIn,
@@ -165,6 +167,8 @@ export class AuthService {
         id: user.id,
         email: user.email,
         role: user.role as UserRole,
+        userType: user.userType as any,
+        msxpertAccess: user.msxpertAccess,
       },
       token,
       expiresIn: config.jwt.expiresIn,
@@ -218,6 +222,8 @@ export class AuthService {
         id: user.id,
         email: user.email,
         role: user.role as UserRole,
+        userType: user.userType as any,
+        msxpertAccess: user.msxpertAccess,
       };
     } catch (error) {
       if (error instanceof jwt.JsonWebTokenError) {
