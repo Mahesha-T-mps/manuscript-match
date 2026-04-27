@@ -1147,8 +1147,19 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                                         }
                                         return false;
                                       };
-                                      // No COI if FALSE/False or if no author ID detected
-                                      return (reviewer.coi_coauthor === false || reviewer.coi_coauthor === 'FALSE' || reviewer.coi_coauthor === 'False') || !hasAuthorId(reviewer.coi_coauthor);
+                                      
+                                      const isTrue = reviewer.coi_coauthor === true || 
+                                                    reviewer.coi_coauthor === 'TRUE' || 
+                                                    reviewer.coi_coauthor === 'True' || 
+                                                    reviewer.coi_coauthor === 'true';
+                                      
+                                      const isFalse = reviewer.coi_coauthor === false || 
+                                                     reviewer.coi_coauthor === 'FALSE' || 
+                                                     reviewer.coi_coauthor === 'False' || 
+                                                     reviewer.coi_coauthor === 'false';
+                                      
+                                      // No COI if FALSE/False, or if no author ID detected and not TRUE
+                                      return isFalse || (!hasAuthorId(reviewer.coi_coauthor) && !isTrue);
                                     })())}
                                     <span>No Conflict of Interest</span>
                                   </div>
@@ -1202,7 +1213,8 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                         {(() => {
                           // Determine COI status based on coi_coauthor column
                           // COI is "No" if coi_coauthor is FALSE or False
-                          // COI is "Yes" only when coi_coauthor contains author ID format (A followed by numbers)
+                          // COI is "Yes" with clickable link when coi_coauthor contains author ID format (A followed by numbers)
+                          // COI is "Yes" without clickable link when coi_coauthor is TRUE or True
                           const hasAuthorId = (value: any) => {
                             if (typeof value === 'string') {
                               // Check if string contains author ID pattern: A followed by numbers
@@ -1211,11 +1223,25 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                             return false;
                           };
                           
-                          const coiStatus = (reviewer.coi_coauthor === false || reviewer.coi_coauthor === 'FALSE' || reviewer.coi_coauthor === 'False') 
+                          const isTrue = reviewer.coi_coauthor === true || 
+                                        reviewer.coi_coauthor === 'TRUE' || 
+                                        reviewer.coi_coauthor === 'True' || 
+                                        reviewer.coi_coauthor === 'true';
+                          
+                          const isFalse = reviewer.coi_coauthor === false || 
+                                         reviewer.coi_coauthor === 'FALSE' || 
+                                         reviewer.coi_coauthor === 'False' || 
+                                         reviewer.coi_coauthor === 'false';
+                          
+                          const coiStatus = isFalse 
                             ? 'No' 
                             : hasAuthorId(reviewer.coi_coauthor) 
                               ? 'Yes' 
-                              : 'No';
+                              : isTrue 
+                                ? 'Yes' 
+                                : 'No';
+                          
+                          const isClickable = hasAuthorId(reviewer.coi_coauthor);
                           const coiColor = coiStatus === 'No' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200';
                           const coiTextColor = coiStatus === 'No' ? 'text-green-800' : 'text-red-800';
                           const coiBadgeColor = coiStatus === 'No' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
@@ -1223,7 +1249,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                           
                           return (
                             <div className={`p-4 rounded-lg border ${coiColor} text-center`}>
-                              {coiStatus === 'Yes' ? (
+                              {isClickable ? (
                                 <button
                                   onClick={() => handleCOIClick(reviewer)}
                                   className={`flex items-center justify-center gap-3 w-full hover:opacity-80 transition-opacity cursor-pointer`}
