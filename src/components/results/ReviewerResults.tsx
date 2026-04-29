@@ -113,7 +113,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
       country: reviewer.country || 'Unknown',
       city: reviewer.city || 'Unknown',
       conditions_met: reviewer.conditions_met || 0,
-      conditions_satisfied: reviewer.conditions_satisfied || `${reviewer.conditions_met || 0} of 8`,
+      conditions_satisfied: reviewer.conditions_satisfied || `${reviewer.conditions_met || 0} of ${selectedValidationConditions && selectedValidationConditions.length > 0 ? selectedValidationConditions.length : 9}`,
       
       // Total publications
       Total_Publications: reviewer.publications || reviewer.Total_Publications || 0,
@@ -526,7 +526,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                 Showing {filteredReviewers.length} of {totalCount} validated reviewers
                 {validationSummary && (
                   <span className="ml-2">
-                    • Average score: {validationSummary.average_conditions_met.toFixed(1)}/9
+                    • Average score: {validationSummary.average_conditions_met.toFixed(1)}/{selectedValidationConditions && selectedValidationConditions.length > 0 ? selectedValidationConditions.length : 9}
                   </span>
                 )}
               </CardDescription>
@@ -598,18 +598,18 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                 <div className="space-y-4">
                   {/* Minimum Conditions Met Filter */}
                   <div className="space-y-2">
-                    <Label>Minimum Validation Score: {minConditionsMet}/9</Label>
+                    <Label>Minimum Validation Score: {minConditionsMet}/{selectedValidationConditions && selectedValidationConditions.length > 0 ? selectedValidationConditions.length : 9}</Label>
                     <div className="px-3">
                       <Slider
                         value={[minConditionsMet]}
                         onValueChange={([value]) => setMinConditionsMet(value)}
-                        max={9}
+                        max={selectedValidationConditions && selectedValidationConditions.length > 0 ? selectedValidationConditions.length : 9}
                         step={1}
                         className="w-full"
                       />
                       <div className="flex justify-between text-xs text-muted-foreground mt-1">
                         <span>0 (All)</span>
-                        <span>9 (Perfect)</span>
+                        <span>{selectedValidationConditions && selectedValidationConditions.length > 0 ? selectedValidationConditions.length : 9} (Perfect)</span>
                       </div>
                     </div>
                   </div>
@@ -622,7 +622,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                         <div>Total Authors: {validationSummary.total_authors}</div>
                         <div>Validated: {validationSummary.authors_validated}</div>
                         <div className="col-span-2">
-                          Average Score: {validationSummary.average_conditions_met.toFixed(2)}/9
+                          Average Score: {validationSummary.average_conditions_met.toFixed(2)}/{selectedValidationConditions && selectedValidationConditions.length > 0 ? selectedValidationConditions.length : 9}
                         </div>
                       </div>
                     </div>
@@ -718,8 +718,8 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                       <div className="flex-1">
                         <div className="flex items-center space-x-3 mb-2">
                           <h3 className="font-semibold text-lg">{reviewer.reviewer}</h3>
-                          <Badge className={getConditionsMetColor(reviewer.conditions_met)} aria-label={`Validation score: ${reviewer.conditions_met} out of 9 criteria met`}>
-                            {reviewer.conditions_met}/9 criteria met
+                          <Badge className={getConditionsMetColor(reviewer.conditions_met)} aria-label={`Validation score: ${reviewer.conditions_met} out of ${selectedValidationConditions && selectedValidationConditions.length > 0 ? selectedValidationConditions.length : 9} criteria met`}>
+                            {reviewer.conditions_met}/{selectedValidationConditions && selectedValidationConditions.length > 0 ? selectedValidationConditions.length : 9} criteria met
                           </Badge>
                         </div>
                         
