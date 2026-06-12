@@ -40,7 +40,7 @@ import { apiService } from "@/services/apiService";
 
 // Types
 type UserRole = "USER" | "QC" | "MANAGER" | "ADMIN";
-type UserType = "SPRINGER" | "WILEY" | "F1000" | "DMP" | "AJE RQE";
+type UserType = "SPRINGER" | "WILEY" | "F1000" | "DMP" | "AJE RQE" | "T&F";
 
 // Extended interface that includes customer type and MSXpert access
 interface ExtendedUserData extends AdminUserDetails {
@@ -61,6 +61,7 @@ const getUserTypeFromEmail = (email: string): UserType => {
   if (domain?.includes('f1000')) return 'F1000';
   if (domain?.includes('dmp')) return 'DMP';
   if (domain?.includes('aje')) return 'AJE RQE';
+  if (domain?.includes('tandf') || domain?.includes('taylorandfrancis')) return 'T&F';
   return 'SPRINGER'; // Default
 };
 
@@ -142,6 +143,7 @@ export const UserTypeManagement: React.FC<UserTypeManagementProps> = ({ classNam
       case 'F1000': return Crown;
       case 'DMP': return Shield;
       case 'AJE RQE': return Briefcase;
+      case 'T&F': return Building;
       default: return Building;
     }
   };
@@ -153,6 +155,7 @@ export const UserTypeManagement: React.FC<UserTypeManagementProps> = ({ classNam
       case 'F1000': return 'outline';
       case 'DMP': return 'destructive';
       case 'AJE RQE': return 'default';
+      case 'T&F': return 'secondary';
       default: return 'outline';
     }
   };
@@ -355,6 +358,7 @@ export const UserTypeManagement: React.FC<UserTypeManagementProps> = ({ classNam
                   <SelectItem value="F1000">F1000</SelectItem>
                   <SelectItem value="DMP">DMP</SelectItem>
                   <SelectItem value="AJE RQE">AJE RQE</SelectItem>
+                  <SelectItem value="T&F">T&F</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -430,8 +434,8 @@ export const UserTypeManagement: React.FC<UserTypeManagementProps> = ({ classNam
               <CardDescription>Breakdown of users by customer type</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-                {(['SPRINGER', 'WILEY', 'F1000', 'DMP', 'AJE RQE'] as UserType[]).map((userType) => {
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
+                {(['SPRINGER', 'WILEY', 'F1000', 'DMP', 'AJE RQE', 'T&F'] as UserType[]).map((userType) => {
                   const Icon = getUserTypeIcon(userType);
                   const count = stats.userTypeStats[userType] || 0;
                   const percentage = Math.round((count / stats.totalUsers) * 100);
@@ -720,6 +724,7 @@ export const UserTypeManagement: React.FC<UserTypeManagementProps> = ({ classNam
                     <SelectItem value="F1000">F1000</SelectItem>
                     <SelectItem value="DMP">DMP</SelectItem>
                     <SelectItem value="AJE RQE">AJE RQE</SelectItem>
+                    <SelectItem value="T&F">T&F</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

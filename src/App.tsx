@@ -25,6 +25,7 @@ import AuthenticatedAppSelector from "./pages/AuthenticatedAppSelector";
 import { ScholarFinderApp } from "./features/scholarfinder";
 import { MSXpertApp } from "./components/msxpert/MSXpertApp";
 import { GlobalNotificationProvider } from "./components/notifications/GlobalNotificationProvider";
+import { Footer } from "./components/layout/Footer";
 
 // Initialize global error handlers
 initializeGlobalErrorHandlers();
@@ -120,6 +121,7 @@ const App = () => (
                 {/* Catch-all route */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
+              <Footer />
             </ErrorBoundary>
           </BrowserRouter>
           {config.enableDevTools && <ReactQueryDevtools initialIsOpen={false} />}

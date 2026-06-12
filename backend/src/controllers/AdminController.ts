@@ -574,7 +574,7 @@ export class AdminController {
         );
       }
 
-      if (!customerType || !['SPRINGER', 'WILEY', 'F1000', 'DMP', 'AJE RQE'].includes(customerType)) {
+      if (!customerType || !['SPRINGER', 'WILEY', 'F1000', 'DMP', 'AJE RQE', 'T&F'].includes(customerType)) {
         throw new CustomError(
           ErrorType.VALIDATION_ERROR,
           'Valid customer type is required (SPRINGER, WILEY, F1000, DMP, AJE RQE)',

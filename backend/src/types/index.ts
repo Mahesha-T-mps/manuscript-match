@@ -160,6 +160,7 @@ export enum UserType {
   F1000 = 'F1000',
   DMP = 'DMP',
   AJE_RQE = 'AJE RQE',
+  T_AND_F = 'T&F',
 }
 
 export enum UserStatus {

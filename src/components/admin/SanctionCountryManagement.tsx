@@ -27,7 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { adminService } from "@/services/adminService";
 
 // User types as defined in your backend
-const USER_TYPES = ["Springer", "Wiley", "F1000", "DMP", "AJE RQE"];
+const USER_TYPES = ["Springer", "Wiley", "F1000", "DMP", "AJE RQE", "T&F"];
 
 interface SanctionedCountry {
   id?: number;
@@ -355,7 +355,7 @@ export const SanctionCountryManagement = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-2 text-sm text-gray-600">
-            <p>• Select a user type (Springer, Wiley, F1000, DMP, or AJE RQE) to view its sanctioned countries</p>
+            <p>• Select a user type (Springer, Wiley, F1000, DMP, AJE RQE, or T&F) to view its sanctioned countries</p>
             <p>• Add new countries to the sanctioned list using the "Add Country" button</p>
             <p>• Remove countries from the list by clicking the delete button next to each country</p>
             <p>• Changes are applied immediately and affect user validation processes</p>

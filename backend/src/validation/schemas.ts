@@ -1,5 +1,5 @@
 import Joi from 'joi';
-import { ProcessStatus, ProcessStep, AuthorRole, DatabaseType, UserRole, UserStatus } from '../types';
+import { ProcessStatus, ProcessStep, AuthorRole, DatabaseType, UserRole, UserStatus, UserType } from '../types';
 
 // Base validation schemas
 export const uuidSchema = Joi.string().uuid().required();
@@ -509,5 +509,10 @@ export const assignPermissionsSchema = Joi.object({
 
 export const updateRolePermissionsSchema = Joi.object({
   permissions: Joi.array().items(uuidSchema).min(1).required(),
+});
+
+// Customer type validation schema
+export const updateCustomerTypeSchema = Joi.object({
+  customerType: Joi.string().valid(...Object.values(UserType)).required(),
 });
 

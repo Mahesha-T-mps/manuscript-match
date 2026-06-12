@@ -136,5 +136,12 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+    padding-bottom: 2.5rem; /* Space for fixed footer */
+  }
+
+  #root {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
   }
 }
