@@ -196,13 +196,12 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
   } : apiResponse?.validation_summary;
 
   // Client-side filtering and sorting
-  // Reviewers are already sorted by conditions_met (descending) from the API
   const filteredReviewers = useMemo(() => {
     let filtered = [...allReviewers];
 
-    // Filter by minimum conditions_met score
+    // Filter by minimum conditions_met score (using calculated value based on selected conditions)
     if (minConditionsMet > 0) {
-      filtered = filtered.filter(r => r.conditions_met >= minConditionsMet);
+      filtered = filtered.filter(r => calculateSelectedConditionsMet(r) >= minConditionsMet);
     }
 
     // Filter by country
@@ -220,8 +219,15 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
       );
     }
 
+    // Sort by calculated conditions met (descending - highest score first)
+    filtered.sort((a, b) => {
+      const aConditionsMet = calculateSelectedConditionsMet(a);
+      const bConditionsMet = calculateSelectedConditionsMet(b);
+      return bConditionsMet - aConditionsMet;
+    });
+
     return filtered;
-  }, [allReviewers, minConditionsMet, selectedCountry, searchTerm]);
+  }, [allReviewers, minConditionsMet, selectedCountry, searchTerm, selectedValidationConditions]);
 
   // Get unique countries for filter dropdown
   const availableCountries = useMemo(() => {
