@@ -187,70 +187,6 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
     duplicateEmails: allReviewers.map(r => r.email).filter((email, index, arr) => arr.indexOf(email) !== index),
     sampleReviewer: allReviewers[0]
   });
-  
-  const totalCount = validationData ? allReviewers.length : (apiResponse?.total_count || 0);
-  const validationSummary = validationData ? {
-    total_authors: allReviewers.length,
-    authors_validated: allReviewers.length,
-    average_conditions_met: allReviewers.reduce((sum: number, r: any) => sum + (r.conditions_met || 0), 0) / Math.max(allReviewers.length, 1)
-  } : apiResponse?.validation_summary;
-
-  // Client-side filtering and sorting
-  const filteredReviewers = useMemo(() => {
-    let filtered = [...allReviewers];
-
-    // Filter by minimum conditions_met score (using calculated value based on selected conditions)
-    if (minConditionsMet > 0) {
-      filtered = filtered.filter(r => calculateSelectedConditionsMet(r) >= minConditionsMet);
-    }
-
-    // Filter by country
-    if (selectedCountry && selectedCountry !== "all") {
-      filtered = filtered.filter(r => r.country === selectedCountry);
-    }
-
-    // Filter by search term (name, affiliation, country)
-    if (searchTerm.trim()) {
-      const search = searchTerm.toLowerCase();
-      filtered = filtered.filter(r => 
-        r.reviewer.toLowerCase().includes(search) ||
-        r.aff.toLowerCase().includes(search) ||
-        r.country.toLowerCase().includes(search)
-      );
-    }
-
-    // Sort by calculated conditions met (descending - highest score first)
-    filtered.sort((a, b) => {
-      const aConditionsMet = calculateSelectedConditionsMet(a);
-      const bConditionsMet = calculateSelectedConditionsMet(b);
-      return bConditionsMet - aConditionsMet;
-    });
-
-    return filtered;
-  }, [allReviewers, minConditionsMet, selectedCountry, searchTerm, selectedValidationConditions]);
-
-  // Get unique countries for filter dropdown
-  const availableCountries = useMemo(() => {
-    const countries = [...new Set(allReviewers.map(r => r.country))];
-    return countries.sort();
-  }, [allReviewers]);
-
-  // Get color for conditions_met score badge
-  const getConditionsMetColor = (score: number) => {
-    if (score >= 8) return "bg-green-500 text-white";
-    if (score >= 6) return "bg-blue-500 text-white";
-    if (score >= 4) return "bg-yellow-500 text-white";
-    return "bg-gray-500 text-white";
-  };
-
-  // Get validation criteria icon
-  const getValidationIcon = (satisfied: boolean) => {
-    return satisfied ? (
-      <CheckCircle2 className="w-4 h-4 text-green-500" />
-    ) : (
-      <XCircle className="w-4 h-4 text-gray-400" />
-    );
-  };
 
   // Calculate actual conditions met for selected conditions only
   const calculateSelectedConditionsMet = (reviewer: any): number => {
@@ -321,6 +257,70 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
     });
 
     return metCount;
+  };
+  
+  const totalCount = validationData ? allReviewers.length : (apiResponse?.total_count || 0);
+  const validationSummary = validationData ? {
+    total_authors: allReviewers.length,
+    authors_validated: allReviewers.length,
+    average_conditions_met: allReviewers.reduce((sum: number, r: any) => sum + calculateSelectedConditionsMet(r), 0) / Math.max(allReviewers.length, 1)
+  } : apiResponse?.validation_summary;
+
+  // Client-side filtering and sorting
+  const filteredReviewers = useMemo(() => {
+    let filtered = [...allReviewers];
+
+    // Filter by minimum conditions_met score (using calculated score for selected conditions)
+    if (minConditionsMet > 0) {
+      filtered = filtered.filter(r => calculateSelectedConditionsMet(r) >= minConditionsMet);
+    }
+
+    // Filter by country
+    if (selectedCountry && selectedCountry !== "all") {
+      filtered = filtered.filter(r => r.country === selectedCountry);
+    }
+
+    // Filter by search term (name, affiliation, country)
+    if (searchTerm.trim()) {
+      const search = searchTerm.toLowerCase();
+      filtered = filtered.filter(r => 
+        r.reviewer.toLowerCase().includes(search) ||
+        r.aff.toLowerCase().includes(search) ||
+        r.country.toLowerCase().includes(search)
+      );
+    }
+
+    // Sort by calculated selected conditions met score (descending - highest first)
+    filtered.sort((a, b) => {
+      const scoreA = calculateSelectedConditionsMet(a);
+      const scoreB = calculateSelectedConditionsMet(b);
+      return scoreB - scoreA; // Descending order
+    });
+
+    return filtered;
+  }, [allReviewers, minConditionsMet, selectedCountry, searchTerm, selectedValidationConditions]);
+
+  // Get unique countries for filter dropdown
+  const availableCountries = useMemo(() => {
+    const countries = [...new Set(allReviewers.map(r => r.country))];
+    return countries.sort();
+  }, [allReviewers]);
+
+  // Get color for conditions_met score badge
+  const getConditionsMetColor = (score: number) => {
+    if (score >= 8) return "bg-green-500 text-white";
+    if (score >= 6) return "bg-blue-500 text-white";
+    if (score >= 4) return "bg-yellow-500 text-white";
+    return "bg-gray-500 text-white";
+  };
+
+  // Get validation criteria icon
+  const getValidationIcon = (satisfied: boolean) => {
+    return satisfied ? (
+      <CheckCircle2 className="w-4 h-4 text-green-500" />
+    ) : (
+      <XCircle className="w-4 h-4 text-gray-400" />
+    );
   };
 
   const handleSelectReviewer = useCallback((reviewerEmail: string, checked: boolean) => {
@@ -439,7 +439,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
           format,
           reviewerCount: selectedReviewers.length,
           reviewerNames: selectedReviewers.map(r => r.reviewer),
-          averageConditionsMet: selectedReviewers.reduce((sum, r) => sum + r.conditions_met, 0) / selectedReviewers.length,
+          averageConditionsMet: selectedReviewers.reduce((sum, r) => sum + calculateSelectedConditionsMet(r), 0) / selectedReviewers.length,
           selectedValidationConditions: selectedValidationConditions || []
         })
       );
@@ -518,7 +518,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
           shortlistName,
           reviewerCount: selectedReviewers.length,
           reviewerNames: selectedReviewers.map(r => r.reviewer),
-          averageConditionsMet: selectedReviewers.reduce((sum, r) => sum + r.conditions_met, 0) / selectedReviewers.length
+          averageConditionsMet: selectedReviewers.reduce((sum, r) => sum + calculateSelectedConditionsMet(r), 0) / selectedReviewers.length
         })
       );
 
@@ -741,7 +741,6 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                     if (el) {
                       const someSelected = selectedReviewerIds.size > 0 && 
                         !filteredReviewers.every(r => selectedReviewerIds.has(r.email));
-                      // Type assertion to access indeterminate property
                       (el as any).indeterminate = someSelected;
                     }
                   }}
@@ -1390,7 +1389,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                       <div className="font-medium">{reviewer.reviewer}</div>
                       <div className="text-xs text-muted-foreground">{reviewer.email}</div>
                       <div className="text-xs text-muted-foreground">
-                        Score: {reviewer.conditions_met}/9 • {reviewer.aff}
+                        Score: {calculateSelectedConditionsMet(reviewer)}/{selectedValidationConditions && selectedValidationConditions.length > 0 ? selectedValidationConditions.length : 9} • {reviewer.aff}
                       </div>
                     </div>
                   ))}
