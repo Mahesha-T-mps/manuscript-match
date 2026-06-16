@@ -246,6 +246,77 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
     );
   };
 
+  // Calculate actual conditions met for selected conditions only
+  const calculateSelectedConditionsMet = (reviewer: any): number => {
+    if (!selectedValidationConditions || selectedValidationConditions.length === 0) {
+      return 0;
+    }
+
+    let metCount = 0;
+
+    selectedValidationConditions.forEach(conditionId => {
+      let isMet = false;
+
+      switch (conditionId) {
+        case 'Publications':
+          isMet = reviewer.Publications_10_years >= 8;
+          break;
+        case 'Relevant Publications':
+          isMet = reviewer['Relevant Publications (last 5 years)'] >= 3;
+          break;
+        case 'Publication Types':
+          isMet = reviewer.Publications_2_years >= 1 && reviewer.English_Pubs > reviewer.Total_Publications / 2;
+          break;
+        case 'Coauthor':
+          isMet = !reviewer.coauthor;
+          break;
+        case 'Affiliation/Country match':
+          isMet = reviewer.aff_match === 'no' && reviewer.country_match === 'yes';
+          break;
+        case 'Conflict of Interest':
+          isMet = (() => {
+            const hasAuthorId = (value: any) => {
+              if (typeof value === 'string') {
+                return /A\d+/.test(value);
+              }
+              return false;
+            };
+            const isTrue = reviewer.coi_coauthor === true || 
+                          reviewer.coi_coauthor === 'TRUE' || 
+                          reviewer.coi_coauthor === 'True' || 
+                          reviewer.coi_coauthor === 'true';
+            const isFalse = reviewer.coi_coauthor === false || 
+                           reviewer.coi_coauthor === 'FALSE' || 
+                           reviewer.coi_coauthor === 'False' || 
+                           reviewer.coi_coauthor === 'false';
+            return isFalse || (!hasAuthorId(reviewer.coi_coauthor) && !isTrue);
+          })();
+          break;
+        case 'First/Last Author in publications':
+          isMet = (reviewer.Total_Publications_first || 0) > 0 || (reviewer.Total_Publications_last || 0) > 0;
+          break;
+        case 'T&F Publications last year':
+          isMet = (reviewer.TF_Publications_last_year || 0) > 0;
+          break;
+        case 'Study Type Detection':
+          isMet = reviewer.study_type ? true : false;
+          break;
+        case 'Sanction Country':
+          isMet = (reviewer.sanction_country || 'no').toLowerCase() !== 'yes';
+          break;
+        case 'Retraction History':
+          isMet = (reviewer.Retracted_Pubs_no || 0) === 0;
+          break;
+      }
+
+      if (isMet) {
+        metCount++;
+      }
+    });
+
+    return metCount;
+  };
+
   const handleSelectReviewer = useCallback((reviewerEmail: string, checked: boolean) => {
     console.log('🔍 [DEBUG] handleSelectReviewer called:', { 
       reviewerEmail, 
@@ -718,8 +789,8 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                       <div className="flex-1">
                         <div className="flex items-center space-x-3 mb-2">
                           <h3 className="font-semibold text-lg">{reviewer.reviewer}</h3>
-                          <Badge className={getConditionsMetColor(reviewer.conditions_met)} aria-label={`Validation score: ${reviewer.conditions_met} out of ${selectedValidationConditions && selectedValidationConditions.length > 0 ? selectedValidationConditions.length : 9} criteria met`}>
-                            {reviewer.conditions_met}/{selectedValidationConditions && selectedValidationConditions.length > 0 ? selectedValidationConditions.length : 9} criteria met
+                          <Badge className={getConditionsMetColor(calculateSelectedConditionsMet(reviewer))} aria-label={`Validation score: ${calculateSelectedConditionsMet(reviewer)} out of ${selectedValidationConditions && selectedValidationConditions.length > 0 ? selectedValidationConditions.length : 9} criteria met`}>
+                            {calculateSelectedConditionsMet(reviewer)}/{selectedValidationConditions && selectedValidationConditions.length > 0 ? selectedValidationConditions.length : 9} criteria met
                           </Badge>
                         </div>
                         
@@ -790,9 +861,9 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                               <span className="text-xs font-medium text-amber-700">Recent Activity</span>
                               <span className="text-xs bg-amber-200 text-amber-800 px-1 rounded">2Y</span>
                             </div>
-                            <div className="text-lg font-bold text-amber-900">{reviewer['Publications (last 2 years)'] || 0}</div>
+                            <div className="text-lg font-bold text-amber-900">{reviewer.Publications_2_years || 0}</div>
                             <div className="text-xs text-amber-600 mt-1">
-                              {reviewer['Publications (last year)'] || 0} in last year
+                              {reviewer.Publications_last_year || 0} in last year
                             </div>
                           </div>
 
@@ -830,7 +901,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                                 <div className="flex items-center justify-between">
                                   <span className="text-sm font-medium text-gray-700">Last 10 Years</span>
                                   <div className="flex items-center space-x-4 text-sm">
-                                    <span className="font-semibold text-green-700">{reviewer['Publications (last 10 years)'] || 0}</span>
+                                    <span className="font-semibold text-green-700">{reviewer.Publications_10_years || 0}</span>
                                     <span className="text-green-600">({reviewer.Publications_10_years_first || 0} • {reviewer.Publications_10_years_last || 0})</span>
                                   </div>
                                 </div>
@@ -838,7 +909,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                                   <div 
                                     className="bg-green-500 h-2 rounded-full transition-all duration-300" 
                                     style={{
-                                      width: `${Math.min(100, ((reviewer['Publications (last 10 years)'] || 0) / Math.max(reviewer.Total_Publications || 1, 1)) * 100)}%`
+                                      width: `${Math.min(100, ((reviewer.Publications_10_years || 0) / Math.max(reviewer.Total_Publications || 1, 1)) * 100)}%`
                                     }}
                                   ></div>
                                 </div>
@@ -889,7 +960,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                                 <div className="flex items-center justify-between mb-1">
                                   <span className="text-sm font-medium text-gray-700">Last 2 Years</span>
                                   <div className="flex items-center space-x-4 text-sm">
-                                    <span className="font-semibold text-orange-700">{reviewer['Publications (last 2 years)'] || 0}</span>
+                                    <span className="font-semibold text-orange-700">{reviewer.Publications_2_years || 0}</span>
                                     <span className="text-orange-600">({reviewer.Publications_2_years_first || 0} • {reviewer.Publications_2_years_last || 0})</span>
                                   </div>
                                 </div>
@@ -903,7 +974,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                                 <div className="flex items-center justify-between text-xs">
                                   <span className="text-gray-600">Last year only:</span>
                                   <div className="flex items-center space-x-2">
-                                    <span className="font-semibold text-red-700">{reviewer['Publications (last year)'] || 0}</span>
+                                    <span className="font-semibold text-red-700">{reviewer.Publications_last_year || 0}</span>
                                     <span className="text-red-600">({reviewer.Publications_last_year_first || 0} • {reviewer.Publications_last_year_last || 0})</span>
                                   </div>
                                 </div>
@@ -911,7 +982,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                                   <div 
                                     className="bg-orange-500 h-2 rounded-full transition-all duration-300" 
                                     style={{
-                                      width: `${Math.min(100, ((reviewer['Publications (last 2 years)'] || 0) / Math.max(reviewer.Total_Publications || 1, 1)) * 100)}%`
+                                      width: `${Math.min(100, ((reviewer.Publications_2_years || 0) / Math.max(reviewer.Total_Publications || 1, 1)) * 100)}%`
                                     }}
                                   ></div>
                                 </div>
@@ -922,10 +993,11 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                       </div>
 
                       {/* Research Focus Areas - Show different parts based on selected conditions */}
-                      {(!selectedValidationConditions || selectedValidationConditions.length === 0 || 
+                      {selectedValidationConditions && selectedValidationConditions.length > 0 && (
                         selectedValidationConditions.includes('Publication Types') || 
                         selectedValidationConditions.includes('T&F Publications last year') ||
-                        selectedValidationConditions.includes('Retraction History')) && (
+                        selectedValidationConditions.includes('Retraction History')
+                      ) && (
                         <div>
                           <div className="flex items-center mb-3">
                             <div className="w-2 h-2 bg-purple-500 rounded-full mr-2"></div>
@@ -933,7 +1005,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                           </div>
                           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                             {/* Publication Types related items - only show if Publication Types is selected */}
-                            {(!selectedValidationConditions || selectedValidationConditions.length === 0 || selectedValidationConditions.includes('Publication Types')) && (
+                            {selectedValidationConditions && selectedValidationConditions.includes('Publication Types') && (
                               <>
                                 <div className="p-3 bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-lg border border-indigo-200 text-center">
                                   <div className="text-xs font-medium text-indigo-700 mb-1">Clinical Trials</div>
@@ -956,7 +1028,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                             )}
                             
                             {/* Retractions - only show if Retraction History is selected */}
-                            {(!selectedValidationConditions || selectedValidationConditions.length === 0 || selectedValidationConditions.includes('Retraction History')) && (
+                            {selectedValidationConditions && selectedValidationConditions.includes('Retraction History') && (
                               <div className="p-3 bg-gradient-to-br from-red-50 to-red-100 rounded-lg border border-red-200 text-center">
                                 <div className="text-xs font-medium text-red-700 mb-1">Retractions</div>
                                 <div className="text-lg font-bold text-red-900">{reviewer.Retracted_Pubs_no || 0}</div>
@@ -965,7 +1037,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                             )}
                             
                             {/* T&F Publications - controlled by T&F Publications last year condition */}
-                            {(!selectedValidationConditions || selectedValidationConditions.length === 0 || selectedValidationConditions.includes('T&F Publications last year')) && (
+                            {selectedValidationConditions && selectedValidationConditions.includes('T&F Publications last year') && (
                               <div className="p-3 bg-gradient-to-br from-violet-50 to-violet-100 rounded-lg border border-violet-200 text-center">
                                 <div className="text-xs font-medium text-violet-700 mb-1">T&F Publications</div>
                                 <div className="text-lg font-bold text-violet-900">{reviewer.TF_Publications_last_year || 0}</div>
@@ -977,7 +1049,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                       )}
 
                       {/* Study Type Distribution - Only show if Study Type Detection is selected */}
-                      {(!selectedValidationConditions || selectedValidationConditions.length === 0 || selectedValidationConditions.includes('Study Type Detection')) && (
+                      {selectedValidationConditions && selectedValidationConditions.includes('Study Type Detection') && (
                         <div className="mt-6">
                           <div className="flex items-center mb-3">
                             <div className="w-2 h-2 bg-orange-500 rounded-full mr-2"></div>
@@ -1024,75 +1096,30 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                     </div>
 
                     {/* Validation Criteria - Only show selected conditions */}
-                    <div role="region" aria-label="Validation criteria">
-                      <h4 className="text-sm font-medium mb-2">
-                        Validation Criteria ({reviewer.conditions_satisfied})
-                        {selectedValidationConditions && selectedValidationConditions.length > 0 && (
-                          <span className="text-xs text-muted-foreground ml-2">
-                            (Showing {selectedValidationConditions.length} selected conditions)
-                          </span>
-                        )}
-                      </h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm" role="list">
-                        {/* Only show validation conditions that were selected during validation */}
-                        {(!selectedValidationConditions || selectedValidationConditions.length === 0) ? (
-                          // Fallback: Show all conditions if no selection data available
-                          <>
-                            <div className="flex items-center space-x-2">
-                              {getValidationIcon(reviewer['Publications (last 10 years)'] >= 8)}
-                              <span>Publications (last 10 years) ≥ 8</span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              {getValidationIcon(reviewer['Relevant Publications (last 5 years)'] >= 3)}
-                              <span>Relevant Publications (last 5 years) ≥ 3</span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              {getValidationIcon(reviewer['Publications (last 2 years)'] >= 1)}
-                              <span>Publications (last 2 years) ≥ 1</span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              {getValidationIcon(reviewer.English_Pubs > reviewer.Total_Publications / 2)}
-                              <span>English Publications &gt; 50%</span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              {getValidationIcon(!reviewer.coauthor)}
-                              <span>No Coauthorship</span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              {getValidationIcon(reviewer.aff_match === 'no')}
-                              <span>Different Affiliation</span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              {getValidationIcon(reviewer.country_match === 'yes')}
-                              <span>Same Country</span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              {getValidationIcon(reviewer.Retracted_Pubs_no <= 1)}
-                              <span>No Retracted Publications</span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              {getValidationIcon((() => {
-                                const hasAuthorId = (value: any) => {
-                                  if (typeof value === 'string') {
-                                    // Check if string contains author ID pattern: A followed by numbers
-                                    return /A\d+/.test(value);
-                                  }
-                                  return false;
-                                };
-                                // No COI if FALSE/False or if no author ID detected
-                                return (reviewer.coi_coauthor === false || reviewer.coi_coauthor === 'FALSE' || reviewer.coi_coauthor === 'False') || !hasAuthorId(reviewer.coi_coauthor);
-                              })())}
-                              <span>No Conflict of Interest</span>
-                            </div>
-                          </>
-                        ) : (
-                          // Show only selected validation conditions
-                          selectedValidationConditions.map(conditionId => {
+                    {selectedValidationConditions && selectedValidationConditions.length > 0 && (
+                      <div role="region" aria-label="Validation criteria">
+                        {(() => {
+                          const actualConditionsMet = calculateSelectedConditionsMet(reviewer);
+                          
+                          return (
+                            <>
+                              <h4 className="text-sm font-medium mb-2">
+                                Validation Criteria ({actualConditionsMet} conditions met)
+                                <span className="text-xs text-muted-foreground ml-2">
+                                  (Showing {selectedValidationConditions.length} selected conditions)
+                                </span>
+                              </h4>
+                            </>
+                          );
+                        })()}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm" role="list">
+                          {/* Show only selected validation conditions */}
+                          {selectedValidationConditions.map(conditionId => {
                             switch (conditionId) {
                               case 'Publications':
                                 return (
                                   <div key="publications" className="flex items-center space-x-2">
-                                    {getValidationIcon(reviewer['Publications (last 10 years)'] >= 8)}
+                                    {getValidationIcon(reviewer.Publications_10_years >= 8)}
                                     <span>Publications (last 10 years) ≥ 8</span>
                                   </div>
                                 );
@@ -1105,16 +1132,10 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                                 );
                               case 'Publication Types':
                                 return (
-                                  <>
-                                    <div key="publications-2y" className="flex items-center space-x-2">
-                                      {getValidationIcon(reviewer['Publications (last 2 years)'] >= 1)}
-                                      <span>Publications (last 2 years) ≥ 1</span>
-                                    </div>
-                                    <div key="english-pubs" className="flex items-center space-x-2">
-                                      {getValidationIcon(reviewer.English_Pubs > reviewer.Total_Publications / 2)}
-                                      <span>English Publications &gt; 50%</span>
-                                    </div>
-                                  </>
+                                  <div key="publication-types" className="flex items-center space-x-2">
+                                    {getValidationIcon(reviewer.Publications_2_years >= 1 && reviewer.English_Pubs > reviewer.Total_Publications / 2)}
+                                    <span>Publication Types Criteria Met</span>
+                                  </div>
                                 );
                               case 'Coauthor':
                                 return (
@@ -1125,16 +1146,10 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                                 );
                               case 'Affiliation/Country match':
                                 return (
-                                  <>
-                                    <div key="affiliation" className="flex items-center space-x-2">
-                                      {getValidationIcon(reviewer.aff_match === 'no')}
-                                      <span>Different Affiliation</span>
-                                    </div>
-                                    <div key="country" className="flex items-center space-x-2">
-                                      {getValidationIcon(reviewer.country_match === 'yes')}
-                                      <span>Same Country</span>
-                                    </div>
-                                  </>
+                                  <div key="affiliation-country" className="flex items-center space-x-2">
+                                    {getValidationIcon(reviewer.aff_match === 'no' && reviewer.country_match === 'yes')}
+                                    <span>Affiliation/Country Requirements Met</span>
+                                  </div>
                                 );
                               case 'Conflict of Interest':
                                 return (
@@ -1202,13 +1217,13 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                               default:
                                 return null;
                             }
-                          }).filter(Boolean)
-                        )}
+                          }).filter(Boolean)}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* COI Container for this reviewer - Only show if Conflict of Interest is selected */}
-                    {(!selectedValidationConditions || selectedValidationConditions.length === 0 || selectedValidationConditions.includes('Conflict of Interest')) && (
+                    {selectedValidationConditions && selectedValidationConditions.includes('Conflict of Interest') && (
                       <div role="region" aria-label="Conflict of Interest details">
                         {(() => {
                           // Determine COI status based on coi_coauthor column
@@ -1282,7 +1297,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                     )}
 
                     {/* Sanction Country Container - Only show if Sanction Country is selected */}
-                    {(!selectedValidationConditions || selectedValidationConditions.length === 0 || selectedValidationConditions.includes('Sanction Country')) && (
+                    {selectedValidationConditions && selectedValidationConditions.includes('Sanction Country') && (
                       <div role="region" aria-label="Sanction Country status">
                         {(() => {
                           // Determine Sanction Country status
