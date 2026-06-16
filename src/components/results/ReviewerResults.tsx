@@ -741,7 +741,8 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                     if (el) {
                       const someSelected = selectedReviewerIds.size > 0 && 
                         !filteredReviewers.every(r => selectedReviewerIds.has(r.email));
-                      el.indeterminate = someSelected;
+                      // Type assertion to access indeterminate property
+                      (el as any).indeterminate = someSelected;
                     }
                   }}
                   onCheckedChange={(checked) => {
