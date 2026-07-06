@@ -63,7 +63,7 @@ const AuthenticatedAppSelector = () => {
               <div className="text-right">
                 <p className="text-sm font-medium text-foreground">{user?.name || user?.email}</p>
                 <p className="text-xs text-muted-foreground">
-                  {user?.role} • {user?.userType}
+                  {user?.role}
                   {canAccessMSXpert && <span className="ml-1 text-green-600">• MSXpert Access</span>}
                 </p>
               </div>
