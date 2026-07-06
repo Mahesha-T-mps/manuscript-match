@@ -103,9 +103,7 @@ export function generateCSV(reviewers: Reviewer[], selectedConditions?: string[]
     'email', 
     'aff',
     'city',
-    'country',
-    'conditions_met',
-    'conditions_satisfied'
+    'country'
   ];
 
   // Get columns for selected validation conditions
@@ -183,9 +181,7 @@ export function generateCSV(reviewers: Reviewer[], selectedConditions?: string[]
       escapeCSVField(reviewer.email),
       escapeCSVField(reviewer.aff),
       escapeCSVField(reviewer.city),
-      escapeCSVField(reviewer.country),
-      reviewer.conditions_met || 0,
-      escapeCSVField(reviewer.conditions_satisfied || '')
+      escapeCSVField(reviewer.country)
     ];
     
     console.log(`[generateCSV] Base data for reviewer ${reviewerIndex + 1}:`, baseData);
@@ -326,10 +322,6 @@ export function generateJSON(reviewers: Reviewer[], selectedConditions?: string[
         location: {
           city: reviewer.city,
           country: reviewer.country
-        },
-        validation: {
-          conditionsMet: reviewer.conditions_met,
-          conditionsSatisfied: reviewer.conditions_satisfied
         }
       };
 

@@ -45,6 +45,19 @@ interface ReviewerResultsProps {
   selectedValidationConditions?: string[]; // Selected validation conditions for export filtering
 }
 
+// Validation condition point values (must match ValidationStep.tsx)
+const VALIDATION_CONDITION_POINTS: { [key: string]: number } = {
+  'Publications': 15,
+  'First/Last Author in publications': 15,
+  'Relevant Publications': 15,
+  'Conflict of Interest': 15,
+  'Sanction Country': 15,
+  'Publication Types': 7,
+  'Retraction History': 7,
+  'Study Type Detection': 7,
+  'T&F Publications last year': 4
+};
+
 export const ReviewerResults = ({ processId, onShortlistCreated, validationData, selectedValidationConditions }: ReviewerResultsProps) => {
   // State for filtering and search
   const [searchTerm, setSearchTerm] = useState("");
@@ -204,7 +217,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
           isMet = reviewer.Publications_10_years >= 8;
           break;
         case 'Relevant Publications':
-          isMet = reviewer['Relevant Publications (last 5 years)'] >= 3;
+          isMet = reviewer.Relevant_Publications_5_years >= 3;
           break;
         case 'Publication Types':
           isMet = reviewer.Publications_2_years >= 1 && reviewer.English_Pubs > reviewer.Total_Publications / 2;
@@ -258,12 +271,103 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
 
     return metCount;
   };
+
+  // Calculate validation score out of 100 based on points
+  const calculateValidationScore = (reviewer: any): number => {
+    if (!selectedValidationConditions || selectedValidationConditions.length === 0) {
+      return 0;
+    }
+
+    let earnedPoints = 0;
+    let totalPossiblePoints = 0;
+
+    selectedValidationConditions.forEach(conditionId => {
+      const points = VALIDATION_CONDITION_POINTS[conditionId] || 0;
+      totalPossiblePoints += points;
+
+      let isMet = false;
+
+      switch (conditionId) {
+        case 'Publications':
+          isMet = reviewer.Publications_10_years >= 8;
+          break;
+        case 'Relevant Publications':
+          isMet = reviewer.Relevant_Publications_5_years >= 3;
+          break;
+        case 'Publication Types':
+          isMet = reviewer.Publications_2_years >= 1 && reviewer.English_Pubs > reviewer.Total_Publications / 2;
+          break;
+        case 'Coauthor':
+          isMet = !reviewer.coauthor;
+          break;
+        case 'Affiliation/Country match':
+          isMet = reviewer.aff_match === 'no' && reviewer.country_match === 'yes';
+          break;
+        case 'Conflict of Interest':
+          isMet = (() => {
+            const hasAuthorId = (value: any) => {
+              if (typeof value === 'string') {
+                return /A\d+/.test(value);
+              }
+              return false;
+            };
+            const isTrue = reviewer.coi_coauthor === true || 
+                          reviewer.coi_coauthor === 'TRUE' || 
+                          reviewer.coi_coauthor === 'True' || 
+                          reviewer.coi_coauthor === 'true';
+            const isFalse = reviewer.coi_coauthor === false || 
+                           reviewer.coi_coauthor === 'FALSE' || 
+                           reviewer.coi_coauthor === 'False' || 
+                           reviewer.coi_coauthor === 'false';
+            return isFalse || (!hasAuthorId(reviewer.coi_coauthor) && !isTrue);
+          })();
+          break;
+        case 'First/Last Author in publications':
+          isMet = (reviewer.Total_Publications_first || 0) > 0 || (reviewer.Total_Publications_last || 0) > 0;
+          break;
+        case 'T&F Publications last year':
+          isMet = (reviewer.TF_Publications_last_year || 0) > 0;
+          break;
+        case 'Study Type Detection':
+          isMet = reviewer.study_type ? true : false;
+          break;
+        case 'Sanction Country':
+          isMet = (reviewer.sanction_country || 'no').toLowerCase() !== 'yes';
+          break;
+        case 'Retraction History':
+          isMet = (reviewer.Retracted_Pubs_no || 0) === 0;
+          break;
+      }
+
+      if (isMet) {
+        earnedPoints += points;
+      }
+    });
+
+    // Calculate score out of 100
+    if (totalPossiblePoints === 0) return 0;
+    return Math.round((earnedPoints / totalPossiblePoints) * 100);
+  };
   
   const totalCount = validationData ? allReviewers.length : (apiResponse?.total_count || 0);
+  
+  // Calculate average conditions met for validation summary
+  const calculateAverageConditionsMet = () => {
+    if (!allReviewers || allReviewers.length === 0) return 0;
+    if (!selectedValidationConditions || selectedValidationConditions.length === 0) return 0;
+    
+    const total = allReviewers.reduce((sum: number, r: any) => {
+      const score = calculateSelectedConditionsMet(r);
+      return sum + (isNaN(score) ? 0 : score);
+    }, 0);
+    
+    return total / allReviewers.length;
+  };
+  
   const validationSummary = validationData ? {
     total_authors: allReviewers.length,
     authors_validated: allReviewers.length,
-    average_conditions_met: allReviewers.reduce((sum: number, r: any) => sum + calculateSelectedConditionsMet(r), 0) / Math.max(allReviewers.length, 1)
+    average_conditions_met: calculateAverageConditionsMet()
   } : apiResponse?.validation_summary;
 
   // Client-side filtering and sorting
@@ -290,10 +394,10 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
       );
     }
 
-    // Sort by calculated selected conditions met score (descending - highest first)
+    // Sort by validation score (descending - highest first)
     filtered.sort((a, b) => {
-      const scoreA = calculateSelectedConditionsMet(a);
-      const scoreB = calculateSelectedConditionsMet(b);
+      const scoreA = calculateValidationScore(a);
+      const scoreB = calculateValidationScore(b);
       return scoreB - scoreA; // Descending order
     });
 
@@ -306,11 +410,21 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
     return countries.sort();
   }, [allReviewers]);
 
-  // Get color for conditions_met score badge
-  const getConditionsMetColor = (score: number) => {
-    if (score >= 8) return "bg-green-500 text-white";
-    if (score >= 6) return "bg-blue-500 text-white";
-    if (score >= 4) return "bg-yellow-500 text-white";
+  // Get color for validation score badge (0-100 scale)
+  const getConditionsMetColor = (conditionsMet: number) => {
+    // This function now receives the conditions met count but we'll use score for colors
+    // Keep for backwards compatibility but will use score-based colors in display
+    if (conditionsMet >= 8) return "bg-green-500 text-white";
+    if (conditionsMet >= 6) return "bg-blue-500 text-white";
+    if (conditionsMet >= 4) return "bg-yellow-500 text-white";
+    return "bg-gray-500 text-white";
+  };
+
+  // Get color for validation score badge (0-100 scale)
+  const getValidationScoreColor = (score: number) => {
+    if (score >= 80) return "bg-green-500 text-white";
+    if (score >= 60) return "bg-blue-500 text-white";
+    if (score >= 40) return "bg-yellow-500 text-white";
     return "bg-gray-500 text-white";
   };
 
@@ -439,7 +553,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
           format,
           reviewerCount: selectedReviewers.length,
           reviewerNames: selectedReviewers.map(r => r.reviewer),
-          averageConditionsMet: selectedReviewers.reduce((sum, r) => sum + calculateSelectedConditionsMet(r), 0) / selectedReviewers.length,
+          averageValidationScore: selectedReviewers.reduce((sum, r) => sum + calculateValidationScore(r), 0) / selectedReviewers.length,
           selectedValidationConditions: selectedValidationConditions || []
         })
       );
@@ -518,7 +632,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
           shortlistName,
           reviewerCount: selectedReviewers.length,
           reviewerNames: selectedReviewers.map(r => r.reviewer),
-          averageConditionsMet: selectedReviewers.reduce((sum, r) => sum + calculateSelectedConditionsMet(r), 0) / selectedReviewers.length
+          averageValidationScore: selectedReviewers.reduce((sum, r) => sum + calculateValidationScore(r), 0) / selectedReviewers.length
         })
       );
 
@@ -601,7 +715,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
               </CardTitle>
               <CardDescription>
                 Showing {filteredReviewers.length} of {totalCount} validated reviewers
-                {validationSummary && (
+                {validationSummary && !isNaN(validationSummary.average_conditions_met) && validationSummary.average_conditions_met > 0 && (
                   <span className="ml-2">
                     • Average score: {validationSummary.average_conditions_met.toFixed(1)}/{selectedValidationConditions && selectedValidationConditions.length > 0 ? selectedValidationConditions.length : 9}
                   </span>
@@ -692,7 +806,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                   </div>
 
                   {/* Validation Summary */}
-                  {validationSummary && (
+                  {validationSummary && !isNaN(validationSummary.average_conditions_met) && validationSummary.average_conditions_met > 0 && (
                     <div className="p-4 bg-muted rounded-lg">
                       <h4 className="text-sm font-medium mb-2">Validation Summary</h4>
                       <div className="grid grid-cols-2 gap-2 text-sm">
@@ -726,7 +840,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
           {/* Selection Controls */}
           <div className="flex items-center justify-between mb-4">
             <div className="text-sm text-muted-foreground">
-              Sorted by validation score (highest first)
+              Sorted by Validation Score (highest first)
             </div>
             
             {filteredReviewers.length > 0 && (
@@ -795,8 +909,8 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                       <div className="flex-1">
                         <div className="flex items-center space-x-3 mb-2">
                           <h3 className="font-semibold text-lg">{reviewer.reviewer}</h3>
-                          <Badge className={getConditionsMetColor(calculateSelectedConditionsMet(reviewer))} aria-label={`Validation score: ${calculateSelectedConditionsMet(reviewer)} out of ${selectedValidationConditions && selectedValidationConditions.length > 0 ? selectedValidationConditions.length : 9} criteria met`}>
-                            {calculateSelectedConditionsMet(reviewer)}/{selectedValidationConditions && selectedValidationConditions.length > 0 ? selectedValidationConditions.length : 9} criteria met
+                          <Badge className={getValidationScoreColor(calculateValidationScore(reviewer))} aria-label={`Validation score: ${calculateValidationScore(reviewer)} out of 100`}>
+                            Score - {calculateValidationScore(reviewer)}/100
                           </Badge>
                         </div>
                         
@@ -893,29 +1007,36 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                         <div className="flex items-center mb-3">
                           <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
                           <h5 className="text-sm font-medium text-gray-700">Publication Timeline</h5>
-                          <span className="text-xs text-gray-500 ml-2">(Total • First Author • Last Author)</span>
+                          <span className="text-xs text-gray-500 ml-2">Total (First Author • Last Author)</span>
                         </div>
                         
                         <div className="space-y-3">
-                          {/* 10 Years Timeline */}
+                          {/* Last year only */}
                           <div className="relative">
                             <div className="flex items-center mb-2">
-                              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center mr-3">
-                                <span className="text-xs font-bold text-green-700">10Y</span>
+                              <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center mr-3">
+                                <span className="text-xs font-bold text-red-700">1Y</span>
                               </div>
                               <div className="flex-1">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-sm font-medium text-gray-700">Last 10 Years</span>
-                                  <div className="flex items-center space-x-4 text-sm">
-                                    <span className="font-semibold text-green-700">{reviewer.Publications_10_years || 0}</span>
-                                    <span className="text-green-600">({reviewer.Publications_10_years_first || 0} • {reviewer.Publications_10_years_last || 0})</span>
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-sm font-medium text-gray-700">Last year only</span>
+                                  <div className="flex items-center space-x-2 text-sm">
+                                    <span className="font-semibold text-red-700">{reviewer.Publications_last_year || 0}</span>
+                                    <span className="text-red-600">({reviewer.Publications_last_year_first || 0} • {reviewer.Publications_last_year_last || 0})</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-gray-600">Relevant (Primary/Secondary):</span>
+                                  <div className="flex items-center space-x-2">
+                                    <span className="font-semibold text-purple-700">{reviewer.Relevant_Primary_Pub_last_years || 0}</span>
+                                    <span className="text-purple-600">/ {reviewer.Relevant_Secondary_Pub_last_years || 0}</span>
                                   </div>
                                 </div>
                                 <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
                                   <div 
-                                    className="bg-green-500 h-2 rounded-full transition-all duration-300" 
+                                    className="bg-red-500 h-2 rounded-full transition-all duration-300" 
                                     style={{
-                                      width: `${Math.min(100, ((reviewer.Publications_10_years || 0) / Math.max(reviewer.Total_Publications || 1, 1)) * 100)}%`
+                                      width: `${Math.min(100, ((reviewer.Publications_last_year || 0) / Math.max(reviewer.Total_Publications || 1, 1)) * 100)}%`
                                     }}
                                   ></div>
                                 </div>
@@ -923,7 +1044,40 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                             </div>
                           </div>
 
-                          {/* 5 Years Timeline */}
+                          {/* Last 2 Years */}
+                          <div className="relative">
+                            <div className="flex items-center mb-2">
+                              <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center mr-3">
+                                <span className="text-xs font-bold text-orange-700">2Y</span>
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-sm font-medium text-gray-700">Last 2 Years</span>
+                                  <div className="flex items-center space-x-2 text-sm">
+                                    <span className="font-semibold text-orange-700">{reviewer.Publications_2_years || 0}</span>
+                                    <span className="text-orange-600">({reviewer.Publications_2_years_first || 0} • {reviewer.Publications_2_years_last || 0})</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-gray-600">Relevant (Primary/Secondary):</span>
+                                  <div className="flex items-center space-x-2">
+                                    <span className="font-semibold text-purple-700">{reviewer.Relevant_Primary_Pub_2_years || 0}</span>
+                                    <span className="text-purple-600">/ {reviewer.Relevant_Secondary_Pub_2_years || 0}</span>
+                                  </div>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                                  <div 
+                                    className="bg-orange-500 h-2 rounded-full transition-all duration-300" 
+                                    style={{
+                                      width: `${Math.min(100, ((reviewer.Publications_2_years || 0) / Math.max(reviewer.Total_Publications || 1, 1)) * 100)}%`
+                                    }}
+                                  ></div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Last 5 Years */}
                           <div className="relative">
                             <div className="flex items-center mb-2">
                               <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center mr-3">
@@ -932,7 +1086,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                               <div className="flex-1">
                                 <div className="flex items-center justify-between mb-1">
                                   <span className="text-sm font-medium text-gray-700">Last 5 Years</span>
-                                  <div className="flex items-center space-x-4 text-sm">
+                                  <div className="flex items-center space-x-2 text-sm">
                                     <span className="font-semibold text-yellow-700">{reviewer.Publications_5_years || 0}</span>
                                     <span className="text-yellow-600">({reviewer.Publications_5_years_first || 0} • {reviewer.Publications_5_years_last || 0})</span>
                                   </div>
@@ -940,7 +1094,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                                 <div className="flex items-center justify-between text-xs">
                                   <span className="text-gray-600">Relevant to keywords:</span>
                                   <div className="flex items-center space-x-2">
-                                    <span className="font-semibold text-purple-700">{reviewer['Relevant Publications (last 5 years)'] || 0}</span>
+                                    <span className="font-semibold text-purple-700">{reviewer.Relevant_Publications_5_years || 0}</span>
                                     <span className="text-purple-600">({reviewer.Relevant_Publications_5_years_first || 0} • {reviewer.Relevant_Publications_5_years_last || 0})</span>
                                   </div>
                                 </div>
@@ -956,39 +1110,25 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                             </div>
                           </div>
 
-                          {/* Recent Activity */}
+                          {/* Last 10 Years */}
                           <div className="relative">
                             <div className="flex items-center mb-2">
-                              <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center mr-3">
-                                <span className="text-xs font-bold text-orange-700">2Y</span>
+                              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center mr-3">
+                                <span className="text-xs font-bold text-green-700">10Y</span>
                               </div>
                               <div className="flex-1">
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className="text-sm font-medium text-gray-700">Last 2 Years</span>
-                                  <div className="flex items-center space-x-4 text-sm">
-                                    <span className="font-semibold text-orange-700">{reviewer.Publications_2_years || 0}</span>
-                                    <span className="text-orange-600">({reviewer.Publications_2_years_first || 0} • {reviewer.Publications_2_years_last || 0})</span>
-                                  </div>
-                                </div>
-                                <div className="flex items-center justify-between text-xs mb-1">
-                                  <span className="text-gray-600">Relevant (Primary/Secondary):</span>
-                                  <div className="flex items-center space-x-2">
-                                    <span className="font-semibold text-purple-700">{reviewer.Relevant_Primary_Pub_2_years || 0}</span>
-                                    <span className="text-purple-600">/ {reviewer.Relevant_Secondary_Pub_2_years || 0}</span>
-                                  </div>
-                                </div>
-                                <div className="flex items-center justify-between text-xs">
-                                  <span className="text-gray-600">Last year only:</span>
-                                  <div className="flex items-center space-x-2">
-                                    <span className="font-semibold text-red-700">{reviewer.Publications_last_year || 0}</span>
-                                    <span className="text-red-600">({reviewer.Publications_last_year_first || 0} • {reviewer.Publications_last_year_last || 0})</span>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-sm font-medium text-gray-700">Last 10 Years</span>
+                                  <div className="flex items-center space-x-2 text-sm">
+                                    <span className="font-semibold text-green-700">{reviewer.Publications_10_years || 0}</span>
+                                    <span className="text-green-600">({reviewer.Publications_10_years_first || 0} • {reviewer.Publications_10_years_last || 0})</span>
                                   </div>
                                 </div>
                                 <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
                                   <div 
-                                    className="bg-orange-500 h-2 rounded-full transition-all duration-300" 
+                                    className="bg-green-500 h-2 rounded-full transition-all duration-300" 
                                     style={{
-                                      width: `${Math.min(100, ((reviewer.Publications_2_years || 0) / Math.max(reviewer.Total_Publications || 1, 1)) * 100)}%`
+                                      width: `${Math.min(100, ((reviewer.Publications_10_years || 0) / Math.max(reviewer.Total_Publications || 1, 1)) * 100)}%`
                                     }}
                                   ></div>
                                 </div>
@@ -1106,11 +1246,12 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                       <div role="region" aria-label="Validation criteria">
                         {(() => {
                           const actualConditionsMet = calculateSelectedConditionsMet(reviewer);
+                          const validationScore = calculateValidationScore(reviewer);
                           
                           return (
                             <>
                               <h4 className="text-sm font-medium mb-2">
-                                Validation Criteria ({actualConditionsMet} conditions met)
+                                Validation Criteria (Score: {validationScore}/100 - {actualConditionsMet} conditions met)
                                 <span className="text-xs text-muted-foreground ml-2">
                                   (Showing {selectedValidationConditions.length} selected conditions)
                                 </span>
@@ -1132,7 +1273,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                               case 'Relevant Publications':
                                 return (
                                   <div key="relevant-publications" className="flex items-center space-x-2">
-                                    {getValidationIcon(reviewer['Relevant Publications (last 5 years)'] >= 3)}
+                                    {getValidationIcon(reviewer.Relevant_Publications_5_years >= 3)}
                                     <span>Relevant Publications (last 5 years) ≥ 3</span>
                                   </div>
                                 );
@@ -1389,7 +1530,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                       <div className="font-medium">{reviewer.reviewer}</div>
                       <div className="text-xs text-muted-foreground">{reviewer.email}</div>
                       <div className="text-xs text-muted-foreground">
-                        Score: {calculateSelectedConditionsMet(reviewer)}/{selectedValidationConditions && selectedValidationConditions.length > 0 ? selectedValidationConditions.length : 9} • {reviewer.aff}
+                        Score: {calculateValidationScore(reviewer)}/100 ({calculateSelectedConditionsMet(reviewer)} conditions met) • {reviewer.aff}
                       </div>
                     </div>
                   ))}

@@ -16,52 +16,61 @@ import { ScholarFinderApiService } from '../../services/ScholarFinderApiService'
 
 interface ValidationStepProps extends StepComponentProps {}
 
-// Available validation conditions from backend
+// Available validation conditions from backend with point values
 const VALIDATION_CONDITIONS = [
   {
     id: 'Publications',
     label: 'Publications',
-    description: 'Check publication count in last 10 years and last 5 years, last 2 years and last 12 months'
+    description: 'Check publication count in last 10 years and last 5 years, last 2 years and last 12 months',
+    points: 15
   },
   {
     id: 'First/Last Author in publications',
     label: 'First/Last Author Publications',
-    description: 'Analyze first and last author publications'
+    description: 'Analyze first and last author publications',
+    points: 15
   },
   {
     id: 'Relevant Publications',
     label: 'Relevant Publications',
-    description: 'Check relevant publications in last 5 years, last 2 years and last 12 months'
+    description: 'Check relevant publications in last 5 years, last 2 years and last 12 months',
+    points: 15
   },
   {
     id: 'Publication Types',
     label: 'Publication Types',
-    description: 'Analyze publication types of Clinical Trial, Clinical Study and Case Report if any'
+    description: 'Analyze publication types of Clinical Trial, Clinical Study and Case Report if any',
+    points: 7
   },
   {
     id: 'T&F Publications last year',
     label: 'Taylor & Francis Publications',
-    description: 'Check Taylor & Francis publications in the last 12 months'
+    description: 'Check Taylor & Francis publications in the last 12 months',
+    points: 4
   },
   {
     id: 'Conflict of Interest',
     label: 'Conflict of Interest',
-    description: 'Detect potential conflicts of interest with manuscript authors'
+    description: 'Detect potential conflicts of interest with manuscript authors',
+    points: 15
   },
   {
     id: 'Retraction History',
     label: 'Retraction History',
-    description: 'Check for any retracted publications in author history'
+    description: 'Check for any retracted publications in author history',
+    points: 7
   },
   {
     id: 'Study Type Detection',
     label: 'Study Type Detection',
-    description: 'Analyze study types (In Vivo, In Vitro, In Silico)'
+    description: 'Analyze study types (In Vivo, In Vitro, In Silico)',
+    points: 7
   },
   {
     id: 'Sanction Country',
     label: 'Sanction Country Check',
-    description: 'Check if author is from a sanctioned country'
+    description: 'Check if author is from a sanctioned country',
+    points: 15
   }
 ];
 

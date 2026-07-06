@@ -32,9 +32,7 @@ export const generateCSV = (reviewers: Reviewer[], metadata: ExportMetadata): st
     'TF Publications Last Year',
     'Co-author',
     'Country Match',
-    'Affiliation Match',
-    'Conditions Met',
-    'Conditions Satisfied'
+    'Affiliation Match'
   ];
 
   const rows = reviewers.map(reviewer => [
@@ -56,9 +54,7 @@ export const generateCSV = (reviewers: Reviewer[], metadata: ExportMetadata): st
     reviewer.TF_Publications_last_year,
     reviewer.coauthor ? 'Yes' : 'No',
     reviewer.country_match,
-    reviewer.aff_match,
-    reviewer.conditions_met,
-    reviewer.conditions_satisfied
+    reviewer.aff_match
   ]);
 
   const csvContent = [headers, ...rows]
@@ -88,9 +84,7 @@ export const generateExcel = (reviewers: Reviewer[], metadata: ExportMetadata): 
     ['Manuscript Title:', metadata.manuscriptTitle || 'N/A'],
     ['Process ID:', metadata.processId || 'N/A'],
     [''],
-    ['Validation Summary:'],
-    ['Average Conditions Met:', (reviewers.reduce((sum, r) => sum + r.conditions_met, 0) / reviewers.length).toFixed(1)],
-    ['Top Validation Score:', Math.max(...reviewers.map(r => r.conditions_met))],
+    ['Publication Summary:'],
     ['Countries Represented:', [...new Set(reviewers.map(r => r.country))].length],
     ['Total Publications:', reviewers.reduce((sum, r) => sum + r.Total_Publications, 0)]
   ];
@@ -105,8 +99,7 @@ export const generateExcel = (reviewers: Reviewer[], metadata: ExportMetadata): 
     'Relevant Publications (Last 5 Years)', 'Publications (Last 2 Years)',
     'Publications (Last Year)', 'Clinical Trials', 'Clinical Studies',
     'Case Reports', 'Retracted Publications', 'TF Publications Last Year',
-    'Co-author', 'Country Match', 'Affiliation Match',
-    'Conditions Met', 'Conditions Satisfied'
+    'Co-author', 'Country Match', 'Affiliation Match'
   ];
 
   const detailedData = [
@@ -130,9 +123,7 @@ export const generateExcel = (reviewers: Reviewer[], metadata: ExportMetadata): 
       reviewer.TF_Publications_last_year,
       reviewer.coauthor ? 'Yes' : 'No',
       reviewer.country_match,
-      reviewer.aff_match,
-      reviewer.conditions_met,
-      reviewer.conditions_satisfied
+      reviewer.aff_match
     ])
   ];
 
@@ -151,31 +142,6 @@ export const generateExcel = (reviewers: Reviewer[], metadata: ExportMetadata): 
 
   XLSX.utils.book_append_sheet(workbook, detailedSheet, 'Detailed Data');
 
-  // Validation Criteria Sheet
-  const validationData = [
-    ['Validation Criteria Applied'],
-    [''],
-    ['The following criteria were used to validate potential reviewers:'],
-    [''],
-    ['1. No co-authorship with manuscript authors'],
-    ['2. Different institutional affiliation'],
-    ['3. Different country (if applicable)'],
-    ['4. Minimum publication threshold'],
-    ['5. Recent publication activity'],
-    ['6. Relevant research area'],
-    ['7. No excessive retractions'],
-    ['8. Active in peer review community'],
-    [''],
-    ['Conditions Met Distribution:'],
-    ...Array.from({ length: 9 }, (_, i) => {
-      const count = reviewers.filter(r => r.conditions_met === i).length;
-      return [`${i}/8 conditions:`, count, `${((count / reviewers.length) * 100).toFixed(1)}%`];
-    })
-  ];
-
-  const validationSheet = XLSX.utils.aoa_to_sheet(validationData);
-  XLSX.utils.book_append_sheet(workbook, validationSheet, 'Validation Criteria');
-
   return workbook;
 };
 
@@ -187,7 +153,7 @@ export const downloadExcel = (reviewers: Reviewer[], metadata: ExportMetadata): 
 
 // Report Export Functions
 export const generateReport = (reviewers: Reviewer[], metadata: ExportMetadata): string => {
-  const sortedReviewers = [...reviewers].sort((a, b) => b.conditions_met - a.conditions_met);
+  const sortedReviewers = [...reviewers].sort((a, b) => b.Total_Publications - a.Total_Publications);
   
   const report = `
 # Reviewer Shortlist Report
@@ -201,7 +167,6 @@ export const generateReport = (reviewers: Reviewer[], metadata: ExportMetadata):
 This report contains a curated list of ${metadata.totalReviewers} potential peer reviewers identified through systematic database searches and validation processes. All reviewers have been screened against conflict of interest criteria and publication requirements.
 
 ### Key Statistics
-- **Average Validation Score:** ${(reviewers.reduce((sum, r) => sum + r.conditions_met, 0) / reviewers.length).toFixed(1)}/9
 - **Countries Represented:** ${[...new Set(reviewers.map(r => r.country))].length}
 - **Total Combined Publications:** ${reviewers.reduce((sum, r) => sum + r.Total_Publications, 0).toLocaleString()}
 - **Recent Publications (Last 2 Years):** ${reviewers.reduce((sum, r) => sum + r['Publications (last 2 years)'], 0).toLocaleString()}
@@ -228,34 +193,10 @@ ${sortedReviewers.map((reviewer, index) => `
 - Case Reports: ${reviewer.Case_reports_no}
 - Retracted Publications: ${reviewer.Retracted_Pubs_no}
 
-**Validation Status:**
-- Conditions Met: ${reviewer.conditions_met}/8
-- Validation Details: ${reviewer.conditions_satisfied}
-- Co-author Status: ${reviewer.coauthor ? 'Yes' : 'No'}
+**Co-author Status:** ${reviewer.coauthor ? 'Yes' : 'No'}
 
 ---
 `).join('')}
-
-## Validation Methodology
-
-All reviewers in this shortlist have been validated against the following criteria:
-
-1. **Conflict of Interest Screening:** No co-authorship relationships with manuscript authors
-2. **Institutional Independence:** Different institutional affiliations from manuscript authors
-3. **Geographic Diversity:** Preference for reviewers from different countries
-4. **Publication Requirements:** Minimum publication thresholds in relevant areas
-5. **Recent Activity:** Evidence of recent publication activity
-6. **Research Relevance:** Publications in areas relevant to the manuscript
-7. **Quality Metrics:** Low retraction rates and quality indicators
-8. **Peer Review Experience:** Evidence of active participation in peer review
-
-## Recommendations
-
-The reviewers are listed in order of validation score, with those meeting the most criteria appearing first. We recommend:
-
-1. **Primary Choices:** Reviewers with 7-8/8 validation criteria met
-2. **Secondary Choices:** Reviewers with 5-6/8 validation criteria met
-3. **Backup Options:** Reviewers with 4/8 or more validation criteria met
 
 ## Export Information
 
