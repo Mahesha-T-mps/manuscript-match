@@ -30,3 +30,5 @@ dist-ssr
 *.csv
 *Credentials.csv
 *Database.csv
+
+*.md
