@@ -511,7 +511,7 @@ def keyword_string_generator(
 @app.post("/database_search")
 def database_search(
         job_id: str = Query(..., description="Unique job ID folder name created during upload_extract_metadata"),
-        selected_websites: str = Form("PubMed,TandFonline,ScienceDirect,WileyLibrary")
+        selected_websites: str = Form("PubMed,TandFonline,ScienceDirect,WileyLibrary,AJE")
 ):
     """
     Search selected databases using the keyword string from a specific job_id folder.
@@ -612,6 +612,23 @@ def database_search(
             pubmed_df['Website'] = 'PubMed'
             all_data_df.append(pubmed_df)
             logger.info(f"PubMed: {len(pubmed_df)} articles found")
+
+    if 'AJE' in selected_websites_list:
+        # print("\nAJE extraction\n")
+        logger.info("Starting AJE extraction")
+        # TODO: Implement AJE database extraction
+        # For now, create an empty dataframe with the expected structure
+        # You can implement the actual AJE extraction logic here
+        aje_df = pd.DataFrame(columns=["Title", "Authors(potential reviewers)", "Emails",
+                                       "Author_Email_Map", "Author_with_Affiliation"])
+        # Uncomment and implement when AJE extraction function is ready:
+        # aje_df = get_aje_data(keyword_string, num_articles=2)
+        if aje_df is not None and not aje_df.empty:
+            aje_df['Website'] = 'AJE'
+            all_data_df.append(aje_df)
+            logger.info(f"AJE: {len(aje_df)} articles found")
+        else:
+            logger.info("AJE: No articles found or extraction not yet implemented")
 
     # Combine results
     if all_data_df:

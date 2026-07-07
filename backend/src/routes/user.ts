@@ -64,4 +64,14 @@ router.post('/profile/image',
   userController.uploadProfileImage
 );
 
+/**
+ * @route   GET /api/user/database-permissions
+ * @desc    Get database permissions for current user's type
+ * @access  Private
+ */
+router.get('/database-permissions',
+  logActivity('USER_VIEW_DATABASE_PERMISSIONS'),
+  userController.getDatabasePermissions
+);
+
 export default router;

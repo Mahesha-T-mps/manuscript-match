@@ -44,6 +44,7 @@ import { UserManagement } from "./UserManagement";
 import { PermissionManagement } from "./PermissionManagement";
 import { ActivityLogViewer } from "./ActivityLogViewer";
 import { SanctionCountryManagement } from "./SanctionCountryManagement";
+import { DatabasePermissionManagement } from "./DatabasePermissionManagement";
 import { ProfileButton } from "../profile/ProfileButton";
 
 
@@ -107,6 +108,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       icon: Shield,
       description: "Manage permissions and access",
       requiredPermissions: ["permission.manage"]
+    },
+    {
+      id: "database-permissions",
+      label: "Database Access",
+      icon: Database,
+      description: "Manage database access by customer type",
+      requiredPermissions: []
     },
     {
       id: "sanctions",
@@ -513,6 +521,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {activeTab === "permissions" && (
               <PermissionManagement />
+            )}
+
+            {activeTab === "database-permissions" && (
+              <DatabasePermissionManagement />
             )}
 
             {activeTab === "sanctions" && (

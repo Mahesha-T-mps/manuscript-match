@@ -1391,4 +1391,254 @@ export class AdminController {
       next(error);
     }
   };
+
+  // Database Permission Management Methods
+
+  /**
+   * Get all database permissions
+   * GET /api/admin/database-permissions
+   */
+  getDatabasePermissions = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const permissions = await prisma.databasePermission.findMany({
+        orderBy: [{ userType: 'asc' }, { database: 'asc' }]
+      });
+
+      const response: ApiResponse<any> = {
+        success: true,
+        data: permissions
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  /**
+   * Get database permissions for a specific user type
+   * GET /api/admin/database-permissions/:userType
+   */
+  getUserTypeDatabasePermissions = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { userType } = req.params;
+
+      if (!userType || !['SPRINGER', 'WILEY', 'F1000', 'DMP', 'AJE RQE', 'T&F'].includes(userType)) {
+        throw new CustomError(
+          ErrorType.VALIDATION_ERROR,
+          'Valid user type is required',
+          400
+        );
+      }
+
+      const permissions = await prisma.databasePermission.findMany({
+        where: { userType }
+      });
+
+      const response: ApiResponse<any> = {
+        success: true,
+        data: permissions
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  /**
+   * Update database permission for a user type
+   * PUT /api/admin/database-permissions
+   */
+  updateDatabasePermission = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { userType, database, hasAccess } = req.body;
+
+      if (!userType || !['SPRINGER', 'WILEY', 'F1000', 'DMP', 'AJE RQE', 'T&F'].includes(userType)) {
+        throw new CustomError(
+          ErrorType.VALIDATION_ERROR,
+          'Valid user type is required',
+          400
+        );
+      }
+
+      if (!database || !['PubMed', 'AJE', 'WileyLibrary', 'ScienceDirect', 'TandFonline'].includes(database)) {
+        throw new CustomError(
+          ErrorType.VALIDATION_ERROR,
+          'Valid database is required',
+          400
+        );
+      }
+
+      if (typeof hasAccess !== 'boolean') {
+        throw new CustomError(
+          ErrorType.VALIDATION_ERROR,
+          'hasAccess must be a boolean value',
+          400
+        );
+      }
+
+      // Upsert the permission
+      const permission = await prisma.databasePermission.upsert({
+        where: {
+          userType_database: {
+            userType,
+            database
+          }
+        },
+        update: {
+          hasAccess,
+          updatedAt: new Date()
+        },
+        create: {
+          userType,
+          database,
+          hasAccess
+        }
+      });
+
+      const response: ApiResponse<any> = {
+        success: true,
+        data: permission,
+        message: `Database access ${hasAccess ? 'granted' : 'revoked'} for ${userType} to ${database}`
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  /**
+   * Bulk update database permissions for a user type
+   * POST /api/admin/database-permissions/bulk
+   */
+  bulkUpdateDatabasePermissions = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { userType, permissions } = req.body;
+
+      if (!userType || !['SPRINGER', 'WILEY', 'F1000', 'DMP', 'AJE RQE', 'T&F'].includes(userType)) {
+        throw new CustomError(
+          ErrorType.VALIDATION_ERROR,
+          'Valid user type is required',
+          400
+        );
+      }
+
+      if (!Array.isArray(permissions)) {
+        throw new CustomError(
+          ErrorType.VALIDATION_ERROR,
+          'Permissions must be an array',
+          400
+        );
+      }
+
+      // Update all permissions for this user type
+      const updatedPermissions = [];
+      for (const perm of permissions) {
+        const { database, hasAccess } = perm;
+
+        if (!database || !['PubMed', 'AJE', 'WileyLibrary', 'ScienceDirect', 'TandFonline'].includes(database)) {
+          continue;
+        }
+
+        const permission = await prisma.databasePermission.upsert({
+          where: {
+            userType_database: {
+              userType,
+              database
+            }
+          },
+          update: {
+            hasAccess,
+            updatedAt: new Date()
+          },
+          create: {
+            userType,
+            database,
+            hasAccess
+          }
+        });
+
+        updatedPermissions.push(permission);
+      }
+
+      const response: ApiResponse<any> = {
+        success: true,
+        data: updatedPermissions,
+        message: `Updated ${updatedPermissions.length} database permissions for ${userType}`
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  /**
+   * Initialize default database permissions
+   * POST /api/admin/database-permissions/initialize
+   */
+  initializeDatabasePermissions = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const userTypes = ['SPRINGER', 'WILEY', 'F1000', 'DMP', 'AJE RQE', 'T&F'];
+      const databases = ['PubMed', 'TandFonline', 'ScienceDirect', 'WileyLibrary', 'AJE'];
+
+      const defaultPermissions = [];
+
+      for (const userType of userTypes) {
+        for (const database of databases) {
+          // AJE database only accessible to AJE RQE by default
+          const hasAccess = database === 'AJE' ? userType === 'AJE RQE' : true;
+
+          const permission = await prisma.databasePermission.upsert({
+            where: {
+              userType_database: {
+                userType,
+                database
+              }
+            },
+            update: {},
+            create: {
+              userType,
+              database,
+              hasAccess
+            }
+          });
+
+          defaultPermissions.push(permission);
+        }
+      }
+
+      const response: ApiResponse<any> = {
+        success: true,
+        data: defaultPermissions,
+        message: `Initialized ${defaultPermissions.length} database permissions`
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
 }

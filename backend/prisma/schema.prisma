@@ -251,5 +251,17 @@ model AuditChain {
   @@map("audit_chain")
 }
 
+model DatabasePermission {
+  id         String   @id @default(uuid())
+  userType   String   @map("user_type") // SPRINGER, WILEY, F1000, DMP, AJE RQE, T&F
+  database   String   // PubMed, AJE, WileyLibrary, ScienceDirect, TandFonline
+  hasAccess  Boolean  @default(true) @map("has_access")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  
+  @@unique([userType, database])
+  @@map("database_permissions")
+}
+
 // Note: SQLite doesn't support enums, so we use string constants in TypeScript
 // These enums are defined in src/types/index.ts

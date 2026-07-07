@@ -357,4 +357,66 @@ router.get('/users/:id/activity',
   adminController.getUserActivityLogs
 );
 
+// Database Permission Management Routes
+
+/**
+ * @route   GET /api/admin/database-permissions
+ * @desc    Get all database permissions
+ * @access  Admin only
+ */
+router.get('/database-permissions',
+  requirePermission('system.admin'),
+  logActivity('ADMIN_VIEW_DATABASE_PERMISSIONS'),
+  adminController.getDatabasePermissions
+);
+
+/**
+ * @route   GET /api/admin/database-permissions/:userType
+ * @desc    Get database permissions for a specific user type
+ * @access  Admin only
+ */
+router.get('/database-permissions/:userType',
+  requirePermission('system.admin'),
+  logActivity('ADMIN_VIEW_USER_TYPE_DATABASE_PERMISSIONS'),
+  adminController.getUserTypeDatabasePermissions
+);
+
+/**
+ * @route   PUT /api/admin/database-permissions
+ * @desc    Update a database permission for a user type
+ * @access  Admin only
+ * @body    { userType: string, database: string, hasAccess: boolean }
+ */
+router.put('/database-permissions',
+  sensitiveAdminRateLimiter,
+  requirePermission('system.admin'),
+  logActivity('ADMIN_UPDATE_DATABASE_PERMISSION', { includeBody: true }),
+  adminController.updateDatabasePermission
+);
+
+/**
+ * @route   POST /api/admin/database-permissions/bulk
+ * @desc    Bulk update database permissions for a user type
+ * @access  Admin only
+ * @body    { userType: string, permissions: Array<{ database: string, hasAccess: boolean }> }
+ */
+router.post('/database-permissions/bulk',
+  sensitiveAdminRateLimiter,
+  requirePermission('system.admin'),
+  logActivity('ADMIN_BULK_UPDATE_DATABASE_PERMISSIONS', { includeBody: true }),
+  adminController.bulkUpdateDatabasePermissions
+);
+
+/**
+ * @route   POST /api/admin/database-permissions/initialize
+ * @desc    Initialize default database permissions
+ * @access  Admin only
+ */
+router.post('/database-permissions/initialize',
+  sensitiveAdminRateLimiter,
+  requirePermission('system.admin'),
+  logActivity('ADMIN_INITIALIZE_DATABASE_PERMISSIONS'),
+  adminController.initializeDatabasePermissions
+);
+
 export default router;

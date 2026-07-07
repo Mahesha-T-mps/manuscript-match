@@ -291,4 +291,69 @@ export class UserController {
       next(error);
     }
   };
+
+  /**
+   * Get database permissions for current user's type
+   * GET /api/user/database-permissions
+   */
+  getDatabasePermissions = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const userId = req.user?.id;
+      const userRole = req.user?.role;
+      
+      if (!userId) {
+        throw new CustomError(ErrorType.AUTHENTICATION_ERROR, 'User not authenticated', 401);
+      }
+
+      // Get user to fetch their userType
+      const user = await this.userService.getUserById(userId);
+      
+      if (!user) {
+        throw new CustomError(ErrorType.NOT_FOUND_ERROR, 'User not found', 404);
+      }
+
+      // Admin can see all databases
+      if (userRole === 'ADMIN') {
+        const response: ApiResponse<any> = {
+          success: true,
+          data: {
+            userType: user.userType,
+            isAdmin: true,
+            databases: ['PubMed', 'TandFonline', 'ScienceDirect', 'WileyLibrary', 'AJE']
+          }
+        };
+        res.json(response);
+        return;
+      }
+
+      // Fetch permissions for user's type from database
+      const { prisma } = await import('@/config/database');
+      const permissions = await prisma.databasePermission.findMany({
+        where: {
+          userType: user.userType,
+          hasAccess: true
+        }
+      });
+
+      // Extract accessible database names
+      const accessibleDatabases = permissions.map(p => p.database);
+
+      const response: ApiResponse<any> = {
+        success: true,
+        data: {
+          userType: user.userType,
+          isAdmin: false,
+          databases: accessibleDatabases
+        }
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
 }

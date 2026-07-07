@@ -13,6 +13,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useInitiateSearch, useSearchProgress } from "@/hooks/useSearch";
 import { scholarFinderApiService } from "@/features/scholarfinder/services/ScholarFinderApiService";
 import { fileService } from "@/services/fileService";
+import { useAuth } from "@/hooks/useAuth";
+import { apiService } from "@/services/apiService";
 
 interface SearchDatabase {
   id: string;
@@ -42,6 +44,7 @@ export const ReviewerSearch = ({
 }: ReviewerSearchProps) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   
   // Search mutations and status
   const initiateSearchMutation = useInitiateSearch();
@@ -92,7 +95,61 @@ export const ReviewerSearch = ({
       description: "Scientific research and journals",
       enabled: true,
     },
+    {
+      id: "AJE",
+      name: "AJE",
+      description: "American Journal Experts database",
+      enabled: true,
+    },
   ]);
+
+  // Accessible databases based on user permissions (fetched from backend)
+  const [accessibleDatabases, setAccessibleDatabases] = useState<string[]>([]);
+  const [loadingPermissions, setLoadingPermissions] = useState(true);
+
+  // Fetch user's database permissions from backend
+  useEffect(() => {
+    const fetchDatabasePermissions = async () => {
+      try {
+        setLoadingPermissions(true);
+        
+        // Admin sees all databases
+        if (user?.role === 'ADMIN') {
+          setAccessibleDatabases(['PubMed', 'TandFonline', 'ScienceDirect', 'WileyLibrary', 'AJE']);
+          setLoadingPermissions(false);
+          return;
+        }
+
+        // Fetch from API for non-admin users
+        const response = await apiService.get('/api/user/database-permissions');
+        const databases = response.data.databases || [];
+        setAccessibleDatabases(databases);
+        
+        console.log('[ReviewerSearch] Loaded accessible databases:', databases);
+      } catch (error) {
+        console.error('[ReviewerSearch] Error fetching database permissions:', error);
+        // Fallback: show all databases except AJE
+        const fallbackDatabases = ['PubMed', 'TandFonline', 'ScienceDirect', 'WileyLibrary'];
+        setAccessibleDatabases(fallbackDatabases);
+        toast({
+          title: 'Warning',
+          description: 'Could not load database permissions. Using defaults.',
+          variant: 'default',
+        });
+      } finally {
+        setLoadingPermissions(false);
+      }
+    };
+
+    if (user) {
+      fetchDatabasePermissions();
+    }
+  }, [user, toast]);
+
+  // Filter databases based on backend permissions
+  const filteredDatabases = databases.filter(db => 
+    accessibleDatabases.includes(db.id)
+  );
 
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   
@@ -517,7 +574,7 @@ export const ReviewerSearch = ({
   }, [selectedAuthors, processId, toast]);
 
   const handleSearch = async () => {
-    const enabledDatabases = databases.filter(db => db.enabled).map(db => db.id);
+    const enabledDatabases = filteredDatabases.filter(db => db.enabled).map(db => db.id);
 
     if (enabledDatabases.length === 0) {
       toast({
@@ -814,7 +871,7 @@ export const ReviewerSearch = ({
         </CardHeader>
         <CardContent>
           <div className="grid md:grid-cols-2 gap-4 mb-6" role="group" aria-label="Database selection">
-            {databases.map((db) => (
+            {filteredDatabases.map((db) => (
               <div key={db.id} className="flex items-start space-x-3 p-3 border rounded-lg">
                 <Checkbox 
                   id={db.id} 
