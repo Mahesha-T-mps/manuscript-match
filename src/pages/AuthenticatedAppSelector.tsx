@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BookOpen, Users, Lock, LogOut } from "lucide-react";
+import { Users, Lock, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import logo from "@/assets/s3 2.png";
@@ -53,8 +53,7 @@ const AuthenticatedAppSelector = () => {
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center justify-center space-x-3 flex-1">
-              <img src={logo} alt="Logo" className="w-16 h-16 object-contain" />
+            <div className="flex items-center justify-center flex-1">
               <h1 className="text-4xl font-bold text-foreground">Application Portal</h1>
             </div>
             
@@ -82,7 +81,7 @@ const AuthenticatedAppSelector = () => {
           <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={handleScholarFinderClick}>
             <CardHeader className="text-center pb-4">
               <div className="mx-auto mb-4 p-3 bg-primary/10 rounded-full w-fit">
-                <BookOpen className="w-8 h-8 text-primary" />
+                <img src={logo} alt="ScholarFinder Logo" className="w-8 h-8 object-contain" />
               </div>
               <CardTitle className="text-2xl">ScholarFinder</CardTitle>
               <CardDescription className="text-base">
