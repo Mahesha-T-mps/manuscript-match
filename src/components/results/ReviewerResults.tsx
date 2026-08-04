@@ -43,6 +43,11 @@ interface ReviewerResultsProps {
   onShortlistCreated?: () => void;
   validationData?: any; // Optional validation data to display instead of fetching
   selectedValidationConditions?: string[]; // Selected validation conditions for export filtering
+  manuscriptAuthors?: Array<{ // Manuscript authors for COI comparison
+    name: string;
+    affiliation: string;
+    country?: string;
+  }>;
 }
 
 // Validation condition point values (must match ValidationStep.tsx)
@@ -58,7 +63,7 @@ const VALIDATION_CONDITION_POINTS: { [key: string]: number } = {
   'T&F Publications last year': 4
 };
 
-export const ReviewerResults = ({ processId, onShortlistCreated, validationData, selectedValidationConditions }: ReviewerResultsProps) => {
+export const ReviewerResults = ({ processId, onShortlistCreated, validationData, selectedValidationConditions, manuscriptAuthors }: ReviewerResultsProps) => {
   // State for filtering and search
   const [searchTerm, setSearchTerm] = useState("");
   const [showFilters, setShowFilters] = useState(false);
@@ -83,6 +88,22 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
   const [selectedCOIAuthor, setSelectedCOIAuthor] = useState<{
     authorId: string;
     authorName: string;
+  } | null>(null);
+
+  // Affiliation Modal state for when COI is "No"
+  const [affiliationModalOpen, setAffiliationModalOpen] = useState(false);
+  const [selectedAffiliationInfo, setSelectedAffiliationInfo] = useState<{
+    currentAuthor: {
+      name: string;
+      affiliation: string;
+      country: string;
+      city: string;
+    };
+    manuscriptAuthors?: Array<{
+      name: string;
+      affiliation: string;
+      country?: string;
+    }>;
   } | null>(null);
 
   // Fetch recommendations from ScholarFinder API (only if no validation data provided)
@@ -257,7 +278,10 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
           isMet = reviewer.study_type ? true : false;
           break;
         case 'Sanction Country':
-          isMet = (reviewer.sanction_country || 'no').toLowerCase() !== 'yes';
+          // Pass if: not 'yes' AND not 'country is not extracted'
+          // Fail if: 'yes' OR 'country is not extracted'
+          isMet = (reviewer.sanction_country || 'no').toLowerCase() !== 'yes' && 
+                  (reviewer.sanction_country || 'no').toLowerCase() !== 'country is not extracted';
           break;
         case 'Retraction History':
           isMet = (reviewer.Retracted_Pubs_no || 0) === 0;
@@ -332,7 +356,10 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
           isMet = reviewer.study_type ? true : false;
           break;
         case 'Sanction Country':
-          isMet = (reviewer.sanction_country || 'no').toLowerCase() !== 'yes';
+          // Pass if: not 'yes' AND not 'country is not extracted'
+          // Fail if: 'yes' OR 'country is not extracted'
+          isMet = (reviewer.sanction_country || 'no').toLowerCase() !== 'yes' && 
+                  (reviewer.sanction_country || 'no').toLowerCase() !== 'country is not extracted';
           break;
         case 'Retraction History':
           isMet = (reviewer.Retracted_Pubs_no || 0) === 0;
@@ -1348,12 +1375,22 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                                   </div>
                                 );
                               case 'Sanction Country':
-                                return (
-                                  <div key="sanction-country" className="flex items-center space-x-2">
-                                    {getValidationIcon((reviewer.sanction_country || 'no').toLowerCase() !== 'yes')}
-                                    <span>Not from Sanctioned Country</span>
-                                  </div>
-                                );
+                                {
+                                  const sanctionValue = (reviewer.sanction_country || 'no').toLowerCase();
+                                  const isPassed = sanctionValue !== 'yes' && sanctionValue !== 'country is not extracted';
+                                  const displayText = sanctionValue === 'country is not extracted' 
+                                    ? 'Country Not Extracted - Unable to Verify' 
+                                    : sanctionValue === 'yes'
+                                    ? 'From Sanctioned Country'
+                                    : 'Not from Sanctioned Country';
+                                  
+                                  return (
+                                    <div key="sanction-country" className="flex items-center space-x-2">
+                                      {getValidationIcon(isPassed)}
+                                      <span>{displayText}</span>
+                                    </div>
+                                  );
+                                }
                               case 'Retraction History':
                                 return (
                                   <div key="retraction-history" className="flex items-center space-x-2">
@@ -1410,13 +1447,41 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                           const coiIcon = coiStatus === 'No' ? '✓' : '⚠';
                           
                           return (
-                            <div className={`p-4 rounded-lg border ${coiColor} text-center`}>
+                            <div className={`p-4 rounded-lg border ${coiColor}`}>
                               {isClickable ? (
                                 <button
                                   onClick={() => handleCOIClick(reviewer)}
                                   className={`flex items-center justify-center gap-3 w-full hover:opacity-80 transition-opacity cursor-pointer`}
                                 >
                                   <div className={`w-8 h-8 rounded-full flex items-center justify-center ${coiStatus === 'No' ? 'bg-green-100' : 'bg-red-100'}`}>
+                                    <span className={`text-sm font-bold ${coiTextColor}`}>{coiIcon}</span>
+                                  </div>
+                                  <div>
+                                    <h4 className={`text-sm font-medium ${coiTextColor} underline`}>
+                                      Conflict of Interest: {coiStatus}
+                                    </h4>
+                                  </div>
+                                </button>
+                              ) : coiStatus === 'No' ? (
+                                <button
+                                  onClick={() => {
+                                    // Open dialog showing affiliation comparison
+                                    const affiliationInfo = {
+                                      currentAuthor: {
+                                        name: reviewer.reviewer,
+                                        affiliation: reviewer.aff,
+                                        country: reviewer.country,
+                                        city: reviewer.city
+                                      },
+                                      manuscriptAuthors: manuscriptAuthors || []
+                                    };
+                                    // Set state for affiliation modal
+                                    setSelectedAffiliationInfo(affiliationInfo);
+                                    setAffiliationModalOpen(true);
+                                  }}
+                                  className="flex items-center justify-center gap-3 w-full hover:opacity-80 transition-opacity cursor-pointer"
+                                >
+                                  <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-green-100`}>
                                     <span className={`text-sm font-bold ${coiTextColor}`}>{coiIcon}</span>
                                   </div>
                                   <div>
@@ -1448,22 +1513,52 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
                       <div role="region" aria-label="Sanction Country status">
                         {(() => {
                           // Determine Sanction Country status
-                          // Convert to lowercase for comparison, default to "no"
-                          const sanctionStatus = (reviewer.sanction_country || 'no').toLowerCase() === 'yes' ? 'Yes' : 'No';
-                          const sanctionColor = sanctionStatus === 'No' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200';
-                          const sanctionTextColor = sanctionStatus === 'No' ? 'text-green-800' : 'text-red-800';
-                          const sanctionIcon = sanctionStatus === 'No' ? '✓' : '⚠';
+                          const sanctionValue = (reviewer.sanction_country || 'no').toLowerCase();
+                          
+                          // Handle three cases: yes, no, or country not extracted
+                          let sanctionStatus: string;
+                          let sanctionColor: string;
+                          let sanctionTextColor: string;
+                          let sanctionIcon: string;
+                          let sanctionMessage: string;
+                          
+                          if (sanctionValue === 'country is not extracted') {
+                            sanctionStatus = 'Unknown';
+                            sanctionColor = 'bg-yellow-50 border-yellow-200';
+                            sanctionTextColor = 'text-yellow-800';
+                            sanctionIcon = '?';
+                            sanctionMessage = 'The country could not be extracted for this author, so I am unable to determine whether the author is from a sanctioned country or not.';
+                          } else if (sanctionValue === 'yes') {
+                            sanctionStatus = 'Yes';
+                            sanctionColor = 'bg-red-50 border-red-200';
+                            sanctionTextColor = 'text-red-800';
+                            sanctionIcon = '⚠';
+                            sanctionMessage = 'Author is from a sanctioned country';
+                          } else {
+                            sanctionStatus = 'No';
+                            sanctionColor = 'bg-green-50 border-green-200';
+                            sanctionTextColor = 'text-green-800';
+                            sanctionIcon = '✓';
+                            sanctionMessage = 'Author is not from a sanctioned country';
+                          }
                           
                           return (
-                            <div className={`p-4 rounded-lg border ${sanctionColor} text-center`}>
-                              <div className="flex items-center justify-center gap-3">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${sanctionStatus === 'No' ? 'bg-green-100' : 'bg-red-100'}`}>
+                            <div className={`p-4 rounded-lg border ${sanctionColor}`}>
+                              <div className="flex items-start gap-3">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                                  sanctionStatus === 'No' ? 'bg-green-100' : 
+                                  sanctionStatus === 'Yes' ? 'bg-red-100' : 
+                                  'bg-yellow-100'
+                                }`}>
                                   <span className={`text-sm font-bold ${sanctionTextColor}`}>{sanctionIcon}</span>
                                 </div>
-                                <div>
-                                  <h4 className={`text-sm font-medium ${sanctionTextColor}`}>
+                                <div className="flex-1">
+                                  <h4 className={`text-sm font-medium ${sanctionTextColor} mb-1`}>
                                     Sanction Country: {sanctionStatus}
                                   </h4>
+                                  <p className={`text-xs ${sanctionTextColor.replace('800', '700')}`}>
+                                    {sanctionMessage}
+                                  </p>
                                 </div>
                               </div>
                             </div>
@@ -1577,6 +1672,124 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
           authorName={selectedCOIAuthor.authorName}
           processId={processId}
         />
+      )}
+
+      {/* Affiliation Information Modal - When COI is "No" */}
+      {selectedAffiliationInfo && (
+        <Dialog open={affiliationModalOpen} onOpenChange={setAffiliationModalOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Affiliation Information</DialogTitle>
+              <DialogDescription>
+                No conflict of interest detected. Comparing reviewer affiliation with manuscript authors.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-6">
+              <div className="p-6 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center gap-2 mb-4">
+                  <CheckCircle2 className="w-5 h-5 text-green-600" />
+                  <h3 className="text-lg font-semibold text-green-800">No Conflict of Interest</h3>
+                </div>
+                <p className="text-sm text-green-700">
+                  This reviewer has no detected conflicts with the manuscript authors.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Reviewer Information */}
+                <div className="p-4 border-2 border-blue-200 rounded-lg bg-blue-50">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Users className="w-5 h-5 text-blue-600" />
+                    <h4 className="font-semibold text-blue-900">Potential Reviewer</h4>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="text-sm font-medium text-blue-700">Name:</div>
+                      <div className="col-span-2 text-sm text-blue-900 font-medium">{selectedAffiliationInfo.currentAuthor.name}</div>
+                    </div>
+                    
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="text-sm font-medium text-blue-700">Affiliation:</div>
+                      <div className="col-span-2 text-sm text-blue-900">{selectedAffiliationInfo.currentAuthor.affiliation}</div>
+                    </div>
+                    
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="text-sm font-medium text-blue-700">Location:</div>
+                      <div className="col-span-2 text-sm text-blue-900">
+                        {selectedAffiliationInfo.currentAuthor.city}, {selectedAffiliationInfo.currentAuthor.country}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Manuscript Authors */}
+                <div className="p-4 border-2 border-purple-200 rounded-lg bg-purple-50">
+                  <div className="flex items-center gap-2 mb-3">
+                    <BookOpen className="w-5 h-5 text-purple-600" />
+                    <h4 className="font-semibold text-purple-900">Manuscript Authors</h4>
+                  </div>
+                  
+                  {selectedAffiliationInfo.manuscriptAuthors && selectedAffiliationInfo.manuscriptAuthors.length > 0 ? (
+                    <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
+                      {selectedAffiliationInfo.manuscriptAuthors.map((author, index) => (
+                        <div key={index} className="p-3 bg-white rounded border border-purple-100">
+                          <div className="space-y-2">
+                            <div className="text-sm">
+                              <span className="font-medium text-purple-700">Name:</span>
+                              <span className="ml-2 text-purple-900 font-medium">{author.name}</span>
+                            </div>
+                            <div className="text-sm">
+                              <span className="font-medium text-purple-700">Affiliation:</span>
+                              <span className="ml-2 text-purple-900">{author.affiliation}</span>
+                            </div>
+                            {author.country && (
+                              <div className="text-sm">
+                                <span className="font-medium text-purple-700">Country:</span>
+                                <span className="ml-2 text-purple-900">{author.country}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-purple-700 italic">
+                      No manuscript author information available
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <div className="rounded-full bg-blue-100 p-1 mt-0.5">
+                    <div className="h-2 w-2 rounded-full bg-blue-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-blue-800">Independent Reviewer</p>
+                    <p className="text-sm text-blue-700 mt-1">
+                      This reviewer's affiliation has been checked and shows no institutional conflicts with the manuscript authors.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setAffiliationModalOpen(false);
+                  setSelectedAffiliationInfo(null);
+                }}
+              >
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

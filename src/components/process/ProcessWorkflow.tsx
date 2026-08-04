@@ -1870,11 +1870,19 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
         
         // Show recommendations if available
         if (recommendations && recommendations.reviewers && recommendations.reviewers.length > 0) {
+          // Extract manuscript authors from metadata
+          const manuscriptAuthors = metadata?.authors?.map(author => ({
+            name: author.name,
+            affiliation: author.affiliation,
+            country: author.country
+          })) || [];
+
           return (
             <ReviewerResults 
               processId={processId}
               onShortlistCreated={() => handleStepChange('SHORTLIST')}
               selectedValidationConditions={selectedValidationConditions}
+              manuscriptAuthors={manuscriptAuthors}
             />
           );
         }
