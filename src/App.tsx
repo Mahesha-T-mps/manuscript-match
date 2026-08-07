@@ -124,7 +124,6 @@ const App = () => (
               <Footer />
             </ErrorBoundary>
           </BrowserRouter>
-          {config.enableDevTools && <ReactQueryDevtools initialIsOpen={false} />}
         </TooltipProvider>
     </QueryClientProvider>
   </ErrorBoundary>
