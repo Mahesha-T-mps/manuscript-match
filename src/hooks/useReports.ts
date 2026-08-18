@@ -56,17 +56,19 @@ export interface ReportData {
 
 interface UseReportsOptions {
   userId?: string;
-  dateRange?: '7d' | '30d' | '90d' | 'all';
+  dateRange?: '7d' | '30d' | '90d' | 'custom';
+  customDateFrom?: Date;
+  customDateTo?: Date;
 }
 
 export function useReports(options: UseReportsOptions = {}) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
-  const { userId, dateRange = '30d' } = options;
+  const { userId, dateRange = '30d', customDateFrom, customDateTo } = options;
 
   // Fetch processes based on user role
   const { data: processes, isLoading: processesLoading, isError: processesError, refetch: refetchProcesses } = useQuery({
-    queryKey: ['reports', 'processes', userId, dateRange, isAdmin],
+    queryKey: ['reports', 'processes', userId, dateRange, customDateFrom, customDateTo, isAdmin],
     queryFn: async () => {
       try {
         console.log('[useReports] Starting to fetch processes...', { isAdmin, userId, dateRange });
@@ -89,20 +91,20 @@ export function useReports(options: UseReportsOptions = {}) {
             console.log('[useReports] Admin processes fetched successfully:', response.data?.length || 0);
             // Filter by date range
             const processes = response.data || [];
-            return filterProcessesByDateRange(processes, dateRange);
+            return filterProcessesByDateRange(processes, dateRange, customDateFrom, customDateTo);
           } catch (adminError) {
             console.warn('[useReports] Admin service failed, falling back to regular process service:', adminError);
             // Fallback to regular process service for admin users, but include all users
             const allProcesses = await processService.getProcesses(true); // Include all users for admin
             console.log('[useReports] Fallback processes fetched:', allProcesses?.length || 0);
-            return filterProcessesByDateRange(allProcesses || [], dateRange);
+            return filterProcessesByDateRange(allProcesses || [], dateRange, customDateFrom, customDateTo);
           }
         } else {
           // Regular users get their own processes
           console.log('[useReports] Fetching regular user processes...');
           const allProcesses = await processService.getProcesses(false); // Don't include all users
           console.log('[useReports] Regular processes fetched:', allProcesses?.length || 0);
-          return filterProcessesByDateRange(allProcesses || [], dateRange);
+          return filterProcessesByDateRange(allProcesses || [], dateRange, customDateFrom, customDateTo);
         }
       } catch (error) {
         console.error('Error fetching processes for reports:', error);
@@ -261,7 +263,7 @@ export function useReports(options: UseReportsOptions = {}) {
     console.log('Stage distribution:', byStage);
     
     // Timeline data
-    const timelineData = calculateTimelineData(validProcesses, dateRange);
+    const timelineData = calculateTimelineData(validProcesses, dateRange, customDateFrom, customDateTo);
     
     // User activity (admin only)
     const userActivityData = isAdmin ? calculateUserActivity(validProcesses) : [];
@@ -289,18 +291,27 @@ export function useReports(options: UseReportsOptions = {}) {
 
 // Helper functions
 
-function getDateFromRange(range: string): string | undefined {
-  if (range === 'all') return undefined;
+function filterProcessesByDateRange(
+  processes: (Process | AdminProcess)[], 
+  range: string,
+  customDateFrom?: Date,
+  customDateTo?: Date
+): (Process | AdminProcess)[] {
+  // Handle custom date range
+  if (range === 'custom' && customDateFrom && customDateTo) {
+    const fromDate = new Date(customDateFrom);
+    fromDate.setHours(0, 0, 0, 0);
+    
+    const toDate = new Date(customDateTo);
+    toDate.setHours(23, 59, 59, 999);
+    
+    return processes.filter(p => {
+      const processDate = new Date(p.createdAt);
+      return processDate >= fromDate && processDate <= toDate;
+    });
+  }
   
-  const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return date.toISOString();
-}
-
-function filterProcessesByDateRange(processes: (Process | AdminProcess)[], range: string): (Process | AdminProcess)[] {
-  if (range === 'all') return processes;
-  
+  // Handle preset ranges
   const cutoffDate = new Date();
   const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
   cutoffDate.setDate(cutoffDate.getDate() - days);
@@ -450,15 +461,30 @@ function calculateStageDistribution(processes: (Process | AdminProcess)[]): Proc
 
 function calculateTimelineData(
   processes: (Process | AdminProcess)[],
-  range: string
+  range: string,
+  customDateFrom?: Date,
+  customDateTo?: Date
 ): TimelineDataPoint[] {
-  const days = range === '7d' ? 7 : range === '30d' ? 30 : range === '90d' ? 90 : 365;
-  const dataPoints: TimelineDataPoint[] = [];
+  let startDate: Date;
+  let endDate: Date;
   
-  for (let i = days - 1; i >= 0; i--) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    const dateStr = date.toISOString().split('T')[0];
+  // Handle custom date range
+  if (range === 'custom' && customDateFrom && customDateTo) {
+    startDate = new Date(customDateFrom);
+    endDate = new Date(customDateTo);
+  } else {
+    // Handle preset ranges
+    const days = range === '7d' ? 7 : range === '30d' ? 30 : range === '90d' ? 90 : 365;
+    endDate = new Date();
+    startDate = new Date();
+    startDate.setDate(startDate.getDate() - days + 1);
+  }
+  
+  const dataPoints: TimelineDataPoint[] = [];
+  const currentDate = new Date(startDate);
+  
+  while (currentDate <= endDate) {
+    const dateStr = currentDate.toISOString().split('T')[0];
     
     const created = processes.filter(p => 
       p.createdAt.startsWith(dateStr)
@@ -473,6 +499,8 @@ function calculateTimelineData(
       created,
       completed,
     });
+    
+    currentDate.setDate(currentDate.getDate() + 1);
   }
   
   return dataPoints;

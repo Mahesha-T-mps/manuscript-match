@@ -10,7 +10,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Button } from '../components/ui/button';
-import { RefreshCw } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { Calendar } from '../components/ui/calendar';
+import { RefreshCw, CalendarIcon } from 'lucide-react';
+import { format } from 'date-fns';
 import { useReports } from '../hooks/useReports';
 import { 
   ProcessStatusChart, 
@@ -27,8 +30,10 @@ export default function Reports() {
   const { toast } = useToast();
   const isAdmin = user?.role === 'ADMIN';
   
-  const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d' | 'all'>('30d');
+  const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d' | 'custom'>('30d');
   const [selectedUserId, setSelectedUserId] = useState<string | 'all'>(isAdmin ? 'all' : user?.id || '');
+  const [customDateFrom, setCustomDateFrom] = useState<Date | undefined>(undefined);
+  const [customDateTo, setCustomDateTo] = useState<Date | undefined>(undefined);
   
   const { 
     stats, 
@@ -42,6 +47,8 @@ export default function Reports() {
   } = useReports({
     userId: selectedUserId === 'all' ? undefined : selectedUserId,
     dateRange,
+    customDateFrom,
+    customDateTo,
   });
 
   // Debug logging
@@ -134,9 +141,44 @@ export default function Reports() {
               <SelectItem value="7d">Last 7 days</SelectItem>
               <SelectItem value="30d">Last 30 days</SelectItem>
               <SelectItem value="90d">Last 90 days</SelectItem>
-              <SelectItem value="all">All time</SelectItem>
+              <SelectItem value="custom">Custom Range</SelectItem>
             </SelectContent>
           </Select>
+
+          {dateRange === 'custom' && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="w-[240px] justify-start text-left font-normal">
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {customDateFrom && customDateTo ? (
+                    <>
+                      {format(customDateFrom, 'MMM dd, yyyy')} - {format(customDateTo, 'MMM dd, yyyy')}
+                    </>
+                  ) : (
+                    <span>Pick a date range</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <div className="flex flex-col gap-2 p-3">
+                  <div className="text-sm font-medium">From Date</div>
+                  <Calendar
+                    mode="single"
+                    selected={customDateFrom}
+                    onSelect={setCustomDateFrom}
+                    initialFocus
+                  />
+                  <div className="text-sm font-medium mt-2">To Date</div>
+                  <Calendar
+                    mode="single"
+                    selected={customDateTo}
+                    onSelect={setCustomDateTo}
+                    disabled={(date) => customDateFrom ? date < customDateFrom : false}
+                  />
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
 
           {isAdmin && (
             <Select value={selectedUserId} onValueChange={setSelectedUserId}>
