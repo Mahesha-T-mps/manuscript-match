@@ -74,4 +74,14 @@ router.get('/database-permissions',
   userController.getDatabasePermissions
 );
 
+/**
+ * @route   GET /api/user/me/validation-conditions
+ * @desc    Get validation conditions for current user's type
+ * @access  Private
+ */
+router.get('/me/validation-conditions',
+  logActivity('USER_VIEW_VALIDATION_CONDITIONS'),
+  userController.getMyValidationConditions
+);
+
 export default router;

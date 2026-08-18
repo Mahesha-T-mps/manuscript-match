@@ -263,5 +263,18 @@ model DatabasePermission {
   @@map("database_permissions")
 }
 
+model UserTypeValidationCondition {
+  id             String   @id @default(uuid())
+  userType       String   @map("user_type") // SPRINGER, WILEY, F1000, DMP, AJE RQE, T&F
+  conditionId    String   @map("condition_id") // Publications, COI, etc.
+  conditionLabel String   @map("condition_label") // Display label
+  isEnabled      Boolean  @default(true) @map("is_enabled")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  
+  @@unique([userType, conditionId])
+  @@map("user_type_validation_conditions")
+}
+
 // Note: SQLite doesn't support enums, so we use string constants in TypeScript
 // These enums are defined in src/types/index.ts

@@ -419,4 +419,54 @@ router.post('/database-permissions/initialize',
   adminController.initializeDatabasePermissions
 );
 
+// Validation Conditions Management Routes
+
+/**
+ * @route   GET /api/admin/validation-conditions
+ * @desc    Get all validation conditions for all user types
+ * @access  Admin only
+ */
+router.get('/validation-conditions',
+  requirePermission('system.admin'),
+  logActivity('ADMIN_VIEW_VALIDATION_CONDITIONS'),
+  adminController.getAllValidationConditions
+);
+
+/**
+ * @route   GET /api/admin/validation-conditions/:userType
+ * @desc    Get validation conditions for a specific user type
+ * @access  Admin only
+ */
+router.get('/validation-conditions/:userType',
+  requirePermission('system.admin'),
+  logActivity('ADMIN_VIEW_USER_TYPE_VALIDATION_CONDITIONS'),
+  adminController.getUserTypeValidationConditions
+);
+
+/**
+ * @route   PUT /api/admin/validation-conditions
+ * @desc    Update a validation condition for a user type
+ * @access  Admin only
+ * @body    { userType: string, conditionId: string, isEnabled: boolean }
+ */
+router.put('/validation-conditions',
+  sensitiveAdminRateLimiter,
+  requirePermission('system.admin'),
+  logActivity('ADMIN_UPDATE_VALIDATION_CONDITION', { includeBody: true }),
+  adminController.updateValidationCondition
+);
+
+/**
+ * @route   POST /api/admin/validation-conditions/batch
+ * @desc    Batch update validation conditions for a user type
+ * @access  Admin only
+ * @body    { userType: string, conditions: Array<{ conditionId: string, isEnabled: boolean }> }
+ */
+router.post('/validation-conditions/batch',
+  sensitiveAdminRateLimiter,
+  requirePermission('system.admin'),
+  logActivity('ADMIN_BATCH_UPDATE_VALIDATION_CONDITIONS', { includeBody: true }),
+  adminController.batchUpdateValidationConditions
+);
+
 export default router;

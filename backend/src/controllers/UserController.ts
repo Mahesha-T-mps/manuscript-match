@@ -356,4 +356,74 @@ export class UserController {
       next(error);
     }
   };
+
+  /**
+   * Get validation conditions for current user's type
+   * GET /api/user/me/validation-conditions
+   */
+  getMyValidationConditions = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const userId = req.user?.id;
+      const userRole = req.user?.role;
+      
+      if (!userId) {
+        throw new CustomError(ErrorType.AUTHENTICATION_ERROR, 'User not authenticated', 401);
+      }
+
+      // Get user to fetch their userType
+      const user = await this.userService.getUserById(userId);
+      
+      if (!user) {
+        throw new CustomError(ErrorType.NOT_FOUND_ERROR, 'User not found', 404);
+      }
+
+      const { prisma } = await import('@/config/database');
+      
+      // Admin can see all conditions
+      if (userRole === 'ADMIN') {
+        const allConditions = await prisma.userTypeValidationCondition.findMany({
+          where: {
+            userType: user.userType,
+            isEnabled: true
+          }
+        });
+
+        const response: ApiResponse<any> = {
+          success: true,
+          data: {
+            userType: user.userType,
+            isAdmin: true,
+            conditions: allConditions
+          }
+        };
+        res.json(response);
+        return;
+      }
+
+      // Fetch enabled validation conditions for user's type
+      const conditions = await prisma.userTypeValidationCondition.findMany({
+        where: {
+          userType: user.userType,
+          isEnabled: true
+        }
+      });
+
+      const response: ApiResponse<any> = {
+        success: true,
+        data: {
+          userType: user.userType,
+          isAdmin: false,
+          conditions: conditions
+        }
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
 }

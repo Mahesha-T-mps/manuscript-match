@@ -1641,4 +1641,177 @@ export class AdminController {
       next(error);
     }
   };
+
+  /**
+   * Get all validation conditions for all user types
+   * GET /api/admin/validation-conditions
+   */
+  getAllValidationConditions = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const conditions = await prisma.userTypeValidationCondition.findMany({
+        orderBy: [{ userType: 'asc' }, { conditionId: 'asc' }]
+      });
+
+      const response: ApiResponse<any> = {
+        success: true,
+        data: conditions
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  /**
+   * Get validation conditions for a specific user type
+   * GET /api/admin/validation-conditions/:userType
+   */
+  getUserTypeValidationConditions = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { userType } = req.params;
+
+      if (!userType || !['SPRINGER', 'WILEY', 'F1000', 'DMP', 'AJE RQE', 'T&F'].includes(userType)) {
+        throw new CustomError(
+          ErrorType.VALIDATION_ERROR,
+          `Invalid user type: ${userType}`
+        );
+      }
+
+      const conditions = await prisma.userTypeValidationCondition.findMany({
+        where: { userType }
+      });
+
+      const response: ApiResponse<any> = {
+        success: true,
+        data: conditions
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  /**
+   * Update validation condition for a user type
+   * PUT /api/admin/validation-conditions
+   */
+  updateValidationCondition = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { userType, conditionId, isEnabled } = req.body;
+
+      if (!userType || !['SPRINGER', 'WILEY', 'F1000', 'DMP', 'AJE RQE', 'T&F'].includes(userType)) {
+        throw new CustomError(
+          ErrorType.VALIDATION_ERROR,
+          `Invalid user type: ${userType}`
+        );
+      }
+
+      if (!conditionId) {
+        throw new CustomError(
+          ErrorType.VALIDATION_ERROR,
+          'Condition ID is required'
+        );
+      }
+
+      if (typeof isEnabled !== 'boolean') {
+        throw new CustomError(
+          ErrorType.VALIDATION_ERROR,
+          'isEnabled must be a boolean value'
+        );
+      }
+
+      const condition = await prisma.userTypeValidationCondition.update({
+        where: {
+          userType_conditionId: {
+            userType,
+            conditionId
+          }
+        },
+        data: {
+          isEnabled,
+          updatedAt: new Date()
+        }
+      });
+
+      const response: ApiResponse<any> = {
+        success: true,
+        data: condition,
+        message: `Validation condition ${isEnabled ? 'enabled' : 'disabled'} for ${userType}`
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  /**
+   * Batch update validation conditions for a user type
+   * POST /api/admin/validation-conditions/batch
+   */
+  batchUpdateValidationConditions = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { userType, conditions } = req.body;
+
+      if (!userType || !['SPRINGER', 'WILEY', 'F1000', 'DMP', 'AJE RQE', 'T&F'].includes(userType)) {
+        throw new CustomError(
+          ErrorType.VALIDATION_ERROR,
+          `Invalid user type: ${userType}`
+        );
+      }
+
+      if (!Array.isArray(conditions) || conditions.length === 0) {
+        throw new CustomError(
+          ErrorType.VALIDATION_ERROR,
+          'Conditions array is required'
+        );
+      }
+
+      const updatedConditions = [];
+
+      for (const { conditionId, isEnabled } of conditions) {
+        const condition = await prisma.userTypeValidationCondition.update({
+          where: {
+            userType_conditionId: {
+              userType,
+              conditionId
+            }
+          },
+          data: {
+            isEnabled,
+            updatedAt: new Date()
+          }
+        });
+        updatedConditions.push(condition);
+      }
+
+      const response: ApiResponse<any> = {
+        success: true,
+        data: updatedConditions,
+        message: `Updated ${updatedConditions.length} validation conditions for ${userType}`
+      };
+
+      res.json(response);
+    } catch (error) {
+      next(error);
+    }
+  };
 }

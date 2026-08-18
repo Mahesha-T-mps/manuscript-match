@@ -92,6 +92,7 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({
   const { data: process } = useProcess(processId);
   
   const [potentialReviewers, setPotentialReviewers] = useState<any[]>([]);
+  const [availableConditions, setAvailableConditions] = useState(VALIDATION_CONDITIONS); // Dynamic conditions
   const [selectedConditions, setSelectedConditions] = useState<string[]>([
     'Publications',
     'Conflict of Interest',
@@ -99,14 +100,78 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({
   ]); // Pre-select some common conditions
   const [selectedUserType, setSelectedUserType] = useState<string>(''); // New state for user type
   const [isValidating, setIsValidating] = useState(false);
+  const [isLoadingConditions, setIsLoadingConditions] = useState(true);
   const [validationResults, setValidationResults] = useState<any>(null);
   const [showConditionSelection, setShowConditionSelection] = useState(true);
 
   console.log('[ValidationStep] Potential reviewers state:', potentialReviewers);
   console.log('[ValidationStep] showConditionSelection:', showConditionSelection);
   console.log('[ValidationStep] selectedConditions:', selectedConditions);
+  console.log('[ValidationStep] availableConditions:', availableConditions);
   console.log('[ValidationStep] selectedUserType:', selectedUserType);
   console.log('[ValidationStep] validationResults:', validationResults);
+
+  // Load user's allowed validation conditions
+  useEffect(() => {
+    const fetchAllowedConditions = async () => {
+      try {
+        setIsLoadingConditions(true);
+        const token = localStorage.getItem('scholarfinder_token');
+        const response = await fetch('/api/user/me/validation-conditions', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch validation conditions');
+        }
+        
+        const data = await response.json();
+        
+        console.log('[ValidationStep] API Response:', data);
+        console.log('[ValidationStep] Conditions received:', data.data?.conditions?.length);
+        
+        if (data.success && data.data.conditions) {
+          // Map backend conditions to frontend format
+          const mappedConditions = data.data.conditions.map((condition: any) => {
+            const existingCondition = VALIDATION_CONDITIONS.find(c => c.id === condition.conditionId);
+            return existingCondition || {
+              id: condition.conditionId,
+              label: condition.conditionLabel,
+              description: 'Custom validation condition',
+              points: 10
+            };
+          });
+          
+          console.log('[ValidationStep] Mapped conditions:', mappedConditions);
+          console.log('[ValidationStep] Setting availableConditions to:', mappedConditions.length, 'items');
+          
+          setAvailableConditions(mappedConditions);
+          
+          // Pre-select enabled conditions that are commonly used
+          const defaultSelections = mappedConditions
+            .filter((c: any) => ['Publications', 'Conflict of Interest', 'Retraction History'].includes(c.id))
+            .map((c: any) => c.id);
+          
+          setSelectedConditions(defaultSelections);
+        }
+      } catch (error) {
+        console.error('[ValidationStep] Error fetching validation conditions:', error);
+        toast({
+          title: 'Warning',
+          description: 'Could not load custom validation conditions. Using default conditions.',
+          variant: 'default'
+        });
+        // Fall back to default conditions
+        setAvailableConditions(VALIDATION_CONDITIONS);
+      } finally {
+        setIsLoadingConditions(false);
+      }
+    };
+
+    fetchAllowedConditions();
+  }, [toast]);
 
   // Load potential reviewers from Database Search step
   useEffect(() => {
@@ -184,7 +249,7 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({
   };
 
   const handleSelectAll = () => {
-    setSelectedConditions(VALIDATION_CONDITIONS.map(c => c.id));
+    setSelectedConditions(availableConditions.map(c => c.id));
   };
 
   const handleSelectNone = () => {
@@ -273,25 +338,6 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* EMERGENCY DEBUG - Remove after testing */}
-      <div style={{
-        backgroundColor: '#ff0000',
-        color: 'white',
-        padding: '20px',
-        border: '3px solid #000',
-        fontSize: '18px',
-        fontWeight: 'bold',
-        textAlign: 'center'
-      }}>
-        🚨 VALIDATION STEP IS RENDERING! 🚨
-        <br />
-        showConditionSelection: {showConditionSelection ? 'TRUE' : 'FALSE'}
-        <br />
-        selectedConditions: {selectedConditions.length}
-        <br />
-        VALIDATION_CONDITIONS: {VALIDATION_CONDITIONS.length}
-      </div>
-
       {/* Step Header */}
       <Card>
         <CardHeader>
@@ -344,38 +390,19 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({
         </CardContent>
       </Card>
 
-      {/* Validation Conditions Selection - ALWAYS SHOW FOR DEBUG */}
-      <Card style={{ border: '2px solid red' }}>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Settings className="h-5 w-5 text-green-600" />
-            <span>Validation Conditions (DEBUG: Always Visible)</span>
-          </CardTitle>
-          <CardDescription>
-            Select which validation conditions to apply to the authors
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Debug info */}
-          <div style={{ backgroundColor: 'yellow', padding: '10px', border: '1px solid orange' }}>
-            DEBUG INFO:
-            <br />
-            showConditionSelection: {showConditionSelection ? 'TRUE' : 'FALSE'}
-            <br />
-            selectedConditions.length: {selectedConditions.length}
-            <br />
-            selectedConditions: {JSON.stringify(selectedConditions)}
-            <br />
-            VALIDATION_CONDITIONS.length: {VALIDATION_CONDITIONS.length}
-            <br />
-            <strong>Sanction Country Check:</strong>
-            <br />
-            - Is "Sanction Country" in selectedConditions? {selectedConditions.includes('Sanction Country') ? 'YES' : 'NO'}
-            <br />
-            - selectedUserType: "{selectedUserType}"
-            <br />
-            - USER_TYPES: {JSON.stringify(USER_TYPES)}
-          </div>
+      {/* Validation Conditions Selection */}
+      {showConditionSelection && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Settings className="h-5 w-5 text-green-600" />
+              <span>Validation Conditions</span>
+            </CardTitle>
+            <CardDescription>
+              Select which validation conditions to apply to the authors
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
 
           {/* Select All/None buttons */}
           <div className="flex gap-2 mb-4">
@@ -383,7 +410,7 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({
               variant="outline"
               size="sm"
               onClick={handleSelectAll}
-              disabled={isValidating}
+              disabled={isValidating || isLoadingConditions}
             >
               Select All
             </Button>
@@ -391,89 +418,87 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({
               variant="outline"
               size="sm"
               onClick={handleSelectNone}
-              disabled={isValidating}
+              disabled={isValidating || isLoadingConditions}
             >
               Select None
             </Button>
             <div className="ml-auto text-sm text-muted-foreground">
-              {selectedConditions.length} of {VALIDATION_CONDITIONS.length} selected
+              {selectedConditions.length} of {availableConditions.length} selected
             </div>
           </div>
 
-          {/* Condition checkboxes */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {VALIDATION_CONDITIONS.map((condition) => (
-              <div
-                key={condition.id}
-                className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50"
-                style={{ backgroundColor: '#f0f8ff', border: '1px solid blue' }}
-              >
-                <Checkbox
-                  id={condition.id}
-                  checked={selectedConditions.includes(condition.id)}
-                  onCheckedChange={(checked) => 
-                    handleConditionToggle(condition.id, checked as boolean)
-                  }
-                  disabled={isValidating}
-                />
-                <div className="flex-1 space-y-1">
-                  <label
-                    htmlFor={condition.id}
-                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+          {/* Loading state */}
+          {isLoadingConditions ? (
+            <div className="flex items-center justify-center p-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+              <span className="ml-3 text-sm text-muted-foreground">Loading validation conditions...</span>
+            </div>
+          ) : (
+            <>
+              {/* Condition checkboxes */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {availableConditions.map((condition) => (
+                  <div
+                    key={condition.id}
+                    className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50"
                   >
-                    {condition.label}
-                  </label>
-                  <p className="text-xs text-muted-foreground">
-                    {condition.description}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* User Type Selection for Sanction Country Check */}
-          {/* DEBUG: Always show this section for testing */}
-          <div style={{ backgroundColor: 'pink', padding: '10px', border: '2px solid red' }}>
-            <strong>USER TYPE SELECTION DEBUG:</strong>
-            <br />
-            selectedConditions.includes('Sanction Country'): {selectedConditions.includes('Sanction Country') ? 'TRUE' : 'FALSE'}
-            <br />
-            Condition should show: {selectedConditions.includes('Sanction Country') ? 'YES - SHOULD BE VISIBLE' : 'NO - WILL BE HIDDEN'}
-          </div>
-          
-          {/* FORCE SHOW USER TYPES FOR TESTING - Remove this condition temporarily */}
-          {true && (
-            <div className="pt-4 border-t" style={{ backgroundColor: 'lightgreen', padding: '15px', border: '3px solid green' }}>
-              <div className="space-y-3">
-                <div>
-                  <h4 className="text-sm font-medium text-gray-900 mb-2">
-                    🎯 Select User Type for Sanction Country Check (FORCED VISIBLE FOR TESTING)
-                  </h4>
-                  <p className="text-xs text-muted-foreground mb-3">
-                    Choose the user type to determine which sanctioned countries to check against
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {USER_TYPES.map((userType) => (
-                    <Button
-                      key={userType}
-                      variant={selectedUserType === userType ? "default" : "outline"}
-                      onClick={() => setSelectedUserType(userType)}
+                    <Checkbox
+                      id={condition.id}
+                      checked={selectedConditions.includes(condition.id)}
+                      onCheckedChange={(checked) => 
+                        handleConditionToggle(condition.id, checked as boolean)
+                      }
                       disabled={isValidating}
-                      className="h-12 flex flex-col items-center justify-center"
-                      style={{ backgroundColor: selectedUserType === userType ? 'blue' : 'white', color: selectedUserType === userType ? 'white' : 'black' }}
-                    >
-                      <span className="text-sm font-medium">{userType}</span>
-                    </Button>
-                  ))}
-                </div>
-                {selectedConditions.includes('Sanction Country') && !selectedUserType && (
-                  <p className="text-sm text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
-                    ⚠️ Please select a user type to enable Sanction Country Check
-                  </p>
-                )}
+                    />
+                    <div className="flex-1 space-y-1">
+                      <label
+                        htmlFor={condition.id}
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                      >
+                        {condition.label}
+                      </label>
+                      <p className="text-xs text-muted-foreground">
+                        {condition.description}
+                      </p>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
+
+              {/* User Type Selection for Sanction Country Check */}
+              {selectedConditions.includes('Sanction Country') && (
+                <div className="pt-4 border-t">
+                  <div className="space-y-3">
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-900 mb-2">
+                        Select User Type for Sanction Country Check
+                      </h4>
+                      <p className="text-xs text-muted-foreground mb-3">
+                        Choose the user type to determine which sanctioned countries to check against
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {USER_TYPES.map((userType) => (
+                        <Button
+                          key={userType}
+                          variant={selectedUserType === userType ? "default" : "outline"}
+                          onClick={() => setSelectedUserType(userType)}
+                          disabled={isValidating}
+                          className="h-12 flex flex-col items-center justify-center"
+                        >
+                          <span className="text-sm font-medium">{userType}</span>
+                        </Button>
+                      ))}
+                    </div>
+                    {!selectedUserType && (
+                      <p className="text-sm text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+                        ⚠️ Please select a user type to enable Sanction Country Check
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {/* Validate Authors Button */}
@@ -481,13 +506,13 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({
             <Button
               onClick={handleRunValidation}
               disabled={
-                isValidating || 
+                isValidating ||
+                isLoadingConditions ||
                 selectedConditions.length === 0 || 
                 (selectedConditions.includes('Sanction Country') && !selectedUserType)
               }
               className="w-full"
               size="lg"
-              style={{ backgroundColor: 'green', color: 'white' }}
             >
               {isValidating ? (
                 <>
@@ -514,6 +539,7 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Validation Results */}
       {validationResults && !showConditionSelection && (
@@ -574,7 +600,7 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {validationResults.top_5_preview.map((reviewer: any, index: number) => (
                     <div
-                      key={index}
+                      key={`reviewer-${index}-${reviewer.reviewer || reviewer.author}`}
                       className="p-3 border rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
                     >
                       <div className="flex justify-between items-start">

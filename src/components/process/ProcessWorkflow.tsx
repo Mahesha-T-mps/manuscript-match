@@ -122,6 +122,67 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   
   console.log('[ProcessWorkflow] Process data:', process);
   
+  // State for dynamic validation conditions based on user type
+  const [availableValidationConditions, setAvailableValidationConditions] = useState(VALIDATION_CONDITIONS);
+  const [isLoadingValidationConditions, setIsLoadingValidationConditions] = useState(true);
+  
+  // Fetch validation conditions based on user's type
+  useEffect(() => {
+    const fetchValidationConditions = async () => {
+      try {
+        const token = localStorage.getItem('scholarfinder_token');
+        const response = await fetch('/api/user/me/validation-conditions', {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch validation conditions');
+        }
+        
+        const data = await response.json();
+        
+        if (data.success && data.data.conditions) {
+          // Map backend conditions to frontend format
+          const mappedConditions = data.data.conditions.map((condition: any) => {
+            const existingCondition = VALIDATION_CONDITIONS.find(c => c.id === condition.conditionId);
+            return existingCondition || {
+              id: condition.conditionId,
+              label: condition.conditionLabel,
+              description: 'Custom validation condition',
+              points: 10
+            };
+          });
+          
+          console.log('[ProcessWorkflow] Fetched validation conditions:', mappedConditions.length, 'conditions');
+          setAvailableValidationConditions(mappedConditions);
+          
+          // Clean up selected conditions - remove any that are no longer available
+          setSelectedValidationConditions(prev => {
+            const validIds = mappedConditions.map((c: any) => c.id);
+            const cleaned = prev.filter(id => validIds.includes(id));
+            
+            if (cleaned.length !== prev.length) {
+              console.log('[ProcessWorkflow] Cleaned selected conditions from', prev.length, 'to', cleaned.length);
+              localStorage.setItem(`process_${processId}_selectedValidationConditions`, JSON.stringify(cleaned));
+            }
+            
+            return cleaned;
+          });
+        }
+      } catch (error) {
+        console.error('[ProcessWorkflow] Error fetching validation conditions:', error);
+        // Keep using default conditions on error
+        setAvailableValidationConditions(VALIDATION_CONDITIONS);
+      } finally {
+        setIsLoadingValidationConditions(false);
+      }
+    };
+
+    fetchValidationConditions();
+  }, [processId]);
+  
   // Explicitly store process title for global notifications
   useEffect(() => {
     if (process?.title) {
@@ -1180,10 +1241,10 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
   }, [processId]);
 
   const handleSelectAllConditions = useCallback(() => {
-    const allConditions = VALIDATION_CONDITIONS.map(c => c.id);
+    const allConditions = availableValidationConditions.map(c => c.id);
     setSelectedValidationConditions(allConditions);
     localStorage.setItem(`process_${processId}_selectedValidationConditions`, JSON.stringify(allConditions));
-  }, [processId]);
+  }, [processId, availableValidationConditions]);
 
   const handleSelectNoConditions = useCallback(() => {
     setSelectedValidationConditions([]);
@@ -1971,14 +2032,14 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
                           </Button>
                           <div className="ml-auto text-sm text-muted-foreground">
                             {(() => {
-                              const validCount = selectedValidationConditions.filter(id => VALIDATION_CONDITIONS.some(c => c.id === id)).length;
-                              const totalCount = VALIDATION_CONDITIONS.length;
+                              const validCount = selectedValidationConditions.filter(id => availableValidationConditions.some(c => c.id === id)).length;
+                              const totalCount = availableValidationConditions.length;
                               
                               // Debug log to help identify the issue
                               if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
                                 console.log('[ValidationConditions] Selected conditions:', selectedValidationConditions);
-                                console.log('[ValidationConditions] Valid conditions:', selectedValidationConditions.filter(id => VALIDATION_CONDITIONS.some(c => c.id === id)));
-                                console.log('[ValidationConditions] Invalid conditions:', selectedValidationConditions.filter(id => !VALIDATION_CONDITIONS.some(c => c.id === id)));
+                                console.log('[ValidationConditions] Valid conditions:', selectedValidationConditions.filter(id => availableValidationConditions.some(c => c.id === id)));
+                                console.log('[ValidationConditions] Invalid conditions:', selectedValidationConditions.filter(id => !availableValidationConditions.some(c => c.id === id)));
                               }
                               
                               return `${validCount} of ${totalCount} selected`;
@@ -1988,7 +2049,7 @@ export const ProcessWorkflow: React.FC<ProcessWorkflowProps> = ({
 
                         {/* Condition checkboxes */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {VALIDATION_CONDITIONS.map((condition) => (
+                          {availableValidationConditions.map((condition) => (
                             <div
                               key={condition.id}
                               className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50"

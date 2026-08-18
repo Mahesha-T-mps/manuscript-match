@@ -19,6 +19,13 @@ export default defineConfig(({ mode, command }) => {
       port: 8080,
       open: isDevelopment,
       cors: true,
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3002',
+          changeOrigin: true,
+          secure: false,
+        }
+      }
     },
     
     // Preview server configuration

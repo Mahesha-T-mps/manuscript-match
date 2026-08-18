@@ -46,6 +46,7 @@ import { ActivityLogViewer } from "./ActivityLogViewer";
 import { SanctionCountryManagement } from "./SanctionCountryManagement";
 import { DatabasePermissionManagement } from "./DatabasePermissionManagement";
 import { ProfileButton } from "../profile/ProfileButton";
+import ValidationConditionsManagement from "@/features/msxpert/pages/ValidationConditionsManagement";
 
 
 
@@ -114,6 +115,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       label: "Database Access",
       icon: Database,
       description: "Manage database access by customer type",
+      requiredPermissions: []
+    },
+    {
+      id: "validation-conditions",
+      label: "Validation Conditions",
+      icon: CheckCircle,
+      description: "Configure validation conditions per user type",
       requiredPermissions: []
     },
     {
@@ -525,6 +533,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {activeTab === "database-permissions" && (
               <DatabasePermissionManagement />
+            )}
+
+            {activeTab === "validation-conditions" && (
+              <ValidationConditionsManagement />
             )}
 
             {activeTab === "sanctions" && (
