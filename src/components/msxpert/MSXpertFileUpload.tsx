@@ -236,6 +236,14 @@ export const MSXpertFileUpload: React.FC<MSXpertFileUploadProps> = ({ onLogout }
             </div>
             
             <div className="flex items-center space-x-4">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => window.location.href = '/apps'}
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                Application Portal
+              </Button>
               <Button variant="ghost" size="sm" onClick={onLogout}>
                 Logout
               </Button>

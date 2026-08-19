@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Lock, LogOut } from "lucide-react";
@@ -10,6 +11,14 @@ const AuthenticatedAppSelector = () => {
   const navigate = useNavigate();
   const { user, logout, navigateSecurely } = useAuth();
   const { toast } = useToast();
+
+  // Add no-scroll class to body on mount, remove on unmount
+  useEffect(() => {
+    document.body.classList.add('no-scroll');
+    return () => {
+      document.body.classList.remove('no-scroll');
+    };
+  }, []);
 
   const handleScholarFinderClick = () => {
     navigateSecurely('/scholarfinder');
@@ -48,8 +57,8 @@ const AuthenticatedAppSelector = () => {
   const canAccessMSXpert = user?.msxpertAccess || user?.role === 'ADMIN';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-academic-light flex items-center justify-center p-4">
-      <div className="w-full max-w-4xl">
+    <div className="h-screen overflow-hidden bg-gradient-to-br from-background to-academic-light flex items-center justify-center p-4">
+      <div className="w-full max-w-4xl overflow-y-auto max-h-[calc(100vh-8rem)]">
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-between mb-4">

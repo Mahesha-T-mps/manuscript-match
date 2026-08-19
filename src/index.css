@@ -134,9 +134,22 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
-  body {
+  html, body {
     @apply bg-background text-foreground;
-    padding-bottom: 2.5rem; /* Space for fixed footer */
+    height: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    padding-top: 64px; /* Space for fixed MPS logo banner */
+    padding-bottom: 140px; /* Space for fixed footer */
+  }
+
+  /* Remove body padding and overflow for specific pages */
+  body.no-scroll {
+    overflow: hidden;
+    padding-top: 64px;
+    padding-bottom: 0;
   }
 
   #root {

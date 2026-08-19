@@ -79,6 +79,14 @@ const Index = () => {
             
             <div className="flex items-center space-x-4">
               <span className="text-sm text-muted-foreground">Welcome, {user?.email}</span>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => navigate('/apps')}
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                Application Portal
+              </Button>
               <ProfileButton variant="minimal" showLabel={false} />
               <Button variant="ghost" size="sm" onClick={handleLogout}>
                 <LogOut className="w-4 h-4 mr-2" />

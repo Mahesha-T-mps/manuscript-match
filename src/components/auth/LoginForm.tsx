@@ -36,6 +36,14 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, className = '' })
     }
   }, [isAuthenticated, isLoading, navigate]);
 
+  // Add no-scroll class to body on mount, remove on unmount
+  useEffect(() => {
+    document.body.classList.add('no-scroll');
+    return () => {
+      document.body.classList.remove('no-scroll');
+    };
+  }, []);
+
   // Clear errors when user starts typing
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -105,21 +113,33 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, className = '' })
   const isFormValid = credentials.email && credentials.password;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-academic-light flex items-center justify-center px-4">
-      <div className={`w-full max-w-md ${className}`}>
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex justify-center mb-4">
-            <img src={logo} alt="Application Logo" className="h-64 w-auto object-contain" />
+    <div className="fixed inset-0 overflow-y-auto bg-gradient-to-br from-background to-academic-light" style={{ paddingTop: '64px', paddingBottom: '140px' }}>
+      <div className="min-h-full flex items-center justify-center px-4 py-6">
+        <div className={`w-full max-w-md ${className}`}>
+          {/* Header */}
+          <div className="text-center mb-5">
+            <div className="flex justify-center">
+              <div className="relative">
+                <img 
+                  src={logo} 
+                  alt="Application Logo" 
+                  className="h-48 w-auto object-contain" 
+                  style={{ 
+                    mixBlendMode: 'darken',
+                    filter: 'contrast(1.1) brightness(1.05)',
+                    marginBottom: '-16px'
+                  }} 
+                />
+              </div>
+            </div>
+            <p className="text-gray-600 text-sm">
+              Sign in to access your applications
+            </p>
           </div>
-          <p className="text-gray-600">
-            Sign in to access your applications
-          </p>
-        </div>
-        
-        {/* Login Form Card */}
-        <div className="bg-white rounded-lg shadow-lg p-8">
-          <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+          
+          {/* Login Form Card */}
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             {/* Email Field */}
             <div>
               <label 
@@ -261,6 +281,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, className = '' })
           </form>
         </div>
       </div>
+    </div>
     </div>
   );
 };

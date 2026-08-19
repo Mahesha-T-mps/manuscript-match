@@ -26,6 +26,7 @@ import { ScholarFinderApp } from "./features/scholarfinder";
 import { MSXpertApp } from "./components/msxpert/MSXpertApp";
 import { GlobalNotificationProvider } from "./components/notifications/GlobalNotificationProvider";
 import { Footer } from "./components/layout/Footer";
+import { MPSLogoBanner } from "./components/layout/MPSLogoBanner";
 
 // Initialize global error handlers
 initializeGlobalErrorHandlers();
@@ -45,6 +46,7 @@ const App = () => (
         <NetworkStatusToast />
         <GlobalErrorToastHandler />
         <GlobalNotificationProvider />
+        <MPSLogoBanner />
         <BrowserRouter>
             <ErrorBoundary enableReporting={true}>
               <Routes>
