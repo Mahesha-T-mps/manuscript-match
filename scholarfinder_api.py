@@ -1158,3 +1158,56 @@ def recommended_reviewers(job_id: str = Query(..., description="Unique job ID"))
         }
     )
 
+
+
+# -----------------------------------------------------------
+# 8️⃣ SHORTLISTED AUTHORS
+# -----------------------------------------------------------
+@app.post("/shortlisted_authors")
+def shortlisted_authors(
+    job_id: str = Query(..., description="Unique job ID"),
+    selected_authors: list[str] = Form([])
+):
+    """
+    Track shortlisted authors by filtering the CSV to only include selected authors.
+    This endpoint updates the author_email_df_before_val.csv file to contain only the selected authors.
+    """
+    logger.info(f"shortlisted_authors called for job_id: {job_id}")
+    logger.info(f"Selected authors: {selected_authors}")
+    
+    job_dir = BASE_DIR / job_id
+    csv_path = job_dir / "author_email_df_before_val.csv"
+    
+    if not csv_path.exists():
+        logger.error(f"Author CSV not found at: {csv_path}")
+        return JSONResponse(
+            content={"error": "Author CSV not found. Run database_search first."},
+            status_code=404
+        )
+    
+    # Load the CSV
+    df = pd.read_csv(csv_path)
+    logger.info(f"Loaded CSV with {len(df)} total authors")
+    
+    if selected_authors:
+        # Filter to only selected authors
+        selected_authors = [a.strip() for a in selected_authors]
+        selected_df = df[df["author"].isin(selected_authors)]
+        logger.info(f"Filtered to {len(selected_df)} selected authors")
+        
+        # Save the filtered CSV back (overwriting the original)
+        selected_df.to_csv(csv_path, index=False)
+        logger.info(f"Saved shortlisted authors to: {csv_path}")
+        
+        return JSONResponse(content={
+            "job_id": job_id,
+            "selected_count": len(selected_authors),
+            "message": f"Successfully shortlisted {len(selected_authors)} authors"
+        })
+    else:
+        logger.warning("No authors selected")
+        return JSONResponse(content={
+            "job_id": job_id,
+            "selected_count": 0,
+            "message": "No authors selected"
+        })

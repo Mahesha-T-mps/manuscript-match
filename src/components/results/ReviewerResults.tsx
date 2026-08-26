@@ -36,6 +36,8 @@ import { toast } from "sonner";
 import { ExportReviewersDialog } from "./ExportReviewersDialog";
 import { exportReviewersAsCSV, exportReviewersAsJSON } from "@/utils/exportUtils";
 import { COIPublicationsModal } from "@/components/coi/COIPublicationsModal";
+import { config } from "@/lib/config";
+import { fileService } from "@/services/fileService";
 import type { Reviewer } from "@/features/scholarfinder/types/api";
 
 interface ReviewerResultsProps {
@@ -640,6 +642,39 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
     }
 
     try {
+      // Get the actual job_id from fileService
+      const jobId = fileService.getJobId(processId);
+      
+      if (!jobId) {
+        console.warn('No job_id found for processId:', processId);
+        toast.error("Unable to find job ID. Please try again.");
+        return;
+      }
+
+      // Call the shortlisted_authors API to track selection
+      try {
+        const formData = new FormData();
+        selectedReviewers.forEach(r => {
+          formData.append('selected_authors', r.reviewer);
+        });
+
+        const response = await fetch(`${config.scholarFinderApiUrl}/shortlisted_authors?job_id=${jobId}`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log('Shortlisted authors API response:', result);
+          toast.success(`Added ${result.selected_count || selectedReviewers.length} reviewers to backend shortlist`);
+        } else {
+          console.warn('Shortlisted authors API call failed:', response.statusText);
+        }
+      } catch (apiError) {
+        console.warn('Failed to call shortlisted_authors API:', apiError);
+        // Continue with shortlist creation even if API call fails
+      }
+
       // Create shortlist with reviewer emails as IDs
       await createShortlistMutation.mutateAsync({
         processId,
@@ -656,6 +691,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
         `Created shortlist "${shortlistName}" with ${selectedReviewers.length} reviewers`,
         JSON.stringify({
           processId,
+          jobId,
           shortlistName,
           reviewerCount: selectedReviewers.length,
           reviewerNames: selectedReviewers.map(r => r.reviewer),

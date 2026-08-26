@@ -79,6 +79,43 @@ class ShortlistService {
       localStorage.setItem(key, JSON.stringify(shortlists));
       
       console.log('[ShortlistService] Created shortlist:', newShortlist);
+
+      // Call the backend /shortlisted_authors API
+      try {
+        const jobId = fileService.getJobId(processId);
+        if (!jobId) {
+          console.warn('[ShortlistService] No job_id found for processId:', processId);
+        } else {
+          // Get reviewer names from the selected reviewer IDs
+          const { reviewers } = await this.getReviewerDetails(processId, data.selectedReviewers);
+          const reviewerNames = reviewers.map(r => r.reviewer);
+
+          // Import config inline to avoid circular dependencies
+          const configModule = await import('../lib/config');
+          const config = configModule.config;
+
+          const formData = new FormData();
+          reviewerNames.forEach(name => {
+            formData.append('selected_authors', name);
+          });
+
+          const response = await fetch(`${config.scholarFinderApiUrl}/shortlisted_authors?job_id=${jobId}`, {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            console.log('[ShortlistService] Shortlisted authors API response:', result);
+          } else {
+            console.warn('[ShortlistService] Shortlisted authors API call failed:', response.statusText);
+          }
+        }
+      } catch (apiError) {
+        console.warn('[ShortlistService] Failed to call shortlisted_authors API:', apiError);
+        // Continue - don't block shortlist creation if API fails
+      }
+
       return newShortlist;
     } catch (error) {
       console.error('Failed to create shortlist:', error);

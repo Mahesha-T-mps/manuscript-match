@@ -1,8 +1,3 @@
-/**
- * ShortlistStep Component
- * Step 8 of the ScholarFinder workflow - Reviewer shortlist management
- */
-
 import React, { useEffect, useState, useCallback } from 'react';
 import { StepComponentProps } from '../../types/workflow';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +10,8 @@ import { useScholarFinder } from '../../hooks/useScholarFinderContext';
 import { ProcessStep } from '../../types/process';
 import { Reviewer } from '../../types/api';
 import { cn } from '@/lib/utils';
+import { config } from '@/lib/config';
+import { fileService } from '@/services/fileService';
 
 // Import sub-components
 import { ReviewerSelection } from './shortlist/ReviewerSelection';
@@ -147,12 +144,41 @@ export const ShortlistStep: React.FC<ShortlistStepProps> = ({
     addToShortlist(reviewer);
     addAction({ type: 'add', reviewerId: reviewer.email });
 
+    // Call the shortlisted_authors API to track selection
+    (async () => {
+      try {
+        const jobId = fileService.getJobId(processId);
+        if (!jobId) {
+          console.warn('No job_id found for processId:', processId);
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('selected_authors', reviewer.reviewer);
+
+        const response = await fetch(`${config.scholarFinderApiUrl}/shortlisted_authors?job_id=${jobId}`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log('Shortlisted authors API response:', result);
+        } else {
+          console.warn('Shortlisted authors API call failed:', response.statusText);
+        }
+      } catch (apiError) {
+        console.warn('Failed to call shortlisted_authors API:', apiError);
+        // Continue even if API call fails
+      }
+    })();
+
     toast({
       title: 'Reviewer Added',
       description: `${reviewer.reviewer} has been added to your shortlist.`,
       variant: 'default'
     });
-  }, [selectedReviewers, maxReviewers, addToShortlist, addAction, toast]);
+  }, [selectedReviewers, maxReviewers, addToShortlist, addAction, toast, processId]);
 
   const handleRemoveFromShortlist = useCallback((reviewerId: string) => {
     const reviewer = selectedReviewers.find(r => r.email === reviewerId);
@@ -201,12 +227,43 @@ export const ShortlistStep: React.FC<ShortlistStepProps> = ({
       reviewerIds: newReviewers.map(r => r.email) 
     });
 
+    // Call the shortlisted_authors API to track bulk selection
+    (async () => {
+      try {
+        const jobId = fileService.getJobId(processId);
+        if (!jobId) {
+          console.warn('No job_id found for processId:', processId);
+          return;
+        }
+
+        const formData = new FormData();
+        newReviewers.forEach(r => {
+          formData.append('selected_authors', r.reviewer);
+        });
+
+        const response = await fetch(`${config.scholarFinderApiUrl}/shortlisted_authors?job_id=${jobId}`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log('Bulk shortlisted authors API response:', result);
+        } else {
+          console.warn('Bulk shortlisted authors API call failed:', response.statusText);
+        }
+      } catch (apiError) {
+        console.warn('Failed to call shortlisted_authors API for bulk add:', apiError);
+        // Continue even if API call fails
+      }
+    })();
+
     toast({
       title: 'Reviewers Added',
       description: `${newReviewers.length} reviewers have been added to your shortlist.`,
       variant: 'default'
     });
-  }, [selectedReviewers, maxReviewers, addToShortlist, addAction, toast]);
+  }, [selectedReviewers, maxReviewers, addToShortlist, addAction, toast, processId]);
 
   const handleBulkRemove = useCallback((reviewerIds: string[]) => {
     const reviewersToRemove = selectedReviewers.filter(r => reviewerIds.includes(r.email));
@@ -382,6 +439,47 @@ export const ShortlistStep: React.FC<ShortlistStepProps> = ({
         variant: 'destructive'
       });
       return;
+    }
+
+    // Call the shortlisted_authors API before proceeding
+    if (selectedReviewers.length > 0) {
+      try {
+        const jobId = fileService.getJobId(processId);
+        if (!jobId) {
+          console.warn('No job_id found for processId:', processId);
+          toast({
+            title: 'Warning',
+            description: 'Unable to sync with backend. Continuing with local shortlist.',
+            variant: 'default'
+          });
+        } else {
+          const formData = new FormData();
+          selectedReviewers.forEach(r => {
+            formData.append('selected_authors', r.reviewer);
+          });
+
+          const response = await fetch(`${config.scholarFinderApiUrl}/shortlisted_authors?job_id=${jobId}`, {
+            method: 'POST',
+            body: formData,
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            console.log('Final shortlist API response:', result);
+            toast({
+              title: 'Shortlist Finalized',
+              description: `${result.selected_count || selectedReviewers.length} reviewers sent to backend`,
+              variant: 'default'
+            });
+          } else {
+            console.warn('Shortlist API call failed:', response.statusText);
+            // Continue anyway
+          }
+        }
+      } catch (apiError) {
+        console.warn('Failed to call shortlisted_authors API:', apiError);
+        // Continue anyway
+      }
     }
 
     // Auto-save before proceeding
