@@ -7,3 +7,5 @@ export { ProcessTimelineChart } from './ProcessTimelineChart';
 export { UserActivityChart } from './UserActivityChart';
 export { ProcessTable } from './ProcessTable';
 export { StatsCards } from './StatsCards';
+export { CustomReportsChart } from './CustomReportsChart';
+export { CustomReportsTable } from './CustomReportsTable';

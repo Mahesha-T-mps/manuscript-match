@@ -68,6 +68,7 @@ model Author {
   id               String   @id @default(uuid())
   name             String
   email            String?
+  affiliation      String?  // Institution name
   publicationCount Int      @default(0) @map("publication_count")
   clinicalTrials   Int      @default(0) @map("clinical_trials")
   retractions      Int      @default(0)
@@ -274,6 +275,24 @@ model UserTypeValidationCondition {
   
   @@unique([userType, conditionId])
   @@map("user_type_validation_conditions")
+}
+
+model UserReport {
+  id                        String   @id @default(uuid())
+  userId                    String   @map("user_id")
+  processId                 String   @map("process_id")
+  processTitle              String   @map("process_title")
+  recommendationsCount      Int      @default(0) @map("recommendations_count") // Total authors in Recommendations step
+  shortlistedCount          Int      @default(0) @map("shortlisted_count") // Shortlisted authors count
+  reviewersCount            Int      @default(0) @map("reviewers_count") // Reviewers assigned to review recommendations
+  shortlistedAuthors        String?  @map("shortlisted_authors") // JSON array of shortlisted author details
+  reportDate                DateTime @default(now()) @map("report_date")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  
+  @@index([userId])
+  @@index([processId])
+  @@index([reportDate])
+  @@map("user_reports")
 }
 
 // Note: SQLite doesn't support enums, so we use string constants in TypeScript

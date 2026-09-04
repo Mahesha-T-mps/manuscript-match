@@ -53,12 +53,16 @@ export class ShortlistService {
         name: data.name,
       });
 
-      // Add authors to shortlist by updating their role
-      await this.processAuthorRepository.updateAuthorRoles(
-        data.processId,
-        data.authorIds,
-        AuthorRole.SHORTLISTED
-      );
+      // Add authors to shortlist by creating new SHORTLISTED entries
+      // Keep existing CANDIDATE entries intact for reporting
+      const shortlistedEntries = data.authorIds.map(authorId => ({
+        processId: data.processId,
+        authorId,
+        role: AuthorRole.SHORTLISTED,
+      }));
+
+      // Create SHORTLISTED entries (this keeps CANDIDATE entries intact)
+      await this.processAuthorRepository.bulkCreate(shortlistedEntries);
 
       return {
         id: shortlist.id,

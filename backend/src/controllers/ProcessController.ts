@@ -9,6 +9,7 @@ import { AuthorValidationService } from '../services/AuthorValidationService';
 import { RecommendationService } from '../services/RecommendationService';
 import { ShortlistService } from '../services/ShortlistService';
 import { ActivityLogService } from '../services/ActivityLogService';
+import { UserReportService } from '../services/UserReportService';
 import { 
   createProcessSchema, 
   updateProcessSchema, 
@@ -36,6 +37,7 @@ export class ProcessController {
   private recommendationService: RecommendationService;
   private shortlistService: ShortlistService;
   private activityLogService: ActivityLogService;
+  private userReportService: UserReportService;
 
   constructor() {
     this.processService = new ProcessService(prisma);
@@ -57,6 +59,7 @@ export class ProcessController {
       new (require('../repositories/AuthorRepository').AuthorRepository)(prisma)
     );
     this.activityLogService = new ActivityLogService(prisma);
+    this.userReportService = new UserReportService(prisma);
   }
 
   /**
@@ -2788,10 +2791,23 @@ export class ProcessController {
         return;
       }
 
+      // Support both old format (authorIds) and new format (reviewers)
       const createShortlistSchema = Joi.object({
         name: Joi.string().required().min(1).max(255),
-        authorIds: Joi.array().items(Joi.string().uuid()).min(1).required(),
-      });
+        // Old format - for backward compatibility
+        authorIds: Joi.array().items(Joi.string().uuid()).optional(),
+        // New format - with full reviewer details
+        reviewers: Joi.array().items(Joi.object({
+          name: Joi.string().required(),
+          email: Joi.string().email().required(),
+          affiliation: Joi.string().allow('').optional(),
+          city: Joi.string().allow('').optional(),
+          country: Joi.string().allow('').optional(),
+          publicationCount: Joi.number().default(0),
+          clinicalTrials: Joi.number().default(0),
+          retractions: Joi.number().default(0)
+        })).optional()
+      }).or('authorIds', 'reviewers'); // At least one must be provided
 
       const { error, value } = createShortlistSchema.validate(req.body);
       if (error) {
@@ -2824,11 +2840,99 @@ export class ProcessController {
         return;
       }
 
+      let authorIds = value.authorIds || [];
+
+      // If reviewers provided, create/find authors and get their IDs
+      if (value.reviewers && value.reviewers.length > 0) {
+        console.log(`Creating/finding authors for ${value.reviewers.length} reviewers`);
+        
+        for (const reviewer of value.reviewers) {
+          try {
+            // Find or create author
+            let author = await prisma.author.findFirst({
+              where: { email: reviewer.email }
+            });
+
+            if (!author) {
+              author = await prisma.author.create({
+                data: {
+                  name: reviewer.name,
+                  email: reviewer.email,
+                  affiliation: reviewer.affiliations?.[0]?.institutionName || reviewer.affiliation,
+                  publicationCount: reviewer.publicationCount || 0,
+                  clinicalTrials: reviewer.clinicalTrials || 0,
+                  retractions: reviewer.retractions || 0
+                }
+              });
+              console.log(`Created new author: ${author.name} (${author.email}) - ${author.affiliation || 'No affiliation'}`);
+            } else {
+              // Update affiliation if it's missing but provided
+              if (!author.affiliation && (reviewer.affiliations?.[0]?.institutionName || reviewer.affiliation)) {
+                author = await prisma.author.update({
+                  where: { id: author.id },
+                  data: {
+                    affiliation: reviewer.affiliations?.[0]?.institutionName || reviewer.affiliation
+                  }
+                });
+              }
+              console.log(`Found existing author: ${author.name} (${author.email}) - ${author.affiliation || 'No affiliation'}`);
+            }
+
+            // Link author to process if not already linked
+            const existingLink = await prisma.processAuthor.findFirst({
+              where: {
+                processId,
+                authorId: author.id,
+                role: 'CANDIDATE'
+              }
+            });
+
+            if (!existingLink) {
+              await prisma.processAuthor.create({
+                data: {
+                  processId,
+                  authorId: author.id,
+                  role: 'CANDIDATE'
+                }
+              });
+              console.log(`Linked author ${author.name} to process`);
+            }
+
+            authorIds.push(author.id);
+          } catch (authorError) {
+            console.error(`Error processing reviewer ${reviewer.email}:`, authorError);
+            // Continue with other reviewers
+          }
+        }
+      }
+
+      if (authorIds.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: {
+            type: 'VALIDATION_ERROR',
+            message: 'No valid authors found',
+            requestId: req.requestId || 'unknown',
+            timestamp: new Date().toISOString(),
+          },
+        });
+        return;
+      }
+
       const shortlist = await this.shortlistService.createShortlist({
         processId,
         name: value.name,
-        authorIds: value.authorIds,
+        authorIds: authorIds,
       });
+
+      // Automatically generate/update user report after shortlist creation
+      try {
+        await this.userReportService.generateReportForProcess(processId);
+        console.log(`Report generated for process ${processId}`);
+      } catch (reportError) {
+        // Log error but don't fail the shortlist creation
+        console.error('Error generating report after shortlist creation:', reportError);
+      }
 
       const response: ApiResponse = {
         success: true,

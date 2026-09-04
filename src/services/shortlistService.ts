@@ -1,11 +1,12 @@
 /**
  * Shortlist management service
  * Handles creating, managing, and exporting reviewer shortlists
- * Uses localStorage for ScholarFinder workflow
+ * Syncs between localStorage and backend database
  */
 
 import * as XLSX from 'xlsx';
 import { fileService } from './fileService';
+import { apiService } from './apiService';
 import { generateCSV, generateJSON } from '../utils/exportUtils';
 import type { 
   Shortlist, 
@@ -16,7 +17,7 @@ import type { Reviewer } from '../features/scholarfinder/types/api';
 
 /**
  * Shortlist service class for shortlist management
- * Uses localStorage for ScholarFinder workflow
+ * Syncs between localStorage (for ScholarFinder) and backend database
  */
 class ShortlistService {
   private getStorageKey(processId: string): string {
@@ -28,19 +29,66 @@ class ShortlistService {
   }
 
   /**
-   * Get all shortlists for a process from localStorage
+   * Get author IDs from reviewer emails for a process
+   */
+  private async getAuthorIdsFromEmails(processId: string, emails: string[]): Promise<string[]> {
+    try {
+      console.log('[ShortlistService] Getting author IDs for emails:', emails);
+      
+      // Get all authors for the process from backend
+      const response = await apiService.get<{ id: string; email?: string }[]>(
+        `/api/processes/${processId}/authors`
+      );
+      
+      console.log('[ShortlistService] Backend response:', response);
+      
+      if (!response.success || !response.data) {
+        console.warn('[ShortlistService] No authors found for process:', processId);
+        return [];
+      }
+
+      console.log('[ShortlistService] Found authors:', response.data.length);
+      console.log('[ShortlistService] Sample author:', response.data[0]);
+
+      // Map emails to author IDs
+      const authorIds = emails
+        .map(email => {
+          const author = response.data.find((a: any) => a.email === email);
+          console.log(`[ShortlistService] Mapping ${email} -> ${author?.id || 'NOT FOUND'}`);
+          return author?.id;
+        })
+        .filter((id): id is string => !!id);
+
+      console.log('[ShortlistService] Mapped', emails.length, 'emails to', authorIds.length, 'author IDs');
+      console.log('[ShortlistService] Author IDs:', authorIds);
+      return authorIds;
+    } catch (error) {
+      console.error('[ShortlistService] Failed to get author IDs:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get all shortlists for a process
+   * Uses localStorage as primary source (contains reviewer emails)
    */
   async getShortlists(processId: string): Promise<Shortlist[]> {
     try {
+      // Get from localStorage (primary source with reviewer data)
       const key = this.getStorageKey(processId);
       const stored = localStorage.getItem(key);
-      if (!stored) {
-        return [];
-      }
-      const shortlists = JSON.parse(stored) as Shortlist[];
-      return shortlists;
+      const localShortlists: Shortlist[] = stored ? JSON.parse(stored) : [];
+
+      console.log('[ShortlistService] Found', localShortlists.length, 'shortlists in localStorage');
+
+      // Note: We use localStorage as the primary source because:
+      // 1. It contains the reviewer email list (selectedReviewers)
+      // 2. Backend shortlists don't store reviewer emails
+      // 3. Both sources are synced when creating shortlists
+      
+      return localShortlists;
     } catch (error) {
-      console.error('Failed to get shortlists from localStorage:', error);
+      console.error('Failed to get shortlists:', error);
       return [];
     }
   }
@@ -59,9 +107,11 @@ class ShortlistService {
 
   /**
    * Create a new shortlist
+   * Saves to both localStorage (ScholarFinder) and backend database
    */
   async createShortlist(processId: string, data: CreateShortlistRequest): Promise<Shortlist> {
     try {
+      // 1. Save to localStorage first (for ScholarFinder compatibility)
       const shortlists = await this.getShortlists(processId);
       
       const newShortlist: Shortlist = {
@@ -78,9 +128,58 @@ class ShortlistService {
       const key = this.getStorageKey(processId);
       localStorage.setItem(key, JSON.stringify(shortlists));
       
-      console.log('[ShortlistService] Created shortlist:', newShortlist);
+      console.log('[ShortlistService] Saved to localStorage:', newShortlist);
 
-      // Call the backend /shortlisted_authors API
+      // 2. Get reviewer details with full information
+      const { reviewers } = await this.getReviewerDetails(processId, data.selectedReviewers || []);
+      
+      if (reviewers.length === 0) {
+        console.warn('[ShortlistService] No reviewer details found, backend sync skipped');
+      } else {
+        // 3. Save to backend database with reviewer details
+        // Backend will create Author records if they don't exist
+        try {
+          console.log('[ShortlistService] Sending reviewers to backend:', reviewers.length);
+          
+          const backendResponse = await apiService.post<any>(
+            `/api/processes/${processId}/shortlist`,
+            {
+              name: data.name,
+              reviewers: reviewers.map(r => ({
+                name: r.reviewer || 'Unknown',
+                email: r.email || '',
+                affiliation: r.aff || '',
+                city: r.city || '',
+                country: r.country || '',
+                publicationCount: r.Total_Publications || 0,
+                clinicalTrials: r.Clinical_Trials_no || 0,
+                retractions: r.Retracted_Pubs_no || 0
+              }))
+            }
+          );
+
+          if (backendResponse.success) {
+            console.log('[ShortlistService] ✅ Saved to backend database:', backendResponse.data);
+            
+            // Update localStorage with backend ID if available
+            if (backendResponse.data?.id) {
+              newShortlist.id = backendResponse.data.id;
+              const index = shortlists.findIndex(s => s.name === newShortlist.name);
+              if (index !== -1) {
+                shortlists[index] = newShortlist;
+                localStorage.setItem(key, JSON.stringify(shortlists));
+              }
+            }
+          } else {
+            console.warn('[ShortlistService] Backend save failed:', backendResponse);
+          }
+        } catch (backendError) {
+          console.error('[ShortlistService] Failed to save to backend:', backendError);
+          // Don't throw - localStorage save succeeded
+        }
+      }
+
+      // 4. Call the ScholarFinder API (original behavior)
       try {
         const jobId = fileService.getJobId(processId);
         if (!jobId) {
@@ -106,13 +205,13 @@ class ShortlistService {
 
           if (response.ok) {
             const result = await response.json();
-            console.log('[ShortlistService] Shortlisted authors API response:', result);
+            console.log('[ShortlistService] ScholarFinder API response:', result);
           } else {
-            console.warn('[ShortlistService] Shortlisted authors API call failed:', response.statusText);
+            console.warn('[ShortlistService] ScholarFinder API call failed:', response.statusText);
           }
         }
       } catch (apiError) {
-        console.warn('[ShortlistService] Failed to call shortlisted_authors API:', apiError);
+        console.warn('[ShortlistService] Failed to call ScholarFinder API:', apiError);
         // Continue - don't block shortlist creation if API fails
       }
 
