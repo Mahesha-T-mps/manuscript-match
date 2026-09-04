@@ -63,8 +63,8 @@ export function CustomReportsTable({ reports }: CustomReportsTableProps) {
           <TableRow>
             <TableHead className="w-[50px]"></TableHead>
             <TableHead>Process Title</TableHead>
-            <TableHead className="text-right">Shortlisted</TableHead>
-            <TableHead>Report Date</TableHead>
+            <TableHead className="text-right"># Reviewers Shortlisted</TableHead>
+            <TableHead>Date Shortlisted</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

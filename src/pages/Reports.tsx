@@ -27,6 +27,8 @@ import {
 } from '../components/reports';
 import { Skeleton } from '../components/ui/skeleton';
 import { useToast } from '../hooks/use-toast';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function Reports() {
   const { user } = useAuth();
@@ -166,17 +168,17 @@ export default function Reports() {
           // Custom Reports format
           const summaryData = [
             ['Metric', 'Value'],
-            ['Total Processes', totalProcesses],
-            ['Total Shortlisted', totalShortlisted],
-            ['Average Shortlisted', averageShortlisted.toFixed(2)]
+            ['Total Processes', exportData.totalProcesses],
+            ['Total Shortlisted Reviewers', exportData.totalShortlisted],
+            ['Average Shortlisted', exportData.averageShortlisted.toFixed(2)]
           ];
           const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
           XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
           
-          if (customReports && customReports.length > 0) {
+          if (exportData.customReports && exportData.customReports.length > 0) {
             const reportsData = [
-              ['Process', 'Shortlisted', 'Report Date'],
-              ...customReports.map(r => [
+              ['Process', '# Reviewers Shortlisted', 'Date Shortlisted'],
+              ...exportData.customReports.map(r => [
                 r.processTitle,
                 r.shortlistedCount,
                 new Date(r.reportDate).toLocaleDateString()
@@ -185,24 +187,23 @@ export default function Reports() {
             const reportsWs = XLSX.utils.aoa_to_sheet(reportsData);
             XLSX.utils.book_append_sheet(wb, reportsWs, 'Report Details');
             
-            // Add Shortlisted Authors sheet
-            const authorsData = [['Process', 'Author Name', 'Email', 'Affiliation']];
-            customReports.forEach(r => {
+            // Add Shortlisted Authors sheet - always include headers
+            const authorsData: any[][] = [['Process', 'Author Name', 'Email', 'Affiliation']];
+            exportData.customReports.forEach(r => {
               if (r.shortlistedAuthors && r.shortlistedAuthors.length > 0) {
                 r.shortlistedAuthors.forEach(author => {
                   authorsData.push([
                     r.processTitle,
-                    author.name,
+                    author.name || '-',
                     author.email || '-',
                     author.affiliation || '-'
                   ]);
                 });
               }
             });
-            if (authorsData.length > 1) {
-              const authorsWs = XLSX.utils.aoa_to_sheet(authorsData);
-              XLSX.utils.book_append_sheet(wb, authorsWs, 'Shortlisted Authors');
-            }
+            // Create sheet even if no data (will show headers)
+            const authorsWs = XLSX.utils.aoa_to_sheet(authorsData);
+            XLSX.utils.book_append_sheet(wb, authorsWs, 'Shortlisted Reviewers');
           }
         } else if (exportData.type === 'overview') {
           // Overview format
@@ -223,8 +224,15 @@ export default function Reports() {
             XLSX.utils.book_append_sheet(wb, processWs, 'Processes');
           }
         } else if (exportData.type === 'processes' && exportData.processData && exportData.processData.length > 0) {
-          const processHeaders = Object.keys(exportData.processData[0]);
-          const processRows = exportData.processData.map(p => processHeaders.map(h => p[h]));
+          // Processes - format to match UI table columns
+          const processHeaders = ['Title', 'Stage', 'Status', 'Created', 'Updated'];
+          const processRows = exportData.processData.map((p: any) => [
+            p.title || '-',
+            p.currentStep || '-',
+            p.status || '-',
+            p.createdAt ? new Date(p.createdAt).toLocaleDateString() : '-',
+            p.updatedAt ? new Date(p.updatedAt).toLocaleDateString() : '-'
+          ]);
           const processWs = XLSX.utils.aoa_to_sheet([processHeaders, ...processRows]);
           XLSX.utils.book_append_sheet(wb, processWs, 'Processes');
         } else if (exportData.type === 'timeline' && timelineData && timelineData.length > 0) {
@@ -241,18 +249,202 @@ export default function Reports() {
         
         XLSX.writeFile(wb, `${exportTitle.toLowerCase().replace(/\s/g, '_')}_${Date.now()}.xlsx`);
       } else if (format === 'pdf') {
-        const htmlContent = generateReportsHTML(exportData, exportTitle);
-        const printWindow = window.open('', '_blank');
-        if (printWindow) {
-          printWindow.document.write(htmlContent);
-          printWindow.document.close();
-          // Give the browser a moment to render before printing
-          setTimeout(() => {
-            printWindow.print();
-          }, 250);
-        } else {
-          throw new Error('Unable to open print window. Please check if popups are blocked.');
+        // Use jsPDF with autoTable for reliable PDF generation
+        const doc = new jsPDF();
+        let yPos = 20;
+        
+        // Title
+        doc.setFontSize(20);
+        doc.setTextColor(37, 99, 235);
+        doc.text(exportTitle, 20, yPos);
+        yPos += 10;
+        
+        // Date
+        doc.setFontSize(10);
+        doc.setTextColor(107, 114, 128);
+        doc.text(`Generated: ${new Date().toLocaleString()}`, 20, yPos);
+        yPos += 15;
+        
+        if (exportData.type === 'custom') {
+          // Summary section
+          doc.setFontSize(16);
+          doc.setTextColor(30, 64, 175);
+          doc.text('Summary', 20, yPos);
+          yPos += 10;
+          
+          doc.setFontSize(11);
+          doc.setTextColor(51, 51, 51);
+          doc.text(`Total Processes: ${exportData.totalProcesses}`, 20, yPos);
+          yPos += 7;
+          doc.text(`Total Shortlisted Reviewers: ${exportData.totalShortlisted}`, 20, yPos);
+          yPos += 7;
+          doc.text(`Average Shortlisted: ${exportData.averageShortlisted.toFixed(2)}`, 20, yPos);
+          yPos += 15;
+          
+          if (exportData.customReports && exportData.customReports.length > 0) {
+            // Report Details table
+            doc.setFontSize(16);
+            doc.setTextColor(30, 64, 175);
+            doc.text('Report Details', 20, yPos);
+            yPos += 7;
+            
+            const reportDetailsData = exportData.customReports.map((r: any) => [
+              r.processTitle,
+              r.shortlistedCount.toString(),
+              new Date(r.reportDate).toLocaleDateString()
+            ]);
+            
+            autoTable(doc, {
+              startY: yPos,
+              head: [['Process', '# Reviewers Shortlisted', 'Date Shortlisted']],
+              body: reportDetailsData,
+              theme: 'grid',
+              headStyles: { fillColor: [30, 64, 175], textColor: 255 },
+              styles: { fontSize: 10, cellPadding: 5 }
+            });
+            
+            yPos = (doc as any).lastAutoTable.finalY + 15;
+            
+            // Shortlisted Reviewers section
+            if (yPos > 250) {
+              doc.addPage();
+              yPos = 20;
+            }
+            
+            doc.setFontSize(16);
+            doc.setTextColor(30, 64, 175);
+            doc.text('Shortlisted Reviewers', 20, yPos);
+            yPos += 7;
+            
+            // Create authors data
+            const authorsData: any[] = [];
+            exportData.customReports.forEach((r: any) => {
+              if (r.shortlistedAuthors && r.shortlistedAuthors.length > 0) {
+                r.shortlistedAuthors.forEach((author: any) => {
+                  authorsData.push([
+                    r.processTitle,
+                    author.name || '-',
+                    author.email || '-',
+                    author.affiliation || '-'
+                  ]);
+                });
+              }
+            });
+            
+            if (authorsData.length > 0) {
+              autoTable(doc, {
+                startY: yPos,
+                head: [['Process', 'Author Name', 'Email', 'Affiliation']],
+                body: authorsData,
+                theme: 'grid',
+                headStyles: { fillColor: [30, 64, 175], textColor: 255 },
+                styles: { fontSize: 9, cellPadding: 4 },
+                columnStyles: {
+                  0: { cellWidth: 45 },
+                  1: { cellWidth: 40 },
+                  2: { cellWidth: 50 },
+                  3: { cellWidth: 45 }
+                }
+              });
+            }
+          }
+        } else if (exportData.type === 'overview') {
+          // Overview stats
+          doc.setFontSize(16);
+          doc.setTextColor(30, 64, 175);
+          doc.text('Statistics', 20, yPos);
+          yPos += 10;
+          
+          doc.setFontSize(11);
+          doc.setTextColor(51, 51, 51);
+          doc.text(`Total Processes: ${exportData.stats?.totalProcesses || 0}`, 20, yPos);
+          yPos += 7;
+          doc.text(`Active Processes: ${exportData.stats?.activeProcesses || 0}`, 20, yPos);
+          yPos += 7;
+          doc.text(`Completed Processes: ${exportData.stats?.completedProcesses || 0}`, 20, yPos);
+          yPos += 7;
+          doc.text(`Pending Processes: ${exportData.stats?.pendingProcesses || 0}`, 20, yPos);
+        } else if (exportData.type === 'processes') {
+          // Processes table - format to match UI table columns
+          if (exportData.processData && exportData.processData.length > 0) {
+            // Build headers based on whether user is admin
+            const headers = ['Title', 'Stage', 'Status', 'Created', 'Updated'];
+            
+            // Build rows with selected columns
+            const rows = exportData.processData.map((p: any) => {
+              const row = [
+                String(p.title || '-'),
+                String(p.currentStep || '-'),
+                String(p.status || '-'),
+                p.createdAt ? new Date(p.createdAt).toLocaleDateString() : '-',
+                p.updatedAt ? new Date(p.updatedAt).toLocaleDateString() : '-'
+              ];
+              return row;
+            });
+            
+            autoTable(doc, {
+              startY: yPos,
+              head: [headers],
+              body: rows,
+              theme: 'grid',
+              headStyles: { fillColor: [30, 64, 175], textColor: 255 },
+              styles: { fontSize: 10, cellPadding: 4, overflow: 'linebreak' },
+              columnStyles: {
+                0: { cellWidth: 60 }, // Title
+                1: { cellWidth: 35 }, // Stage
+                2: { cellWidth: 30 }, // Status
+                3: { cellWidth: 30 }, // Created
+                4: { cellWidth: 30 }  // Updated
+              }
+            });
+          } else {
+            doc.setFontSize(11);
+            doc.text('No process data available', 20, yPos);
+          }
+        } else if (exportData.type === 'timeline') {
+          // Timeline table
+          if (exportData.timelineData && exportData.timelineData.length > 0) {
+            const headers = Object.keys(exportData.timelineData[0]);
+            const rows = exportData.timelineData.map((t: any) => 
+              headers.map(h => String(t[h] || '-'))
+            );
+            
+            autoTable(doc, {
+              startY: yPos,
+              head: [headers],
+              body: rows,
+              theme: 'grid',
+              headStyles: { fillColor: [30, 64, 175], textColor: 255 },
+              styles: { fontSize: 9, cellPadding: 3, overflow: 'linebreak' }
+            });
+          } else {
+            doc.setFontSize(11);
+            doc.text('No timeline data available', 20, yPos);
+          }
+        } else if (exportData.type === 'users') {
+          // User activity table
+          if (exportData.userActivityData && exportData.userActivityData.length > 0) {
+            const headers = Object.keys(exportData.userActivityData[0]);
+            const rows = exportData.userActivityData.map((u: any) => 
+              headers.map(h => String(u[h] || '-'))
+            );
+            
+            autoTable(doc, {
+              startY: yPos,
+              head: [headers],
+              body: rows,
+              theme: 'grid',
+              headStyles: { fillColor: [30, 64, 175], textColor: 255 },
+              styles: { fontSize: 9, cellPadding: 3, overflow: 'linebreak' }
+            });
+          } else {
+            doc.setFontSize(11);
+            doc.text('No user activity data available', 20, yPos);
+          }
         }
+        
+        // Save the PDF
+        doc.save(`${exportTitle.toLowerCase().replace(/\s/g, '_')}_${Date.now()}.pdf`);
       }
       
       toast({
@@ -283,18 +475,18 @@ export default function Reports() {
       csv += 'Summary\n';
       csv += 'Metric,Value\n';
       csv += `Total Processes,${data.totalProcesses}\n`;
-      csv += `Total Shortlisted,${data.totalShortlisted}\n`;
+      csv += `Total Shortlisted Reviewers,${data.totalShortlisted}\n`;
       csv += `Average Shortlisted,${data.averageShortlisted.toFixed(2)}\n\n`;
       
       if (data.customReports && data.customReports.length > 0) {
         csv += 'Report Details\n';
-        csv += 'Process,Shortlisted,Report Date\n';
+        csv += 'Process,# Reviewers Shortlisted,Date Shortlisted\n';
         data.customReports.forEach((r: any) => {
           csv += `"${r.processTitle}",${r.shortlistedCount},${new Date(r.reportDate).toLocaleDateString()}\n`;
         });
         
         // Add Shortlisted Authors section
-        csv += '\n\nShortlisted Authors\n';
+        csv += '\n\nShortlisted Reviewers\n';
         csv += 'Process,Author Name,Email,Affiliation\n';
         data.customReports.forEach((r: any) => {
           if (r.shortlistedAuthors && r.shortlistedAuthors.length > 0) {
@@ -322,10 +514,18 @@ export default function Reports() {
       }
     } else if (data.type === 'processes') {
       if (data.processData && data.processData.length > 0) {
-        const headers = Object.keys(data.processData[0]);
+        // Format to match UI table columns
+        const headers = ['Title', 'Stage', 'Status', 'Created', 'Updated'];
         csv += headers.join(',') + '\n';
         data.processData.forEach((p: any) => {
-          csv += headers.map(h => `"${p[h] || ''}"`).join(',') + '\n';
+          const row = [
+            `"${p.title || '-'}"`,
+            `"${p.currentStep || '-'}"`,
+            `"${p.status || '-'}"`,
+            `"${p.createdAt ? new Date(p.createdAt).toLocaleDateString() : '-'}"`,
+            `"${p.updatedAt ? new Date(p.updatedAt).toLocaleDateString() : '-'}"`
+          ];
+          csv += row.join(',') + '\n';
         });
       } else {
         csv += 'No process data available\n';
@@ -361,54 +561,54 @@ export default function Reports() {
     
     if (data.type === 'custom') {
       content = `
-        <div class="summary">
-          <h2>Summary</h2>
-          <div class="summary-item"><strong>Total Processes:</strong> ${data.totalProcesses}</div>
-          <div class="summary-item"><strong>Total Shortlisted:</strong> ${data.totalShortlisted}</div>
-          <div class="summary-item"><strong>Average Shortlisted:</strong> ${data.averageShortlisted.toFixed(2)}</div>
+        <div style="margin: 20px 0; background-color: #f0f9ff; padding: 20px; border-radius: 8px;">
+          <h2 style="color: #1e40af; margin-top: 0;">Summary</h2>
+          <div style="margin: 10px 0; font-size: 16px;"><strong>Total Processes:</strong> ${data.totalProcesses}</div>
+          <div style="margin: 10px 0; font-size: 16px;"><strong>Total Shortlisted Reviewers:</strong> ${data.totalShortlisted}</div>
+          <div style="margin: 10px 0; font-size: 16px;"><strong>Average Shortlisted:</strong> ${data.averageShortlisted.toFixed(2)}</div>
         </div>
         
         ${data.customReports && data.customReports.length > 0 ? `
-          <h2>Report Details</h2>
-          <table>
+          <h2 style="color: #1e40af; margin-top: 30px;">Report Details</h2>
+          <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
             <thead>
               <tr>
-                <th>Process</th>
-                <th>Shortlisted</th>
-                <th>Report Date</th>
+                <th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;">Process</th>
+                <th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;"># Reviewers Shortlisted</th>
+                <th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;">Date Shortlisted</th>
               </tr>
             </thead>
             <tbody>
-              ${data.customReports.map((r: any) => `
-                <tr>
-                  <td>${r.processTitle}</td>
-                  <td>${r.shortlistedCount}</td>
-                  <td>${new Date(r.reportDate).toLocaleDateString()}</td>
+              ${data.customReports.map((r: any, idx: number) => `
+                <tr style="${idx % 2 === 1 ? 'background-color: #f9fafb;' : ''}">
+                  <td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${r.processTitle}</td>
+                  <td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${r.shortlistedCount}</td>
+                  <td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${new Date(r.reportDate).toLocaleDateString()}</td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
           
-          <h2 style="margin-top: 30px;">Shortlisted Authors</h2>
+          <h2 style="color: #1e40af; margin-top: 30px; page-break-before: always;">Shortlisted Reviewers</h2>
           ${data.customReports.map((r: any) => {
             if (r.shortlistedAuthors && r.shortlistedAuthors.length > 0) {
               return `
                 <div style="margin-bottom: 30px; page-break-inside: avoid;">
                   <h3 style="color: #1e40af; margin-bottom: 15px;">${r.processTitle}</h3>
-                  <table style="margin-bottom: 20px;">
+                  <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
                     <thead>
                       <tr>
-                        <th>Author Name</th>
-                        <th>Email</th>
-                        <th>Affiliation</th>
+                        <th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;">Author Name</th>
+                        <th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;">Email</th>
+                        <th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;">Affiliation</th>
                       </tr>
                     </thead>
                     <tbody>
-                      ${r.shortlistedAuthors.map((author: any) => `
-                        <tr>
-                          <td>${author.name}</td>
-                          <td>${author.email || '-'}</td>
-                          <td>${author.affiliation || '-'}</td>
+                      ${r.shortlistedAuthors.map((author: any, idx: number) => `
+                        <tr style="${idx % 2 === 1 ? 'background-color: #f9fafb;' : ''}">
+                          <td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${author.name || '-'}</td>
+                          <td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${author.email || '-'}</td>
+                          <td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${author.affiliation || '-'}</td>
                         </tr>
                       `).join('')}
                     </tbody>
@@ -422,27 +622,27 @@ export default function Reports() {
       `;
     } else if (data.type === 'overview') {
       content = `
-        <div class="summary">
-          <h2>Statistics</h2>
-          <div class="summary-item"><strong>Total Processes:</strong> ${data.stats?.totalProcesses || 0}</div>
-          <div class="summary-item"><strong>Active Processes:</strong> ${data.stats?.activeProcesses || 0}</div>
-          <div class="summary-item"><strong>Completed Processes:</strong> ${data.stats?.completedProcesses || 0}</div>
-          <div class="summary-item"><strong>Pending Processes:</strong> ${data.stats?.pendingProcesses || 0}</div>
+        <div style="margin: 20px 0; background-color: #f0f9ff; padding: 20px; border-radius: 8px;">
+          <h2 style="color: #1e40af; margin-top: 0;">Statistics</h2>
+          <div style="margin: 10px 0; font-size: 16px;"><strong>Total Processes:</strong> ${data.stats?.totalProcesses || 0}</div>
+          <div style="margin: 10px 0; font-size: 16px;"><strong>Active Processes:</strong> ${data.stats?.activeProcesses || 0}</div>
+          <div style="margin: 10px 0; font-size: 16px;"><strong>Completed Processes:</strong> ${data.stats?.completedProcesses || 0}</div>
+          <div style="margin: 10px 0; font-size: 16px;"><strong>Pending Processes:</strong> ${data.stats?.pendingProcesses || 0}</div>
         </div>
       `;
     } else if (data.type === 'processes') {
       content = `
         ${data.processData && data.processData.length > 0 ? `
-          <table>
+          <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
             <thead>
               <tr>
-                ${Object.keys(data.processData[0]).map(key => `<th>${key}</th>`).join('')}
+                ${Object.keys(data.processData[0]).map(key => `<th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;">${key}</th>`).join('')}
               </tr>
             </thead>
             <tbody>
-              ${data.processData.map((p: any) => `
-                <tr>
-                  ${Object.values(p).map((val: any) => `<td>${val || '-'}</td>`).join('')}
+              ${data.processData.map((p: any, idx: number) => `
+                <tr style="${idx % 2 === 1 ? 'background-color: #f9fafb;' : ''}">
+                  ${Object.values(p).map((val: any) => `<td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${val || '-'}</td>`).join('')}
                 </tr>
               `).join('')}
             </tbody>
@@ -452,16 +652,16 @@ export default function Reports() {
     } else if (data.type === 'timeline') {
       content = `
         ${data.timelineData && data.timelineData.length > 0 ? `
-          <table>
+          <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
             <thead>
               <tr>
-                ${Object.keys(data.timelineData[0]).map(key => `<th>${key}</th>`).join('')}
+                ${Object.keys(data.timelineData[0]).map(key => `<th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;">${key}</th>`).join('')}
               </tr>
             </thead>
             <tbody>
-              ${data.timelineData.map((t: any) => `
-                <tr>
-                  ${Object.values(t).map((val: any) => `<td>${val || '-'}</td>`).join('')}
+              ${data.timelineData.map((t: any, idx: number) => `
+                <tr style="${idx % 2 === 1 ? 'background-color: #f9fafb;' : ''}">
+                  ${Object.values(t).map((val: any) => `<td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${val || '-'}</td>`).join('')}
                 </tr>
               `).join('')}
             </tbody>
@@ -471,16 +671,16 @@ export default function Reports() {
     } else if (data.type === 'users') {
       content = `
         ${data.userActivityData && data.userActivityData.length > 0 ? `
-          <table>
+          <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
             <thead>
               <tr>
-                ${Object.keys(data.userActivityData[0]).map(key => `<th>${key}</th>`).join('')}
+                ${Object.keys(data.userActivityData[0]).map(key => `<th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;">${key}</th>`).join('')}
               </tr>
             </thead>
             <tbody>
-              ${data.userActivityData.map((u: any) => `
-                <tr>
-                  ${Object.values(u).map((val: any) => `<td>${val || '-'}</td>`).join('')}
+              ${data.userActivityData.map((u: any, idx: number) => `
+                <tr style="${idx % 2 === 1 ? 'background-color: #f9fafb;' : ''}">
+                  ${Object.values(u).map((val: any) => `<td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${val || '-'}</td>`).join('')}
                 </tr>
               `).join('')}
             </tbody>
@@ -490,74 +690,11 @@ export default function Reports() {
     }
     
     return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${title}</title>
-          <meta charset="UTF-8">
-          <style>
-            @media print {
-              @page { margin: 1cm; }
-              body { margin: 0; }
-              table { page-break-inside: auto; }
-              tr { page-break-inside: avoid; page-break-after: auto; }
-            }
-            body { 
-              font-family: Arial, sans-serif; 
-              margin: 40px;
-              color: #333;
-            }
-            h1 { 
-              color: #2563eb;
-              border-bottom: 2px solid #2563eb;
-              padding-bottom: 10px;
-            }
-            h2 {
-              color: #1e40af;
-              margin-top: 30px;
-            }
-            table { 
-              width: 100%; 
-              border-collapse: collapse; 
-              margin: 20px 0;
-              font-size: 14px;
-            }
-            th, td { 
-              border: 1px solid #ddd; 
-              padding: 10px; 
-              text-align: left;
-            }
-            th { 
-              background-color: #f3f4f6;
-              font-weight: 600;
-              color: #1f2937;
-            }
-            tr:nth-child(even) {
-              background-color: #f9fafb;
-            }
-            .summary { 
-              margin: 20px 0;
-              background-color: #f0f9ff;
-              padding: 20px;
-              border-radius: 8px;
-            }
-            .summary-item { 
-              margin: 10px 0;
-              font-size: 16px;
-            }
-            .meta {
-              color: #6b7280;
-              font-size: 14px;
-              margin-bottom: 20px;
-            }
-          </style>
-        </head>
-        <body>
-          <h1>${title}</h1>
-          <p class="meta">Generated: ${new Date().toLocaleString()}</p>
-          ${content}
-        </body>
-      </html>
+      <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+        <h1 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">${title}</h1>
+        <p style="color: #6b7280; font-size: 14px; margin-bottom: 20px;">Generated: ${new Date().toLocaleString()}</p>
+        ${content}
+      </div>
     `;
   };
 
@@ -805,7 +942,7 @@ export default function Reports() {
             
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Total Shortlisted</CardDescription>
+                <CardDescription>Total Shortlisted Reviewers</CardDescription>
               </CardHeader>
               <CardContent>
                 {customReportsLoading ? (
