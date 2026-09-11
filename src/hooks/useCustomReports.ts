@@ -19,6 +19,11 @@ export interface CustomReportData {
     email?: string;
     affiliation?: string;
   }>;
+  recommendedAuthors?: Array<{
+    name: string;
+    email?: string;
+    affiliation?: string;
+  }>;
   reportDate: string;
   createdAt: string;
 }

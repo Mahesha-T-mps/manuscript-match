@@ -53,16 +53,41 @@ export class ShortlistService {
         name: data.name,
       });
 
-      // Add authors to shortlist by creating new SHORTLISTED entries
-      // Keep existing CANDIDATE entries intact for reporting
-      const shortlistedEntries = data.authorIds.map(authorId => ({
-        processId: data.processId,
-        authorId,
-        role: AuthorRole.SHORTLISTED,
-      }));
+      // Check for existing SHORTLISTED entries to avoid duplicates
+      const existingShortlisted = await this.processAuthorRepository.findByProcessAndRole(
+        data.processId,
+        AuthorRole.SHORTLISTED
+      );
+      
+      const existingShortlistedIds = new Set(existingShortlisted.map(pa => pa.authorId));
+      
+      // Filter out already shortlisted authors
+      const newAuthorIds = data.authorIds.filter(authorId => !existingShortlistedIds.has(authorId));
+      const duplicateAuthorIds = data.authorIds.filter(authorId => existingShortlistedIds.has(authorId));
+      
+      console.log(`[ShortlistService] Processing ${data.authorIds.length} authors for shortlist`);
+      console.log(`[ShortlistService] - Already shortlisted (skipping): ${duplicateAuthorIds.length}`);
+      console.log(`[ShortlistService] - New unique reviewers to add: ${newAuthorIds.length}`);
+      
+      if (duplicateAuthorIds.length > 0) {
+        console.log(`[ShortlistService] Duplicate authors (already shortlisted):`, duplicateAuthorIds);
+      }
 
-      // Create SHORTLISTED entries (this keeps CANDIDATE entries intact)
-      await this.processAuthorRepository.bulkCreate(shortlistedEntries);
+      // Only create entries for new authors
+      if (newAuthorIds.length > 0) {
+        const shortlistedEntries = newAuthorIds.map(authorId => ({
+          processId: data.processId,
+          authorId,
+          role: AuthorRole.SHORTLISTED,
+        }));
+
+        // Create SHORTLISTED entries (this keeps CANDIDATE entries intact)
+        await this.processAuthorRepository.bulkCreate(shortlistedEntries);
+        
+        console.log(`[ShortlistService] ✅ Successfully added ${newAuthorIds.length} new reviewers to shortlist`);
+      } else {
+        console.log(`[ShortlistService] ℹ️  No new reviewers to add - all selected reviewers are already shortlisted`);
+      }
 
       return {
         id: shortlist.id,
@@ -70,7 +95,13 @@ export class ShortlistService {
         name: shortlist.name,
         authors,
         createdAt: shortlist.createdAt,
-      };
+        // Add metadata about duplicates for informational purposes
+        metadata: {
+          totalSelected: data.authorIds.length,
+          newlyAdded: newAuthorIds.length,
+          alreadyShortlisted: duplicateAuthorIds.length
+        }
+      } as any; // Type assertion for metadata
     } catch (error) {
       throw new Error(`Failed to create shortlist: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }

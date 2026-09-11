@@ -70,6 +70,7 @@ router.post('/:id/validate', processController.validateAuthors);
 router.get('/:id/validation/results', processController.getValidationResults);
 
 // Recommendation and filtering routes
+router.post('/:id/recommendations', processController.saveRecommendations);
 router.get('/:id/candidates', processController.getCandidates);
 router.get('/:id/recommendations', processController.getRecommendations);
 router.get('/:id/recommendations/filters', processController.getRecommendationFilters);

@@ -2772,6 +2772,148 @@ export class ProcessController {
     }
   };
 
+  // POST /api/processes/:id/recommendations - Save recommended reviewers
+  saveRecommendations = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const processId = req.params['id'] as string;
+      
+      const { error: idError } = uuidSchema.validate(processId);
+      if (idError) {
+        res.status(400).json({
+          success: false,
+          error: {
+            type: 'VALIDATION_ERROR',
+            message: 'Invalid process ID format',
+            requestId: req.requestId || 'unknown',
+            timestamp: new Date().toISOString(),
+          },
+        });
+        return;
+      }
+
+      const saveRecommendationsSchema = Joi.object({
+        reviewers: Joi.array().items(Joi.object({
+          name: Joi.string().required(),
+          email: Joi.string().email().required(),
+          affiliation: Joi.string().allow('').optional(),
+          city: Joi.string().allow('').optional(),
+          country: Joi.string().allow('').optional(),
+          publicationCount: Joi.number().default(0),
+          clinicalTrials: Joi.number().default(0),
+          retractions: Joi.number().default(0)
+        })).required().min(1)
+      });
+
+      const { error, value } = saveRecommendationsSchema.validate(req.body);
+      if (error) {
+        res.status(400).json({
+          success: false,
+          error: {
+            type: 'VALIDATION_ERROR',
+            message: error.details[0]?.message || 'Validation error',
+            requestId: req.requestId || 'unknown',
+            timestamp: new Date().toISOString(),
+          },
+        });
+        return;
+      }
+
+      const userId = req.user!.id;
+      
+      // Verify process ownership
+      const process = await this.processService.getProcessById(processId, userId);
+      if (!process) {
+        res.status(404).json({
+          success: false,
+          error: {
+            type: 'NOT_FOUND',
+            message: 'Process not found',
+            requestId: req.requestId || 'unknown',
+            timestamp: new Date().toISOString(),
+          },
+        });
+        return;
+      }
+
+      let savedCount = 0;
+
+      // Save all recommended reviewers as CANDIDATE
+      for (const reviewer of value.reviewers) {
+        try {
+          // Find or create author
+          let author = await prisma.author.findFirst({
+            where: { email: reviewer.email }
+          });
+
+          if (!author) {
+            author = await prisma.author.create({
+              data: {
+                name: reviewer.name,
+                email: reviewer.email,
+                affiliation: reviewer.affiliation,
+                publicationCount: reviewer.publicationCount || 0,
+                clinicalTrials: reviewer.clinicalTrials || 0,
+                retractions: reviewer.retractions || 0
+              }
+            });
+            console.log(`[saveRecommendations] Created new author: ${author.name}`);
+          }
+
+          // Check if CANDIDATE link already exists
+          const existingLink = await prisma.processAuthor.findFirst({
+            where: {
+              processId,
+              authorId: author.id,
+              role: 'CANDIDATE'
+            }
+          });
+
+          if (!existingLink) {
+            await prisma.processAuthor.create({
+              data: {
+                processId,
+                authorId: author.id,
+                role: 'CANDIDATE'
+              }
+            });
+            savedCount++;
+            console.log(`[saveRecommendations] Linked ${author.name} as CANDIDATE`);
+          } else {
+            console.log(`[saveRecommendations] ${author.name} already linked as CANDIDATE`);
+          }
+        } catch (authorError) {
+          console.error(`[saveRecommendations] Error processing ${reviewer.email}:`, authorError);
+          // Continue with other reviewers
+        }
+      }
+
+      console.log(`[saveRecommendations] Saved ${savedCount} recommended reviewers for process ${processId}`);
+
+      const response: ApiResponse = {
+        success: true,
+        data: {
+          message: `Saved ${savedCount} recommended reviewers`,
+          processId,
+          totalReviewers: value.reviewers.length,
+          savedCount,
+        },
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      console.error('Error saving recommendations:', error);
+      res.status(500).json({
+        success: false,
+        error: {
+          type: 'INTERNAL_ERROR',
+          message: 'Failed to save recommendations',
+          requestId: req.requestId || 'unknown',
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+  };
+
   // POST /api/processes/:id/shortlist - Create shortlist
   createShortlist = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -2934,9 +3076,17 @@ export class ProcessController {
         console.error('Error generating report after shortlist creation:', reportError);
       }
 
+      // Prepare response with duplicate information
+      const responseData: any = {
+        ...shortlist,
+        message: (shortlist as any).metadata?.alreadyShortlisted > 0
+          ? `Shortlist created. ${(shortlist as any).metadata.newlyAdded} new reviewer(s) added. ${(shortlist as any).metadata.alreadyShortlisted} reviewer(s) were already shortlisted and skipped.`
+          : `Shortlist created successfully with ${(shortlist as any).metadata?.newlyAdded || authorIds.length} reviewer(s).`
+      };
+
       const response: ApiResponse = {
         success: true,
-        data: shortlist,
+        data: responseData,
       };
 
       res.status(201).json(response);

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -215,6 +215,49 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
       coi_condition: reviewer.coi_condition || 0
     };
   }) : rawReviewers;
+  
+  // Save all recommended reviewers to backend when they're loaded
+  useEffect(() => {
+    if (allReviewers.length > 0 && processId) {
+      const saveRecommendations = async () => {
+        try {
+          console.log(`[ReviewerResults] Saving ${allReviewers.length} recommendations to backend`);
+          
+          const reviewersData = allReviewers.map(r => ({
+            name: r.reviewer,
+            email: r.email,
+            affiliation: r.aff,
+            city: r.city,
+            country: r.country,
+            publicationCount: r.Total_Publications || 0,
+            clinicalTrials: r.Clinical_Trials_no || 0,
+            retractions: r.Retracted_Pubs_no || 0
+          }));
+
+          const response = await fetch(`${config.apiBaseUrl}/api/processes/${processId}/recommendations`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('scholarfinder_token')}`
+            },
+            body: JSON.stringify({ reviewers: reviewersData })
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            console.log(`[ReviewerResults] ✅ Saved ${result.data.savedCount} recommendations as CANDIDATE`);
+          } else {
+            console.warn('[ReviewerResults] Failed to save recommendations:', response.statusText);
+          }
+        } catch (error) {
+          console.error('[ReviewerResults] Error saving recommendations:', error);
+        }
+      };
+
+      // Only save once when recommendations first load
+      saveRecommendations();
+    }
+  }, [allReviewers.length, processId]); // Only run when count changes or processId changes
   
   // Debug logging for reviewer data
   console.log('🔍 [DEBUG] Reviewer data:', {
@@ -676,7 +719,7 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
       }
 
       // Create shortlist with reviewer emails as IDs
-      await createShortlistMutation.mutateAsync({
+      const result = await createShortlistMutation.mutateAsync({
         processId,
         data: {
           name: shortlistName,
@@ -699,7 +742,12 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
         })
       );
 
-      toast.success(`Shortlist "${shortlistName}" created with ${selectedReviewers.length} reviewers`);
+      // Show appropriate success message based on duplicates
+      if (result.message) {
+        toast.success(result.message);
+      } else {
+        toast.success(`Shortlist "${shortlistName}" created with ${selectedReviewers.length} reviewers`);
+      }
       
       // Reset state
       setShowShortlistDialog(false);

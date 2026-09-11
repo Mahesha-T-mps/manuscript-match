@@ -28,6 +28,11 @@ export interface CustomReportData {
     email?: string;
     affiliation?: string;
   }>;
+  recommendedAuthors?: Array<{
+    name: string;
+    email?: string;
+    affiliation?: string;
+  }>;
   reportDate: string;
 }
 
@@ -62,21 +67,22 @@ export function CustomReportsTable({ reports }: CustomReportsTableProps) {
         <TableHeader>
           <TableRow>
             <TableHead className="w-[50px]"></TableHead>
-            <TableHead>Process Title</TableHead>
-            <TableHead className="text-right"># Reviewers Shortlisted</TableHead>
-            <TableHead>Date Shortlisted</TableHead>
+            <TableHead className="min-w-[200px]">Process Title</TableHead>
+            <TableHead className="text-center w-[180px]"># Recommended Reviewers</TableHead>
+            <TableHead className="text-center w-[180px]"># Reviewers Shortlisted</TableHead>
+            <TableHead className="text-center w-[150px]">Date Shortlisted</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {reports.map((report) => {
             const isExpanded = expandedRows.has(report.id);
-            const hasAuthors = report.shortlistedAuthors && report.shortlistedAuthors.length > 0;
+            const hasShortlistedAuthors = report.shortlistedAuthors && report.shortlistedAuthors.length > 0;
 
             return (
               <>
                 <TableRow key={report.id} className="cursor-pointer hover:bg-muted/50">
                   <TableCell>
-                    {hasAuthors && (
+                    {hasShortlistedAuthors && (
                       <Button
                         variant="ghost"
                         size="sm"
@@ -91,25 +97,30 @@ export function CustomReportsTable({ reports }: CustomReportsTableProps) {
                       </Button>
                     )}
                   </TableCell>
-                  <TableCell className="font-medium max-w-md" onClick={() => hasAuthors && toggleRow(report.id)}>
+                  <TableCell className="font-medium max-w-md" onClick={() => hasShortlistedAuthors && toggleRow(report.id)}>
                     <div className="truncate" title={report.processTitle}>
                       {report.processTitle}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right" onClick={() => hasAuthors && toggleRow(report.id)}>
+                  <TableCell className="text-center" onClick={() => hasShortlistedAuthors && toggleRow(report.id)}>
+                    <Badge variant="outline">
+                      {report.reviewersCount}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-center" onClick={() => hasShortlistedAuthors && toggleRow(report.id)}>
                     <Badge variant="default">
                       {report.shortlistedCount}
                     </Badge>
                   </TableCell>
-                  <TableCell onClick={() => hasAuthors && toggleRow(report.id)}>
+                  <TableCell className="text-center" onClick={() => hasShortlistedAuthors && toggleRow(report.id)}>
                     {format(new Date(report.reportDate), 'MMM dd, yyyy')}
                   </TableCell>
                 </TableRow>
                 
-                {/* Expanded Row - Shortlisted Authors */}
-                {isExpanded && hasAuthors && (
+                {/* Expanded Row - Shortlisted Authors Only */}
+                {isExpanded && hasShortlistedAuthors && (
                   <TableRow key={`${report.id}-expanded`}>
-                    <TableCell colSpan={4} className="bg-muted/30">
+                    <TableCell colSpan={5} className="bg-muted/30">
                       <div className="py-4 px-6">
                         <h4 className="text-sm font-semibold mb-3 text-muted-foreground">
                           Shortlisted Authors ({report.shortlistedAuthors!.length})

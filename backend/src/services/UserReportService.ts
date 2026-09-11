@@ -13,6 +13,11 @@ export interface UserReportData {
     email?: string;
     affiliation?: string;
   }>;
+  recommendedAuthors?: Array<{
+    name: string;
+    email?: string;
+    affiliation?: string;
+  }>;
   reportDate: Date;
   createdAt: Date;
 }
@@ -25,6 +30,11 @@ export interface CreateUserReportInput {
   shortlistedCount: number;
   reviewersCount: number;
   shortlistedAuthors?: Array<{
+    name: string;
+    email?: string;
+    affiliation?: string;
+  }>;
+  recommendedAuthors?: Array<{
     name: string;
     email?: string;
     affiliation?: string;
@@ -74,6 +84,7 @@ export class UserReportService {
           shortlistedCount: input.shortlistedCount,
           reviewersCount: input.reviewersCount,
           shortlistedAuthors: input.shortlistedAuthors ? JSON.stringify(input.shortlistedAuthors) : null,
+          recommendedAuthors: input.recommendedAuthors ? JSON.stringify(input.recommendedAuthors) : null,
           reportDate,
         },
       });
@@ -90,6 +101,7 @@ export class UserReportService {
           shortlistedCount: input.shortlistedCount,
           reviewersCount: input.reviewersCount,
           shortlistedAuthors: input.shortlistedAuthors ? JSON.stringify(input.shortlistedAuthors) : null,
+          recommendedAuthors: input.recommendedAuthors ? JSON.stringify(input.recommendedAuthors) : null,
           reportDate,
         },
       });
@@ -221,10 +233,9 @@ export class UserReportService {
       pa => pa.role === 'SHORTLISTED'
     ).length;
 
-    // Total reviewers = candidates OR shortlisted if no candidates exist
-    // This handles cases where authors were added directly to shortlist
-    // or where CANDIDATE entries were removed after shortlisting
-    const reviewersCount = candidateCount > 0 ? candidateCount : shortlistedCount;
+    // Recommended Reviewers count = only CANDIDATE role authors
+    // This represents authors that were recommended by the system
+    const reviewersCount = candidateCount;
 
     // For backwards compatibility
     const recommendationsCount = reviewersCount;
@@ -262,13 +273,37 @@ export class UserReportService {
         };
       });
 
+    // Get recommended author details (CANDIDATE role)
+    const recommendedAuthorsData = process.processAuthors
+      .filter(pa => pa.role === 'CANDIDATE')
+      .map(pa => {
+        // Try to get affiliation from metadata first, then from author field
+        const authorMeta = authorsMetadata.find(
+          a => a.email === pa.author.email || a.name === pa.author.name
+        );
+        
+        const affiliation = pa.author.affiliation ||
+                           authorMeta?.affiliations?.[0]?.institutionName ||
+                           pa.author.affiliations?.[0]?.affiliation?.institutionName;
+        
+        return {
+          name: pa.author.name,
+          email: pa.author.email || undefined,
+          affiliation: affiliation || undefined,
+        };
+      });
+
     console.log(`[generateReportForProcess] Process ${processId}:`);
     console.log(`  - CANDIDATE role: ${candidateCount}`);
     console.log(`  - SHORTLISTED role: ${shortlistedCount}`);
     console.log(`  - Total Reviewers (reported): ${reviewersCount}`);
     console.log(`  - Shortlisted authors details: ${shortlistedAuthorsData.length} authors`);
+    console.log(`  - Recommended authors details: ${recommendedAuthorsData.length} authors`);
     if (shortlistedAuthorsData.length > 0) {
-      console.log(`  - Sample author:`, JSON.stringify(shortlistedAuthorsData[0]));
+      console.log(`  - Sample shortlisted author:`, JSON.stringify(shortlistedAuthorsData[0]));
+    }
+    if (recommendedAuthorsData.length > 0) {
+      console.log(`  - Sample recommended author:`, JSON.stringify(recommendedAuthorsData[0]));
     }
 
     // Create or update the report
@@ -280,6 +315,7 @@ export class UserReportService {
       shortlistedCount,
       reviewersCount,
       shortlistedAuthors: shortlistedAuthorsData,
+      recommendedAuthors: recommendedAuthorsData,
     });
 
     return report;
@@ -344,16 +380,30 @@ export class UserReportService {
 
   private mapToUserReportData(report: any): UserReportData {
     let shortlistedAuthors;
+    let recommendedAuthors;
+    
     try {
       if (report.shortlistedAuthors) {
         shortlistedAuthors = typeof report.shortlistedAuthors === 'string'
           ? JSON.parse(report.shortlistedAuthors)
           : report.shortlistedAuthors;
-        console.log(`[mapToUserReportData] Parsed ${shortlistedAuthors?.length || 0} authors for report ${report.id}`);
+        console.log(`[mapToUserReportData] Parsed ${shortlistedAuthors?.length || 0} shortlisted authors for report ${report.id}`);
       }
     } catch (error) {
       console.error('Error parsing shortlistedAuthors:', error);
       shortlistedAuthors = undefined;
+    }
+
+    try {
+      if (report.recommendedAuthors) {
+        recommendedAuthors = typeof report.recommendedAuthors === 'string'
+          ? JSON.parse(report.recommendedAuthors)
+          : report.recommendedAuthors;
+        console.log(`[mapToUserReportData] Parsed ${recommendedAuthors?.length || 0} recommended authors for report ${report.id}`);
+      }
+    } catch (error) {
+      console.error('Error parsing recommendedAuthors:', error);
+      recommendedAuthors = undefined;
     }
 
     return {
@@ -365,6 +415,7 @@ export class UserReportService {
       shortlistedCount: report.shortlistedCount,
       reviewersCount: report.reviewersCount || 0,
       shortlistedAuthors,
+      recommendedAuthors,
       reportDate: report.reportDate,
       createdAt: report.createdAt,
     };

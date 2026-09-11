@@ -103,6 +103,12 @@ export default function Reports() {
         description: `Preparing ${format.toUpperCase()} export...`,
       });
 
+      // Helper function to get user email by userId
+      const getUserEmail = (userId: string): string => {
+        const user = users?.find(u => u.id === userId);
+        return user?.email || '';
+      };
+
       // Export different data based on active tab
       let exportData: any;
       let exportTitle: string;
@@ -123,9 +129,12 @@ export default function Reports() {
             type: 'custom',
             customReports,
             totalProcesses,
+            totalReviewers,
             totalShortlisted,
             averageShortlisted,
-            exportDate: new Date().toISOString()
+            selectionRate: totalReviewers > 0 ? ((totalShortlisted / totalReviewers) * 100).toFixed(1) : '0',
+            exportDate: new Date().toISOString(),
+            getUserEmail, // Pass helper function to export functions
           };
           break;
         case 'processes':
@@ -169,17 +178,20 @@ export default function Reports() {
           const summaryData = [
             ['Metric', 'Value'],
             ['Total Processes', exportData.totalProcesses],
+            ['Total Recommended Reviewers', exportData.totalReviewers],
             ['Total Shortlisted Reviewers', exportData.totalShortlisted],
-            ['Average Shortlisted', exportData.averageShortlisted.toFixed(2)]
+            ['Selection Rate', `${exportData.selectionRate}%`]
           ];
           const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
           XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary');
           
           if (exportData.customReports && exportData.customReports.length > 0) {
             const reportsData = [
-              ['Process', '# Reviewers Shortlisted', 'Date Shortlisted'],
+              ['Process', 'User Email', '# Recommended Reviewers', '# Reviewers Shortlisted', 'Date Shortlisted'],
               ...exportData.customReports.map(r => [
                 r.processTitle,
+                exportData.getUserEmail(r.userId),
+                r.reviewersCount || 0,
                 r.shortlistedCount,
                 new Date(r.reportDate).toLocaleDateString()
               ])
@@ -188,12 +200,13 @@ export default function Reports() {
             XLSX.utils.book_append_sheet(wb, reportsWs, 'Report Details');
             
             // Add Shortlisted Authors sheet - always include headers
-            const authorsData: any[][] = [['Process', 'Author Name', 'Email', 'Affiliation']];
+            const authorsData: any[][] = [['Process', 'User Email', 'Author Name', 'Email', 'Affiliation']];
             exportData.customReports.forEach(r => {
               if (r.shortlistedAuthors && r.shortlistedAuthors.length > 0) {
                 r.shortlistedAuthors.forEach(author => {
                   authorsData.push([
                     r.processTitle,
+                    exportData.getUserEmail(r.userId),
                     author.name || '-',
                     author.email || '-',
                     author.affiliation || '-'
@@ -241,7 +254,8 @@ export default function Reports() {
           const timelineWs = XLSX.utils.aoa_to_sheet([timelineHeaders, ...timelineRows]);
           XLSX.utils.book_append_sheet(wb, timelineWs, 'Timeline');
         } else if (exportData.type === 'users' && userActivityData && userActivityData.length > 0) {
-          const userHeaders = Object.keys(userActivityData[0]);
+          // Exclude userId from export
+          const userHeaders = Object.keys(userActivityData[0]).filter(key => key !== 'userId');
           const userRows = userActivityData.map(u => userHeaders.map(h => u[h]));
           const userWs = XLSX.utils.aoa_to_sheet([userHeaders, ...userRows]);
           XLSX.utils.book_append_sheet(wb, userWs, 'User Activity');
@@ -276,9 +290,11 @@ export default function Reports() {
           doc.setTextColor(51, 51, 51);
           doc.text(`Total Processes: ${exportData.totalProcesses}`, 20, yPos);
           yPos += 7;
+          doc.text(`Total Recommended Reviewers: ${exportData.totalReviewers}`, 20, yPos);
+          yPos += 7;
           doc.text(`Total Shortlisted Reviewers: ${exportData.totalShortlisted}`, 20, yPos);
           yPos += 7;
-          doc.text(`Average Shortlisted: ${exportData.averageShortlisted.toFixed(2)}`, 20, yPos);
+          doc.text(`Selection Rate: ${exportData.selectionRate}%`, 20, yPos);
           yPos += 15;
           
           if (exportData.customReports && exportData.customReports.length > 0) {
@@ -290,13 +306,15 @@ export default function Reports() {
             
             const reportDetailsData = exportData.customReports.map((r: any) => [
               r.processTitle,
+              exportData.getUserEmail(r.userId),
+              (r.reviewersCount || 0).toString(),
               r.shortlistedCount.toString(),
               new Date(r.reportDate).toLocaleDateString()
             ]);
             
             autoTable(doc, {
               startY: yPos,
-              head: [['Process', '# Reviewers Shortlisted', 'Date Shortlisted']],
+              head: [['Process', 'User Email', '# Recommended Reviewers', '# Reviewers Shortlisted', 'Date Shortlisted']],
               body: reportDetailsData,
               theme: 'grid',
               headStyles: { fillColor: [30, 64, 175], textColor: 255 },
@@ -323,6 +341,7 @@ export default function Reports() {
                 r.shortlistedAuthors.forEach((author: any) => {
                   authorsData.push([
                     r.processTitle,
+                    exportData.getUserEmail(r.userId),
                     author.name || '-',
                     author.email || '-',
                     author.affiliation || '-'
@@ -334,7 +353,7 @@ export default function Reports() {
             if (authorsData.length > 0) {
               autoTable(doc, {
                 startY: yPos,
-                head: [['Process', 'Author Name', 'Email', 'Affiliation']],
+                head: [['Process', 'User Email', 'Author Name', 'Email', 'Affiliation']],
                 body: authorsData,
                 theme: 'grid',
                 headStyles: { fillColor: [30, 64, 175], textColor: 255 },
@@ -424,7 +443,8 @@ export default function Reports() {
         } else if (exportData.type === 'users') {
           // User activity table
           if (exportData.userActivityData && exportData.userActivityData.length > 0) {
-            const headers = Object.keys(exportData.userActivityData[0]);
+            // Exclude userId from export
+            const headers = Object.keys(exportData.userActivityData[0]).filter(h => h !== 'userId');
             const rows = exportData.userActivityData.map((u: any) => 
               headers.map(h => String(u[h] || '-'))
             );
@@ -475,23 +495,24 @@ export default function Reports() {
       csv += 'Summary\n';
       csv += 'Metric,Value\n';
       csv += `Total Processes,${data.totalProcesses}\n`;
+      csv += `Total Recommended Reviewers,${data.totalReviewers}\n`;
       csv += `Total Shortlisted Reviewers,${data.totalShortlisted}\n`;
-      csv += `Average Shortlisted,${data.averageShortlisted.toFixed(2)}\n\n`;
+      csv += `Selection Rate,${data.selectionRate}%\n\n`;
       
       if (data.customReports && data.customReports.length > 0) {
         csv += 'Report Details\n';
-        csv += 'Process,# Reviewers Shortlisted,Date Shortlisted\n';
+        csv += 'Process,User Email,# Recommended Reviewers,# Reviewers Shortlisted,Date Shortlisted\n';
         data.customReports.forEach((r: any) => {
-          csv += `"${r.processTitle}",${r.shortlistedCount},${new Date(r.reportDate).toLocaleDateString()}\n`;
+          csv += `"${r.processTitle}","${data.getUserEmail(r.userId)}",${r.reviewersCount || 0},${r.shortlistedCount},${new Date(r.reportDate).toLocaleDateString()}\n`;
         });
         
         // Add Shortlisted Authors section
         csv += '\n\nShortlisted Reviewers\n';
-        csv += 'Process,Author Name,Email,Affiliation\n';
+        csv += 'Process,User Email,Author Name,Email,Affiliation\n';
         data.customReports.forEach((r: any) => {
           if (r.shortlistedAuthors && r.shortlistedAuthors.length > 0) {
             r.shortlistedAuthors.forEach((author: any) => {
-              csv += `"${r.processTitle}","${author.name}","${author.email || '-'}","${author.affiliation || '-'}"\n`;
+              csv += `"${r.processTitle}","${data.getUserEmail(r.userId)}","${author.name}","${author.email || '-'}","${author.affiliation || '-'}"\n`;
             });
           }
         });
@@ -542,7 +563,8 @@ export default function Reports() {
       }
     } else if (data.type === 'users') {
       if (data.userActivityData && data.userActivityData.length > 0) {
-        const headers = Object.keys(data.userActivityData[0]);
+        // Exclude userId from export
+        const headers = Object.keys(data.userActivityData[0]).filter(h => h !== 'userId');
         csv += headers.join(',') + '\n';
         data.userActivityData.forEach((u: any) => {
           csv += headers.map(h => `"${u[h] || ''}"`).join(',') + '\n';
@@ -564,8 +586,9 @@ export default function Reports() {
         <div style="margin: 20px 0; background-color: #f0f9ff; padding: 20px; border-radius: 8px;">
           <h2 style="color: #1e40af; margin-top: 0;">Summary</h2>
           <div style="margin: 10px 0; font-size: 16px;"><strong>Total Processes:</strong> ${data.totalProcesses}</div>
+          <div style="margin: 10px 0; font-size: 16px;"><strong>Total Recommended Reviewers:</strong> ${data.totalReviewers}</div>
           <div style="margin: 10px 0; font-size: 16px;"><strong>Total Shortlisted Reviewers:</strong> ${data.totalShortlisted}</div>
-          <div style="margin: 10px 0; font-size: 16px;"><strong>Average Shortlisted:</strong> ${data.averageShortlisted.toFixed(2)}</div>
+          <div style="margin: 10px 0; font-size: 16px;"><strong>Selection Rate:</strong> ${data.selectionRate}%</div>
         </div>
         
         ${data.customReports && data.customReports.length > 0 ? `
@@ -574,6 +597,8 @@ export default function Reports() {
             <thead>
               <tr>
                 <th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;">Process</th>
+                <th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;">User Email</th>
+                <th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;"># Recommended Reviewers</th>
                 <th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;"># Reviewers Shortlisted</th>
                 <th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;">Date Shortlisted</th>
               </tr>
@@ -582,6 +607,8 @@ export default function Reports() {
               ${data.customReports.map((r: any, idx: number) => `
                 <tr style="${idx % 2 === 1 ? 'background-color: #f9fafb;' : ''}">
                   <td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${r.processTitle}</td>
+                  <td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${data.getUserEmail(r.userId)}</td>
+                  <td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${r.reviewersCount || 0}</td>
                   <td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${r.shortlistedCount}</td>
                   <td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${new Date(r.reportDate).toLocaleDateString()}</td>
                 </tr>
@@ -595,6 +622,7 @@ export default function Reports() {
               return `
                 <div style="margin-bottom: 30px; page-break-inside: avoid;">
                   <h3 style="color: #1e40af; margin-bottom: 15px;">${r.processTitle}</h3>
+                  <p style="color: #6b7280; margin-bottom: 10px;"><strong>User Email:</strong> ${data.getUserEmail(r.userId)}</p>
                   <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
                     <thead>
                       <tr>
@@ -674,15 +702,19 @@ export default function Reports() {
           <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
             <thead>
               <tr>
-                ${Object.keys(data.userActivityData[0]).map(key => `<th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;">${key}</th>`).join('')}
+                ${Object.keys(data.userActivityData[0]).filter(key => key !== 'userId').map(key => `<th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;">${key}</th>`).join('')}
               </tr>
             </thead>
             <tbody>
-              ${data.userActivityData.map((u: any, idx: number) => `
-                <tr style="${idx % 2 === 1 ? 'background-color: #f9fafb;' : ''}">
-                  ${Object.values(u).map((val: any) => `<td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${val || '-'}</td>`).join('')}
-                </tr>
-              `).join('')}
+              ${data.userActivityData.map((u: any, idx: number) => {
+                // Exclude userId from values
+                const filteredEntries = Object.entries(u).filter(([key]) => key !== 'userId');
+                return `
+                  <tr style="${idx % 2 === 1 ? 'background-color: #f9fafb;' : ''}">
+                    ${filteredEntries.map(([, val]) => `<td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${val || '-'}</td>`).join('')}
+                  </tr>
+                `;
+              }).join('')}
             </tbody>
           </table>
         ` : '<p>No user activity data available</p>'}
@@ -926,7 +958,7 @@ export default function Reports() {
         {/* Custom Reports Tab */}
         <TabsContent value="custom" className="space-y-4">
           {/* Summary Cards */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription>Total Processes</CardDescription>
@@ -936,6 +968,19 @@ export default function Reports() {
                   <Skeleton className="h-8 w-16" />
                 ) : (
                   <div className="text-2xl font-bold">{totalProcesses}</div>
+                )}
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Total Recommended Reviewers</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {customReportsLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <div className="text-2xl font-bold">{totalReviewers}</div>
                 )}
               </CardContent>
             </Card>
@@ -955,15 +1000,22 @@ export default function Reports() {
             
             <Card>
               <CardHeader className="pb-2">
-                <CardDescription>Avg. Shortlisted per Process</CardDescription>
+                <CardDescription>Selection Rate</CardDescription>
               </CardHeader>
               <CardContent>
                 {customReportsLoading ? (
                   <Skeleton className="h-8 w-16" />
                 ) : (
                   <div className="text-2xl font-bold">
-                    {averageShortlisted.toFixed(1)}
+                    {totalReviewers > 0 
+                      ? `${((totalShortlisted / totalReviewers) * 100).toFixed(1)}%`
+                      : '0%'}
                   </div>
+                )}
+                {!customReportsLoading && totalReviewers > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {totalShortlisted} of {totalReviewers} recommended
+                  </p>
                 )}
               </CardContent>
             </Card>
