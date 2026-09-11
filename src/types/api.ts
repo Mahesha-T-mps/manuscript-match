@@ -189,6 +189,7 @@ export interface Author {
   expertise: string[];
   database: string;
   matchScore: number;
+  Last_Review_Date?: string;
 }
 
 export interface Affiliation {

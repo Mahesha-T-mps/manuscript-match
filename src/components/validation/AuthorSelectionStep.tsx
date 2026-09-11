@@ -18,6 +18,7 @@ interface Author {
   aff: string;
   city?: string;
   country?: string;
+  Last_Review_Date?: string;
 }
 
 interface AuthorSelectionStepProps {
@@ -60,7 +61,8 @@ export const AuthorSelectionStep: React.FC<AuthorSelectionStepProps> = ({
               email: reviewer.email || '',
               aff: reviewer.aff || reviewer.affiliation || '',
               city: reviewer.city || '',
-              country: reviewer.country || ''
+              country: reviewer.country || '',
+              Last_Review_Date: reviewer.Last_Review_Date || reviewer.last_review_date || ''
             }));
           } else if (results.data?.author_email_affiliation_preview && Array.isArray(results.data.author_email_affiliation_preview)) {
             authorList = results.data.author_email_affiliation_preview;

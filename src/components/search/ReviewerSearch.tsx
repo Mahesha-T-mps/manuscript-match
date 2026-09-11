@@ -35,6 +35,7 @@ interface SearchResult {
   aff: string;
   city?: string;
   country?: string;
+  Last_Review_Date?: string;
 }
 
 export const ReviewerSearch = ({ 
@@ -200,7 +201,8 @@ export const ReviewerSearch = ({
           email: reviewer.email || '',
           aff: reviewer.aff || reviewer.affiliation || '',
           city: reviewer.city || '',
-          country: reviewer.country || ''
+          country: reviewer.country || '',
+          Last_Review_Date: reviewer.Last_Review_Date || reviewer.last_review_date || ''
         }));
       } else if (results.data?.author_email_affiliation_preview && Array.isArray(results.data.author_email_affiliation_preview)) {
         return results.data.author_email_affiliation_preview;
@@ -326,7 +328,8 @@ export const ReviewerSearch = ({
                 email: reviewer.email || '',
                 aff: reviewer.aff || reviewer.affiliation || '',
                 city: reviewer.city || '',
-                country: reviewer.country || ''
+                country: reviewer.country || '',
+                Last_Review_Date: reviewer.Last_Review_Date || reviewer.last_review_date || ''
               }));
               setSearchResults(transformedResults);
               setSearchPerformedInSession(true); // Mark as performed to show results
@@ -394,7 +397,8 @@ export const ReviewerSearch = ({
               email: reviewer.email || '',
               aff: reviewer.aff || reviewer.affiliation || '',
               city: reviewer.city || '',
-              country: reviewer.country || ''
+              country: reviewer.country || '',
+              Last_Review_Date: reviewer.Last_Review_Date || reviewer.last_review_date || ''
             }));
             setSearchResults(transformedResults);
             setSearchPerformedInSession(true);
@@ -683,7 +687,8 @@ export const ReviewerSearch = ({
           email: reviewer.email || '',
           aff: reviewer.aff || reviewer.affiliation || '',
           city: reviewer.city || '',
-          country: reviewer.country || ''
+          country: reviewer.country || '',
+          Last_Review_Date: reviewer.Last_Review_Date || reviewer.last_review_date || ''
         }));
         setSearchResults(transformedResults);
         
@@ -998,11 +1003,11 @@ export const ReviewerSearch = ({
             </div>
 
             {/* Results Table */}
-            <div className="overflow-auto max-h-[600px] border rounded-lg">
+            <div className="overflow-x-auto max-h-[600px] border rounded-lg relative">
               <table className="w-full border-collapse">
                 <thead>
-                  <tr className="border-b bg-muted/50 sticky top-0">
-                    <th className="p-3 text-left font-semibold w-12">
+                  <tr className="border-b bg-muted/50 sticky top-0 z-10">
+                    <th className="p-3 text-left font-semibold w-12 sticky left-0 bg-muted/50 z-20">
                       <Checkbox
                         checked={filteredResults.length > 0 && filteredResults.every(result => selectedAuthors.has(getAuthorId(result)))}
                         indeterminate={filteredResults.some(result => selectedAuthors.has(getAuthorId(result))) && !filteredResults.every(result => selectedAuthors.has(getAuthorId(result)))}
@@ -1024,11 +1029,14 @@ export const ReviewerSearch = ({
                         aria-label="Select all visible authors"
                       />
                     </th>
-                    <th className="p-3 text-left font-semibold">Author</th>
-                    <th className="p-3 text-left font-semibold">Email</th>
-                    <th className="p-3 text-left font-semibold">Affiliation</th>
-                    <th className="p-3 text-left font-semibold">City</th>
-                    <th className="p-3 text-left font-semibold">Country</th>
+                    <th className="p-3 text-left font-semibold min-w-[150px]">Author</th>
+                    <th className="p-3 text-left font-semibold min-w-[200px]">Email</th>
+                    <th className="p-3 text-left font-semibold min-w-[250px]">Affiliation</th>
+                    <th className="p-3 text-left font-semibold min-w-[120px]">City</th>
+                    <th className="p-3 text-left font-semibold min-w-[120px]">Country</th>
+                    {user?.userType === 'AJE RQE' && (
+                      <th className="p-3 text-left font-semibold min-w-[140px]">Last Review Date</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -1059,7 +1067,9 @@ export const ReviewerSearch = ({
                         }`}
                         onClick={handleRowClick}
                       >
-                        <td className="p-3">
+                        <td className={`p-3 sticky left-0 z-10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)] ${
+                          isSelected ? 'bg-primary/5' : 'bg-background'
+                        }`}>
                           <Checkbox
                             checked={isSelected}
                             onCheckedChange={handleCheckboxChange}
@@ -1071,6 +1081,9 @@ export const ReviewerSearch = ({
                         <td className="p-3 text-sm">{result.aff || '-'}</td>
                         <td className="p-3 text-sm">{result.city || '-'}</td>
                         <td className="p-3 text-sm">{result.country || '-'}</td>
+                        {user?.userType === 'AJE RQE' && (
+                          <td className="p-3 text-sm whitespace-nowrap">{result.Last_Review_Date || '-'}</td>
+                        )}
                       </tr>
                     );
                   })}

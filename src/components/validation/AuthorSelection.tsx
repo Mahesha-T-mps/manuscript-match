@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Users, Search, CheckCircle2, XCircle, Filter } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 interface Author {
   author: string;
@@ -19,6 +20,7 @@ interface Author {
   aff: string;
   city?: string;
   country?: string;
+  Last_Review_Date?: string;
 }
 
 interface AuthorSelectionProps {
@@ -35,6 +37,7 @@ export const AuthorSelection: React.FC<AuthorSelectionProps> = ({
   onBack,
 }) => {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [selectedAuthors, setSelectedAuthors] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredAuthors, setFilteredAuthors] = useState<Author[]>(authors);
@@ -214,6 +217,11 @@ export const AuthorSelection: React.FC<AuthorSelectionProps> = ({
                       {author.country && (
                         <div>
                           <span className="font-medium">Country:</span> {author.country}
+                        </div>
+                      )}
+                      {user?.userType === 'AJE RQE' && author.Last_Review_Date && (
+                        <div>
+                          <span className="font-medium">Last Review Date:</span> {author.Last_Review_Date}
                         </div>
                       )}
                     </div>
