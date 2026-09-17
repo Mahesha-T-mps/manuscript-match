@@ -74,8 +74,8 @@ ehthumbs.db
 Thumbs.db
 
 # Prisma
-prisma/migrations/
-!prisma/migrations/.gitkeep
+# migrations should be committed to git
+# !prisma/migrations/.gitkeep
 
 # Uploads (if storing files locally)
 uploads/
