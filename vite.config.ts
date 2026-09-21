@@ -19,11 +19,40 @@ export default defineConfig(({ mode, command }) => {
       port: 8080,
       open: isDevelopment,
       cors: true,
+      // Prevent serving sensitive files
+      fs: {
+        strict: true,
+        allow: [
+          // Allow serving files from the project root
+          path.resolve(__dirname),
+          // Allow node_modules
+          path.resolve(__dirname, 'node_modules'),
+        ],
+        deny: [
+          // Explicitly deny sensitive files and directories
+          '**/.env*',
+          '**/.git/**',
+          '**/.aws/**',
+          '**/credentials*',
+          '**/*.pem',
+          '**/*.key',
+          '**/backend/.env*',
+        ],
+      },
       proxy: {
         '/api': {
           target: 'http://localhost:3002',
           changeOrigin: true,
           secure: false,
+          // Handle connection errors gracefully
+          configure: (proxy, _options) => {
+            proxy.on('error', (err, _req, _res) => {
+              console.log('Proxy error:', err);
+            });
+            proxy.on('proxyReq', (_proxyReq, req, _res) => {
+              console.log('Proxying:', req.method, req.url);
+            });
+          },
         }
       }
     },
