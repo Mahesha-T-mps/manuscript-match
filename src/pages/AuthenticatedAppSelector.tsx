@@ -1,15 +1,13 @@
-import { useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Lock, LogOut } from "lucide-react";
+import { Users, Lock } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import logo from "@/assets/s3 2.png";
 
 const AuthenticatedAppSelector = () => {
-  const navigate = useNavigate();
-  const { user, logout, navigateSecurely } = useAuth();
+  const { user, navigateSecurely } = useAuth();
   const { toast } = useToast();
 
   // Add no-scroll class to body on mount, remove on unmount
@@ -37,50 +35,14 @@ const AuthenticatedAppSelector = () => {
     navigateSecurely('/msxpert/app');
   };
 
-  const handleLogout = async () => {
-    try {
-      await logout();
-      navigate('/', { replace: true });
-      toast({
-        title: 'Logged out',
-        description: 'You have been successfully logged out.',
-      });
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to logout. Please try again.',
-        variant: 'destructive',
-      });
-    }
-  };
-
   const canAccessMSXpert = user?.msxpertAccess || user?.role === 'ADMIN';
 
   return (
-    <div className="h-screen overflow-hidden bg-gradient-to-br from-background to-academic-light flex items-center justify-center p-4">
+    <div className="h-screen overflow-hidden bg-gradient-to-br from-background to-academic-light flex items-center justify-center p-4 pt-20">
       <div className="w-full max-w-4xl overflow-y-auto max-h-[calc(100vh-8rem)]">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center justify-center flex-1">
-              <h1 className="text-4xl font-bold text-foreground">Application Portal</h1>
-            </div>
-            
-            {/* User Info and Logout */}
-            <div className="flex items-center space-x-4">
-              <div className="text-right">
-                <p className="text-sm font-medium text-foreground">{user?.name || user?.email}</p>
-                <p className="text-xs text-muted-foreground">
-                  {user?.role}
-                  {canAccessMSXpert && <span className="ml-1 text-green-600">• MSXpert Access</span>}
-                </p>
-              </div>
-              <Button variant="ghost" size="sm" onClick={handleLogout}>
-                <LogOut className="w-4 h-4 mr-2" />
-                Logout
-              </Button>
-            </div>
-          </div>
+          <h1 className="text-4xl font-bold text-foreground mb-2">Application Portal</h1>
           <p className="text-lg text-muted-foreground">Choose your application to continue</p>
         </div>
 

@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Upload, FileText, Download, Loader2, CheckCircle, AlertCircle, Wifi, WifiOff } from 'lucide-react';
+import { Upload, FileText, Download, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface MSXpertFileUploadProps {
@@ -22,25 +22,7 @@ export const MSXpertFileUpload: React.FC<MSXpertFileUploadProps> = ({ onLogout }
   const [evaluationResult, setEvaluationResult] = useState<EvaluationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<string>('');
-  const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const { toast } = useToast();
-
-  // Check API server status on component mount
-  useEffect(() => {
-    const checkApiStatus = async () => {
-      try {
-        const response = await fetch('http://192.168.2.187:8001/health', {
-          method: 'GET',
-          signal: AbortSignal.timeout(5000) // 5 second timeout
-        });
-        setApiStatus(response.ok ? 'online' : 'offline');
-      } catch {
-        setApiStatus('offline');
-      }
-    };
-
-    checkApiStatus();
-  }, []);
 
   const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -204,54 +186,7 @@ export const MSXpertFileUpload: React.FC<MSXpertFileUploadProps> = ({ onLogout }
   const isUploading = uploadStatus === 'uploading' || uploadStatus === 'processing';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-academic-light">
-      {/* Header */}
-      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-3">
-              <h1 className="text-xl font-bold">MSXpert Document Evaluator</h1>
-              
-              {/* API Status Indicator */}
-              <div className="flex items-center space-x-2 text-sm">
-                {apiStatus === 'checking' && (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
-                    <span className="text-gray-500">Checking API...</span>
-                  </>
-                )}
-                {apiStatus === 'online' && (
-                  <>
-                    <Wifi className="w-4 h-4 text-green-500" />
-                    <span className="text-green-600">API Online</span>
-                  </>
-                )}
-                {apiStatus === 'offline' && (
-                  <>
-                    <WifiOff className="w-4 h-4 text-red-500" />
-                    <span className="text-red-600">API Offline</span>
-                  </>
-                )}
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => window.location.href = '/apps'}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                Application Portal
-              </Button>
-              <Button variant="ghost" size="sm" onClick={onLogout}>
-                Logout
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
+    <div className="min-h-screen bg-gradient-to-br from-background to-academic-light pt-16">
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-8">

@@ -3,13 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { useQueryClient } from '@tanstack/react-query';
 import { AdminDashboard } from "@/components/admin/AdminDashboard";
 import { ProcessDashboard, ProcessWorkflow } from "@/components/process";
-import { Button } from "@/components/ui/button";
-import { LogOut } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { ProfileButton } from "@/components/profile/ProfileButton";
 import { queryKeys } from "@/lib/queryClient";
-import logo from "@/assets/s3 2.png";
 import Reports from "./Reports";
 import { NotificationPermissionBanner } from "@/components/notifications/NotificationPermissionBanner";
 
@@ -65,38 +61,7 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-academic-light">
-      {/* Header */}
-      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-3">
-              <img src={logo} alt="ScholarFinder Logo" className="w-10 h-10 object-contain" />
-              <div>
-                <h1 className="text-xl font-bold">ScholarFinder</h1>
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-muted-foreground">Welcome, {user?.email}</span>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => navigate('/apps')}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                Application Portal
-              </Button>
-              <ProfileButton variant="minimal" showLabel={false} />
-              <Button variant="ghost" size="sm" onClick={handleLogout}>
-                <LogOut className="w-4 h-4 mr-2" />
-                Logout
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
+    <div className="min-h-screen bg-gradient-to-br from-background to-academic-light pt-16">
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Main Content with Process Management */}
