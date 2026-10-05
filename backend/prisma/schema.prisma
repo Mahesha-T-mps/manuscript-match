@@ -285,8 +285,9 @@ model UserReport {
   recommendationsCount      Int      @default(0) @map("recommendations_count") // Total authors in Recommendations step
   shortlistedCount          Int      @default(0) @map("shortlisted_count") // Shortlisted authors count
   reviewersCount            Int      @default(0) @map("reviewers_count") // Reviewers assigned to review recommendations
-  shortlistedAuthors        String?  @map("shortlisted_authors") // JSON array of shortlisted author details
+  shortlistedAuthors        String?  @map("shortlisted_authors") // JSON array of shortlisted author details (includes keywords & subject_area)
   recommendedAuthors        String?  @map("recommended_authors") // JSON array of recommended author details (from CANDIDATE role)
+  keywords                  String?  @map("keywords") // Keywords string for the process (same for all reviewers)
   reportDate                DateTime @default(now()) @map("report_date")
   createdAt                 DateTime @default(now()) @map("created_at")
   

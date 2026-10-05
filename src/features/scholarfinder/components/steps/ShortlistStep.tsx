@@ -7,6 +7,7 @@ import { Loader2, Users, CheckCircle, AlertCircle, ListChecks, Download } from '
 import { useToast } from '@/hooks/use-toast';
 import { useProcess, useUpdateProcessStep } from '../../hooks/useProcessManagement';
 import { useScholarFinder } from '../../hooks/useScholarFinderContext';
+import { useCreateShortlist } from '@/hooks/useShortlists';
 import { ProcessStep } from '../../types/process';
 import { Reviewer } from '../../types/api';
 import { cn } from '@/lib/utils';
@@ -49,6 +50,7 @@ export const ShortlistStep: React.FC<ShortlistStepProps> = ({
   const { data: process } = useProcess(processId);
   const updateProcessStep = useUpdateProcessStep();
   const { shortlist, addToShortlist, removeFromShortlist, clearShortlist } = useScholarFinder();
+  const createShortlistMutation = useCreateShortlist();
 
   // Local state
   const [availableReviewers, setAvailableReviewers] = useState<Reviewer[]>([]);
@@ -57,6 +59,9 @@ export const ShortlistStep: React.FC<ShortlistStepProps> = ({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [lastModified, setLastModified] = useState<Date | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  
+  // Store keywords data for each reviewer (Map: email -> {keywords, subject_area})
+  const [reviewersKeywordsMap, setReviewersKeywordsMap] = useState<Map<string, {keywords: string; subject_area: string; author: string}>>(new Map());
 
   // Configuration
   const minReviewers = 3;
@@ -144,7 +149,7 @@ export const ShortlistStep: React.FC<ShortlistStepProps> = ({
     addToShortlist(reviewer);
     addAction({ type: 'add', reviewerId: reviewer.email });
 
-    // Call the shortlisted_authors API to track selection
+    // Call APIs to track selection and get keywords/subject_area
     (async () => {
       try {
         const jobId = fileService.getJobId(processId);
@@ -153,22 +158,71 @@ export const ShortlistStep: React.FC<ShortlistStepProps> = ({
           return;
         }
 
-        const formData = new FormData();
-        formData.append('selected_authors', reviewer.reviewer);
+        // 1. Call shortlisted_authors API (existing)
+        const formData1 = new FormData();
+        formData1.append('selected_authors', reviewer.reviewer);
 
-        const response = await fetch(`${config.scholarFinderApiUrl}/shortlisted_authors?job_id=${jobId}`, {
+        const response1 = await fetch(`${config.scholarFinderApiUrl}/shortlisted_authors?job_id=${jobId}`, {
           method: 'POST',
-          body: formData,
+          body: formData1,
         });
 
-        if (response.ok) {
-          const result = await response.json();
-          console.log('Shortlisted authors API response:', result);
+        if (response1.ok) {
+          const result1 = await response1.json();
+          console.log('Shortlisted authors API response:', result1);
         } else {
-          console.warn('Shortlisted authors API call failed:', response.statusText);
+          console.warn('Shortlisted authors API call failed:', response1.statusText);
+        }
+
+        // 2. Call new API to get keywords and subject_area
+        const formData2 = new FormData();
+        formData2.append('selected_authors', reviewer.reviewer);
+
+        const response2 = await fetch(`${config.scholarFinderApiUrl}/shortlisted_keywords_subject_area?job_id=${jobId}`, {
+          method: 'POST',
+          body: formData2,
+        });
+
+        if (response2.ok) {
+          const result2 = await response2.json();
+          console.log('✅ Keywords API response:', result2);
+          
+          if (result2.reviewers && result2.reviewers.length > 0) {
+            const reviewerData = result2.reviewers[0];
+            console.log('✅ Reviewer data:', reviewerData);
+            
+            // Store keywords data in state AND localStorage
+            setReviewersKeywordsMap(prev => {
+              const newMap = new Map(prev);
+              const keywordsData = {
+                author: reviewerData.author || reviewerData.name || reviewer.reviewer,
+                keywords: reviewerData.keywords || '',
+                subject_area: reviewerData.subject_area || ''
+              };
+              newMap.set(reviewer.email, keywordsData);
+              
+              console.log(`✅ Stored keywords for ${reviewer.email}:`, {
+                keywords: keywordsData.keywords?.substring(0, 50),
+                subject_area: keywordsData.subject_area
+              });
+              
+              // Also store in localStorage for persistence
+              const storageKey = `process_${processId}_reviewerKeywords`;
+              const allKeywordsData = Array.from(newMap.entries()).map(([email, data]) => ({
+                email,
+                ...data
+              }));
+              localStorage.setItem(storageKey, JSON.stringify(allKeywordsData));
+              console.log(`💾 Saved to localStorage: ${storageKey}`);
+              
+              return newMap;
+            });
+          }
+        } else {
+          console.warn('Keywords/subject_area API call failed:', response2.statusText);
         }
       } catch (apiError) {
-        console.warn('Failed to call shortlisted_authors API:', apiError);
+        console.warn('Failed to call APIs:', apiError);
         // Continue even if API call fails
       }
     })();
@@ -227,7 +281,7 @@ export const ShortlistStep: React.FC<ShortlistStepProps> = ({
       reviewerIds: newReviewers.map(r => r.email) 
     });
 
-    // Call the shortlisted_authors API to track bulk selection
+    // Call APIs to track bulk selection and get keywords/subject_area
     (async () => {
       try {
         const jobId = fileService.getJobId(processId);
@@ -236,21 +290,44 @@ export const ShortlistStep: React.FC<ShortlistStepProps> = ({
           return;
         }
 
-        const formData = new FormData();
+        // 1. Call shortlisted_authors API (existing)
+        const formData1 = new FormData();
         newReviewers.forEach(r => {
-          formData.append('selected_authors', r.reviewer);
+          formData1.append('selected_authors', r.reviewer);
         });
 
-        const response = await fetch(`${config.scholarFinderApiUrl}/shortlisted_authors?job_id=${jobId}`, {
+        const response1 = await fetch(`${config.scholarFinderApiUrl}/shortlisted_authors?job_id=${jobId}`, {
           method: 'POST',
-          body: formData,
+          body: formData1,
         });
 
-        if (response.ok) {
-          const result = await response.json();
-          console.log('Bulk shortlisted authors API response:', result);
+        if (response1.ok) {
+          const result1 = await response1.json();
+          console.log('Bulk shortlisted authors API response:', result1);
         } else {
-          console.warn('Bulk shortlisted authors API call failed:', response.statusText);
+          console.warn('Bulk shortlisted authors API call failed:', response1.statusText);
+        }
+
+        // 2. Call new API to get keywords and subject_area for all
+        const formData2 = new FormData();
+        newReviewers.forEach(r => {
+          formData2.append('selected_authors', r.reviewer);
+        });
+
+        const response2 = await fetch(`${config.scholarFinderApiUrl}/shortlisted_keywords_subject_area?job_id=${jobId}`, {
+          method: 'POST',
+          body: formData2,
+        });
+
+        if (response2.ok) {
+          const result2 = await response2.json();
+          console.log('Bulk keywords and subject area API response:', result2);
+          
+          if (result2.reviewers && result2.reviewers.length > 0) {
+            console.log(`Retrieved keywords/subject_area for ${result2.reviewers.length} reviewers`);
+          }
+        } else {
+          console.warn('Bulk keywords/subject_area API call failed:', response2.statusText);
         }
       } catch (apiError) {
         console.warn('Failed to call shortlisted_authors API for bulk add:', apiError);
@@ -485,6 +562,73 @@ export const ShortlistStep: React.FC<ShortlistStepProps> = ({
     // Auto-save before proceeding
     const saved = await handleSave(false);
     if (saved) {
+      // Collect all keywords data for selected reviewers
+      const keywordsDataArray = selectedReviewers
+        .map(r => {
+          const keywordsData = reviewersKeywordsMap.get(r.email);
+          if (keywordsData) {
+            return {
+              author: keywordsData.author,
+              name: keywordsData.author,
+              email: r.email,
+              keywords: keywordsData.keywords,
+              subject_area: keywordsData.subject_area
+            };
+          }
+          return null;
+        })
+        .filter(Boolean);
+      
+      console.log(`📤 Collected keywords data for ${keywordsDataArray.length}/${selectedReviewers.length} reviewers`);
+      
+      // Debug: Show what's in the keywords map
+      console.log('🔍 Current reviewersKeywordsMap:', Array.from(reviewersKeywordsMap.entries()));
+      console.log('🔍 Selected reviewer emails:', selectedReviewers.map(r => r.email));
+      
+      // ✅ CREATE DATABASE SHORTLIST with keywords data
+      try {
+        const jobId = fileService.getJobId(processId);
+        const shortlistName = `Shortlist - ${new Date().toLocaleDateString()}`;
+        
+        console.log('🗄️ Creating database shortlist:', shortlistName);
+        console.log('📋 Selected reviewers:', selectedReviewers.length);
+        console.log('🏷️ Keywords data available:', keywordsDataArray.length);
+        console.log('📍 Job ID:', jobId);
+        
+        // Always send job_id even if no keywords (backend can fetch)
+        const requestData = {
+          name: shortlistName,
+          selectedReviewers: selectedReviewers.map(r => r.email),
+          job_id: jobId,  // Always include job_id
+          keywordsData: keywordsDataArray.length > 0 ? {
+            job_id: jobId,
+            reviewers: keywordsDataArray
+          } : undefined
+        };
+        
+        console.log('📤 Sending request:', JSON.stringify(requestData, null, 2));
+        
+        const result = await createShortlistMutation.mutateAsync({
+          processId,
+          data: requestData
+        });
+        
+        console.log('✅ Database shortlist created:', result);
+        
+        toast({
+          title: 'Shortlist Finalized',
+          description: `Created shortlist with ${selectedReviewers.length} reviewers. Check Custom Reports to view details.`,
+          variant: 'default'
+        });
+      } catch (error) {
+        console.error('❌ Failed to create database shortlist:', error);
+        toast({
+          title: 'Warning',
+          description: 'Shortlist saved locally but failed to sync with database. Your selections are safe.',
+          variant: 'default'
+        });
+      }
+      
       onNext({
         selectedReviewers,
         shortlistCount: selectedReviewers.length,

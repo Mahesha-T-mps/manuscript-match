@@ -1,5 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 
+const PYTHON_API_URL = process.env.SCHOLARFINDER_API_URL || 'http://localhost:8000';
+
 export interface UserReportData {
   id: string;
   userId: string;
@@ -12,12 +14,15 @@ export interface UserReportData {
     name: string;
     email?: string;
     affiliation?: string;
+    keywords?: string;
+    subject_area?: string;
   }>;
   recommendedAuthors?: Array<{
     name: string;
     email?: string;
     affiliation?: string;
   }>;
+  keywords?: string;
   reportDate: Date;
   createdAt: Date;
 }
@@ -33,12 +38,15 @@ export interface CreateUserReportInput {
     name: string;
     email?: string;
     affiliation?: string;
+    keywords?: string;
+    subject_area?: string;
   }>;
   recommendedAuthors?: Array<{
     name: string;
     email?: string;
     affiliation?: string;
   }>;
+  keywords?: string;
   reportDate?: Date;
 }
 
@@ -85,6 +93,7 @@ export class UserReportService {
           reviewersCount: input.reviewersCount,
           shortlistedAuthors: input.shortlistedAuthors ? JSON.stringify(input.shortlistedAuthors) : null,
           recommendedAuthors: input.recommendedAuthors ? JSON.stringify(input.recommendedAuthors) : null,
+          keywords: input.keywords || null,
           reportDate,
         },
       });
@@ -102,6 +111,7 @@ export class UserReportService {
           reviewersCount: input.reviewersCount,
           shortlistedAuthors: input.shortlistedAuthors ? JSON.stringify(input.shortlistedAuthors) : null,
           recommendedAuthors: input.recommendedAuthors ? JSON.stringify(input.recommendedAuthors) : null,
+          keywords: input.keywords || null,
           reportDate,
         },
       });
@@ -233,9 +243,15 @@ export class UserReportService {
       pa => pa.role === 'SHORTLISTED'
     ).length;
 
+    // Check if report already exists to preserve the original reviewers count
+    const existingReport = await this.prisma.userReport.findFirst({
+      where: { processId },
+    });
+
     // Recommended Reviewers count = only CANDIDATE role authors
-    // This represents authors that were recommended by the system
-    const reviewersCount = candidateCount;
+    // IMPORTANT: Once set, we don't recalculate to preserve historical accuracy
+    // Use existing count if available, otherwise use current candidate count
+    const reviewersCount = existingReport?.reviewersCount || candidateCount;
 
     // For backwards compatibility
     const recommendationsCount = reviewersCount;
@@ -270,8 +286,68 @@ export class UserReportService {
           name: pa.author.name,
           email: pa.author.email || undefined,
           affiliation: affiliation || undefined,
+          keywords: undefined, // Will be populated by Python API call
+          subject_area: undefined, // Will be populated by Python API call
         };
       });
+
+    // Fetch keywords and subject_area from Python API
+    let processKeywords: string | undefined;
+    if (shortlistedAuthorsData.length > 0) {
+      try {
+        const jobId = process.metadata && typeof process.metadata === 'object' && 'job_id' in process.metadata
+          ? (process.metadata as any).job_id
+          : undefined;
+
+        if (jobId) {
+          console.log(`[generateReportForProcess] Fetching keywords/subject_area for job_id: ${jobId}`);
+          
+          const formData = new URLSearchParams();
+          shortlistedAuthorsData.forEach(author => {
+            formData.append('selected_authors', author.name);
+          });
+
+          const response = await fetch(
+            `${PYTHON_API_URL}/shortlisted_keywords_subject_area?job_id=${jobId}`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+              body: formData.toString(),
+            }
+          );
+
+          if (response.ok) {
+            const data: any = await response.json();
+            console.log(`[generateReportForProcess] Received keywords/subject_area for ${data.reviewers?.length || 0} authors`);
+            
+            // Store keywords at process level
+            if (data.reviewers && data.reviewers.length > 0) {
+              processKeywords = data.reviewers[0].keywords;
+              
+              // Enrich shortlisted authors with subject_area and keywords
+              shortlistedAuthorsData.forEach(author => {
+                const matchingReviewer = data.reviewers.find(
+                  (r: any) => r.author === author.name || r.email === author.email
+                );
+                if (matchingReviewer) {
+                  author.keywords = matchingReviewer.keywords;
+                  author.subject_area = matchingReviewer.subject_area;
+                }
+              });
+            }
+          } else {
+            console.warn(`[generateReportForProcess] Python API call failed: ${response.statusText}`);
+          }
+        } else {
+          console.warn('[generateReportForProcess] No job_id found in process metadata');
+        }
+      } catch (error) {
+        console.error('[generateReportForProcess] Error fetching keywords/subject_area:', error);
+        // Continue without keywords/subject_area
+      }
+    }
 
     // Get recommended author details (CANDIDATE role)
     const recommendedAuthorsData = process.processAuthors
@@ -294,9 +370,9 @@ export class UserReportService {
       });
 
     console.log(`[generateReportForProcess] Process ${processId}:`);
-    console.log(`  - CANDIDATE role: ${candidateCount}`);
+    console.log(`  - CANDIDATE role (current): ${candidateCount}`);
     console.log(`  - SHORTLISTED role: ${shortlistedCount}`);
-    console.log(`  - Total Reviewers (reported): ${reviewersCount}`);
+    console.log(`  - Total Reviewers (reported): ${reviewersCount}${existingReport?.reviewersCount ? ' (preserved from original)' : ' (new)'}`);
     console.log(`  - Shortlisted authors details: ${shortlistedAuthorsData.length} authors`);
     console.log(`  - Recommended authors details: ${recommendedAuthorsData.length} authors`);
     if (shortlistedAuthorsData.length > 0) {
@@ -316,6 +392,7 @@ export class UserReportService {
       reviewersCount,
       shortlistedAuthors: shortlistedAuthorsData,
       recommendedAuthors: recommendedAuthorsData,
+      keywords: processKeywords,
     });
 
     return report;
@@ -416,6 +493,7 @@ export class UserReportService {
       reviewersCount: report.reviewersCount || 0,
       shortlistedAuthors,
       recommendedAuthors,
+      keywords: report.keywords || undefined,
       reportDate: report.reportDate,
       createdAt: report.createdAt,
     };

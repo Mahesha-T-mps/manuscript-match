@@ -141,10 +141,15 @@ class ShortlistService {
         try {
           console.log('[ShortlistService] Sending reviewers to backend:', reviewers.length);
           
+          // Get job_id to pass to backend
+          const jobId = fileService.getJobId(processId);
+          console.log('[ShortlistService] job_id for backend:', jobId || 'NOT FOUND');
+          
           const backendResponse = await apiService.post<any>(
             `/api/processes/${processId}/shortlist`,
             {
               name: data.name,
+              job_id: jobId || data.job_id,  // Pass job_id to backend
               reviewers: reviewers.map(r => ({
                 name: r.reviewer || 'Unknown',
                 email: r.email || '',

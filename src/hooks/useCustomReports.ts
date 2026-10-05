@@ -14,10 +14,13 @@ export interface CustomReportData {
   recommendationsCount: number;
   shortlistedCount: number;
   reviewersCount: number;
+  keywords?: string;
   shortlistedAuthors?: Array<{
     name: string;
     email?: string;
     affiliation?: string;
+    keywords?: string;
+    subject_area?: string;
   }>;
   recommendedAuthors?: Array<{
     name: string;

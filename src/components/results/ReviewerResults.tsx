@@ -713,17 +713,40 @@ export const ReviewerResults = ({ processId, onShortlistCreated, validationData,
         } else {
           console.warn('Shortlisted authors API call failed:', response.statusText);
         }
+
+        // Call new API to get keywords and subject_area
+        const formData2 = new FormData();
+        selectedReviewers.forEach(r => {
+          formData2.append('selected_authors', r.reviewer);
+        });
+
+        const response2 = await fetch(`${config.scholarFinderApiUrl}/shortlisted_keywords_subject_area?job_id=${jobId}`, {
+          method: 'POST',
+          body: formData2,
+        });
+
+        if (response2.ok) {
+          const result2 = await response2.json();
+          console.log('Keywords and subject area API response:', result2);
+          
+          if (result2.reviewers && result2.reviewers.length > 0) {
+            console.log(`Retrieved keywords/subject_area for ${result2.reviewers.length} reviewers`);
+          }
+        } else {
+          console.warn('Keywords/subject_area API call failed:', response2.statusText);
+        }
       } catch (apiError) {
         console.warn('Failed to call shortlisted_authors API:', apiError);
         // Continue with shortlist creation even if API call fails
       }
 
-      // Create shortlist with reviewer emails as IDs
+      // Create shortlist with reviewer emails as IDs and job_id
       const result = await createShortlistMutation.mutateAsync({
         processId,
         data: {
           name: shortlistName,
-          selectedReviewers: selectedReviewers.map(r => r.email)
+          selectedReviewers: selectedReviewers.map(r => r.email),
+          job_id: jobId  // Pass job_id to backend
         }
       });
 

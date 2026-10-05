@@ -200,7 +200,7 @@ export default function Reports() {
             XLSX.utils.book_append_sheet(wb, reportsWs, 'Report Details');
             
             // Add Shortlisted Authors sheet - always include headers
-            const authorsData: any[][] = [['Process', 'User Email', 'Author Name', 'Email', 'Affiliation']];
+            const authorsData: any[][] = [['Process', 'User Email', 'Author Name', 'Email', 'Affiliation', 'Keywords', 'Subject Area']];
             exportData.customReports.forEach(r => {
               if (r.shortlistedAuthors && r.shortlistedAuthors.length > 0) {
                 r.shortlistedAuthors.forEach(author => {
@@ -209,7 +209,9 @@ export default function Reports() {
                     exportData.getUserEmail(r.userId),
                     author.name || '-',
                     author.email || '-',
-                    author.affiliation || '-'
+                    author.affiliation || '-',
+                    author.keywords || '-',
+                    author.subject_area || '-'
                   ]);
                 });
               }
@@ -344,7 +346,9 @@ export default function Reports() {
                     exportData.getUserEmail(r.userId),
                     author.name || '-',
                     author.email || '-',
-                    author.affiliation || '-'
+                    author.affiliation || '-',
+                    author.keywords || '-',
+                    author.subject_area || '-'
                   ]);
                 });
               }
@@ -353,17 +357,21 @@ export default function Reports() {
             if (authorsData.length > 0) {
               autoTable(doc, {
                 startY: yPos,
-                head: [['Process', 'User Email', 'Author Name', 'Email', 'Affiliation']],
+                head: [['Process', 'User Email', 'Author Name', 'Email', 'Affiliation', 'Keywords', 'Subject Area']],
                 body: authorsData,
                 theme: 'grid',
-                headStyles: { fillColor: [30, 64, 175], textColor: 255 },
-                styles: { fontSize: 9, cellPadding: 4 },
+                headStyles: { fillColor: [30, 64, 175], textColor: 255, fontSize: 7 },
+                styles: { fontSize: 7, cellPadding: 2, overflow: 'linebreak' },
                 columnStyles: {
-                  0: { cellWidth: 45 },
-                  1: { cellWidth: 40 },
-                  2: { cellWidth: 50 },
-                  3: { cellWidth: 45 }
-                }
+                  0: { cellWidth: 25 },  // Process - reduced
+                  1: { cellWidth: 25 },  // User Email - reduced
+                  2: { cellWidth: 30 },  // Author Name
+                  3: { cellWidth: 30 },  // Email
+                  4: { cellWidth: 28 },  // Affiliation - reduced
+                  5: { cellWidth: 30 },  // Keywords - reduced
+                  6: { cellWidth: 27 }   // Subject Area - fits now!
+                },
+                margin: { left: 10, right: 10 }
               });
             }
           }
@@ -508,11 +516,11 @@ export default function Reports() {
         
         // Add Shortlisted Authors section
         csv += '\n\nShortlisted Reviewers\n';
-        csv += 'Process,User Email,Author Name,Email,Affiliation\n';
+        csv += 'Process,User Email,Author Name,Email,Affiliation,Keywords,Subject Area\n';
         data.customReports.forEach((r: any) => {
           if (r.shortlistedAuthors && r.shortlistedAuthors.length > 0) {
             r.shortlistedAuthors.forEach((author: any) => {
-              csv += `"${r.processTitle}","${data.getUserEmail(r.userId)}","${author.name}","${author.email || '-'}","${author.affiliation || '-'}"\n`;
+              csv += `"${r.processTitle}","${data.getUserEmail(r.userId)}","${author.name}","${author.email || '-'}","${author.affiliation || '-'}","${author.keywords || '-'}","${author.subject_area || '-'}"\n`;
             });
           }
         });
@@ -629,6 +637,8 @@ export default function Reports() {
                         <th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;">Author Name</th>
                         <th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;">Email</th>
                         <th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;">Affiliation</th>
+                        <th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;">Keywords</th>
+                        <th style="border: 1px solid #ddd; padding: 10px; text-align: left; background-color: #f3f4f6; font-weight: 600; color: #1f2937;">Subject Area</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -637,6 +647,8 @@ export default function Reports() {
                           <td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${author.name || '-'}</td>
                           <td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${author.email || '-'}</td>
                           <td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${author.affiliation || '-'}</td>
+                          <td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${author.keywords || '-'}</td>
+                          <td style="border: 1px solid #ddd; padding: 10px; text-align: left;">${author.subject_area || '-'}</td>
                         </tr>
                       `).join('')}
                     </tbody>

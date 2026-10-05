@@ -2948,8 +2948,12 @@ export class ProcessController {
           publicationCount: Joi.number().default(0),
           clinicalTrials: Joi.number().default(0),
           retractions: Joi.number().default(0)
-        })).optional()
-      }).or('authorIds', 'reviewers'); // At least one must be provided
+        })).optional(),
+        // Job ID for fetching keywords and subject_area
+        job_id: Joi.string().optional(),
+        // Alternative format with selected reviewers (email strings)
+        selectedReviewers: Joi.array().items(Joi.string().email()).optional()
+      }).or('authorIds', 'reviewers', 'selectedReviewers'); // At least one must be provided
 
       const { error, value } = createShortlistSchema.validate(req.body);
       if (error) {
@@ -3067,13 +3071,195 @@ export class ProcessController {
         authorIds: authorIds,
       });
 
+      console.log(`[createShortlist] Created shortlist: ${shortlist.id}`);
+
+      // Try to get keywords and subject_area data
+      let keywordsDataToStore: any = null;
+      let jobId: string | null = null; // Declare jobId in outer scope
+      
+      // First, check if frontend provided keywords data
+      if (req.body.keywordsData && req.body.keywordsData.reviewers) {
+        console.log('[createShortlist] ✅ Frontend provided keywords data');
+        keywordsDataToStore = req.body.keywordsData;
+      } else {
+        // Backend fallback: Call FastAPI directly to get keywords/subject_area
+        console.log('[createShortlist] ⚠️ No keywordsData from frontend, calling FastAPI directly...');
+        console.log('[createShortlist] 🔍 Request body:', JSON.stringify({
+          name: req.body.name,
+          hasJobId: !!req.body.job_id,
+          job_id: req.body.job_id,
+          hasReviewers: !!req.body.reviewers,
+          selectedReviewersCount: req.body.selectedReviewers?.length
+        }, null, 2));
+        
+        try {
+          // Get job_id from process metadata OR from request body
+          
+          // Try 1: Get from process metadata
+          const processMetadata = typeof process.metadata === 'string' 
+            ? JSON.parse(process.metadata) 
+            : process.metadata;
+          jobId = processMetadata?.job_id || processMetadata?.jobId;
+          console.log('[createShortlist] 📋 Process metadata job_id:', jobId || 'NOT FOUND');
+          
+          // Try 2: Check if job_id was sent in request body
+          if (!jobId && req.body.job_id) {
+            jobId = req.body.job_id;
+            console.log('[createShortlist] 📍 Using job_id from request body:', jobId);
+          }
+          
+          // Try 3: Check data.job_id (nested in data object)
+          if (!jobId && req.body.data?.job_id) {
+            jobId = req.body.data.job_id;
+            console.log('[createShortlist] 📍 Using job_id from request.body.data:', jobId);
+          }
+          
+          // Try 4: Check reviewers array for job_id
+          if (!jobId && req.body.reviewers && req.body.reviewers.length > 0) {
+            // Sometimes job_id is embedded in reviewer data
+            const firstReviewer = req.body.reviewers[0];
+            if (firstReviewer.job_id) {
+              jobId = firstReviewer.job_id;
+              console.log('[createShortlist] 📍 Using job_id from reviewer data:', jobId);
+            }
+          }
+          
+          if (jobId) {
+            console.log(`[createShortlist] 📞 Calling FastAPI with job_id: ${jobId}`);
+            
+            // Get author names from the shortlisted authors
+            const authors = await prisma.author.findMany({
+              where: { id: { in: authorIds } }
+            });
+            
+            if (authors.length > 0) {
+              // Use hardcoded localhost since we have variable naming conflict
+              const pythonApiUrl = 'http://localhost:8000';
+              console.log('[createShortlist] 🌐 Using Python API URL:', pythonApiUrl);
+              
+              const formData = new URLSearchParams();
+              
+              authors.forEach(author => {
+                formData.append('selected_authors', author.name);
+              });
+              
+              console.log(`[createShortlist] 📤 Sending ${authors.length} authors to FastAPI:`, authors.map(a => a.name));
+              
+              const response = await fetch(
+                `${pythonApiUrl}/shortlisted_keywords_subject_area?job_id=${jobId}`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                  },
+                  body: formData.toString(),
+                }
+              );
+              
+              if (response.ok) {
+                keywordsDataToStore = await response.json();
+                console.log(`[createShortlist] ✅ Got keywords from FastAPI for ${keywordsDataToStore.reviewers?.length || 0} reviewers`);
+              } else {
+                console.warn(`[createShortlist] ⚠️ FastAPI call failed: ${response.status} ${response.statusText}`);
+              }
+            }
+          } else {
+            console.warn('[createShortlist] ⚠️ No job_id found in process metadata');
+          }
+        } catch (apiError) {
+          console.error('[createShortlist] ❌ Error calling FastAPI:', apiError);
+        }
+      }
+      
+      // Keywords data will be fetched and stored by generateReportForProcess() below
+      if (keywordsDataToStore && keywordsDataToStore.reviewers && keywordsDataToStore.reviewers.length > 0) {
+        console.log('[createShortlist] ✅ Got keywords data for ${keywordsDataToStore.reviewers.length} reviewers');
+        console.log('[createShortlist] 📋 Sample data:', {
+          author: keywordsDataToStore.reviewers[0]?.author,
+          keywords: keywordsDataToStore.reviewers[0]?.keywords,
+          subject_area: keywordsDataToStore.reviewers[0]?.subject_area
+        });
+        // Note: Data will be stored when generateReportForProcess() is called below
+      } else {
+        console.log('[createShortlist] ⚠️ No keywords data available to store');
+      }
+
       // Automatically generate/update user report after shortlist creation
+      console.log(`[createShortlist] 📊 Generating report for process ${processId}...`);
       try {
-        await this.userReportService.generateReportForProcess(processId);
-        console.log(`Report generated for process ${processId}`);
+        // Update process metadata with job_id if we have it, so generateReportForProcess can use it
+        if (jobId && process) {
+          const currentMetadata = typeof process.metadata === 'string' 
+            ? JSON.parse(process.metadata) 
+            : (process.metadata || {});
+          
+          if (!currentMetadata.job_id) {
+            console.log(`[createShortlist] 📝 Updating process metadata with job_id: ${jobId}`);
+            await prisma.process.update({
+              where: { id: processId },
+              data: {
+                metadata: JSON.stringify({
+                  ...currentMetadata,
+                  job_id: jobId
+                })
+              }
+            });
+            console.log(`[createShortlist] ✅ Process metadata updated successfully`);
+          }
+        }
+        
+        // Give the database a moment to commit the transaction
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        const report = await this.userReportService.generateReportForProcess(processId);
+        if (report) {
+          console.log(`[createShortlist] ✅ Report generated successfully:`, report.id);
+          
+          // If we have keywords data and the report doesn't have it, manually update it
+          if (keywordsDataToStore && keywordsDataToStore.reviewers && keywordsDataToStore.reviewers.length > 0) {
+            console.log('[createShortlist] 🔄 Enriching report with keywords data we already fetched...');
+            
+            try {
+              // Get current shortlisted authors from report
+              const shortlistedAuthors = report.shortlistedAuthors || [];
+              
+              // Enrich with keywords and subject_area
+              const enrichedAuthors = shortlistedAuthors.map(author => {
+                const keywordData = keywordsDataToStore.reviewers.find(
+                  (r: any) => r.author === author.name || r.email === author.email
+                );
+                
+                if (keywordData) {
+                  return {
+                    ...author,
+                    keywords: keywordData.keywords,
+                    subject_area: keywordData.subject_area
+                  };
+                }
+                return author;
+              });
+              
+              // Update the report with enriched data
+              await prisma.userReport.update({
+                where: { id: report.id },
+                data: {
+                  shortlistedAuthors: JSON.stringify(enrichedAuthors),
+                  keywords: keywordsDataToStore.reviewers[0]?.keywords
+                }
+              });
+              
+              console.log('[createShortlist] ✅ Report enriched with keywords/subject_area');
+            } catch (enrichError) {
+              console.error('[createShortlist] ❌ Failed to enrich report:', enrichError);
+            }
+          }
+        } else {
+          console.warn(`[createShortlist] ⚠️ generateReportForProcess returned null`);
+        }
       } catch (reportError) {
-        // Log error but don't fail the shortlist creation
-        console.error('Error generating report after shortlist creation:', reportError);
+        // Log detailed error but don't fail the shortlist creation
+        console.error('[createShortlist] ❌ Error generating report:', reportError);
+        console.error('[createShortlist] ❌ Error stack:', reportError instanceof Error ? reportError.stack : 'No stack');
       }
 
       // Prepare response with duplicate information

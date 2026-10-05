@@ -15,7 +15,7 @@ import {
 } from '../ui/table';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
-import { ChevronDown, ChevronRight, Mail, Building2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Mail, Building2, Tag, BookOpen } from 'lucide-react';
 
 export interface CustomReportData {
   id: string;
@@ -27,12 +27,15 @@ export interface CustomReportData {
     name: string;
     email?: string;
     affiliation?: string;
+    keywords?: string;
+    subject_area?: string;
   }>;
   recommendedAuthors?: Array<{
     name: string;
     email?: string;
     affiliation?: string;
   }>;
+  keywords?: string;
   reportDate: string;
 }
 
@@ -122,9 +125,18 @@ export function CustomReportsTable({ reports }: CustomReportsTableProps) {
                   <TableRow key={`${report.id}-expanded`}>
                     <TableCell colSpan={5} className="bg-muted/30">
                       <div className="py-4 px-6">
-                        <h4 className="text-sm font-semibold mb-3 text-muted-foreground">
-                          Shortlisted Authors ({report.shortlistedAuthors!.length})
-                        </h4>
+                        <div className="mb-3">
+                          <h4 className="text-sm font-semibold text-muted-foreground">
+                            Shortlisted Authors ({report.shortlistedAuthors!.length})
+                          </h4>
+                          {report.keywords && (
+                            <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                              <Tag className="h-3 w-3" />
+                              <span className="font-medium">Keywords:</span>
+                              <span className="italic">{report.keywords}</span>
+                            </div>
+                          )}
+                        </div>
                         <div className="grid gap-3">
                           {report.shortlistedAuthors!.map((author, idx) => (
                             <div
@@ -146,6 +158,20 @@ export function CustomReportsTable({ reports }: CustomReportsTableProps) {
                                     <div className="flex items-center gap-1">
                                       <Building2 className="h-3 w-3" />
                                       <span>{author.affiliation}</span>
+                                    </div>
+                                  )}
+                                  {author.keywords && (
+                                    <div className="flex items-center gap-1">
+                                      <Tag className="h-3 w-3" />
+                                      <span className="font-medium">Keywords:</span>
+                                      <span>{author.keywords}</span>
+                                    </div>
+                                  )}
+                                  {author.subject_area && (
+                                    <div className="flex items-center gap-1">
+                                      <BookOpen className="h-3 w-3" />
+                                      <span className="font-medium">Subject Area:</span>
+                                      <span>{author.subject_area}</span>
                                     </div>
                                   )}
                                 </div>

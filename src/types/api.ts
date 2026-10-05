@@ -320,6 +320,17 @@ export interface Shortlist {
 export interface CreateShortlistRequest {
   name: string;
   selectedReviewers: string[];
+  job_id?: string;  // Include job_id for backend fallback
+  keywordsData?: {
+    job_id?: string;
+    reviewers: Array<{
+      author?: string;  // Python API returns 'author' field
+      name?: string;    // Fallback field name
+      email?: string;
+      keywords?: string;
+      subject_area?: string;
+    }>;
+  };
 }
 
 export interface UpdateShortlistRequest {
