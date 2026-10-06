@@ -7,7 +7,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import type { LoginCredentials } from '../../types/api';
-import logo from '@/assets/s3 1.png';
 
 export interface LoginFormProps {
   onLogin?: () => void;
@@ -117,22 +116,14 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, className = '' })
       <div className="min-h-full flex items-center justify-center px-4 py-6">
         <div className={`w-full max-w-md ${className}`}>
           {/* Header */}
-          <div className="text-center mb-5">
-            <div className="flex justify-center">
-              <div className="relative">
-                <img 
-                  src={logo} 
-                  alt="Application Logo" 
-                  className="h-48 w-auto object-contain" 
-                  style={{ 
-                    mixBlendMode: 'darken',
-                    filter: 'contrast(1.1) brightness(1.05)',
-                    marginBottom: '-16px'
-                  }} 
-                />
-              </div>
+          <div className="text-center mb-8">
+            <div className="inline-block mb-4 cursor-pointer transition-all duration-300 hover:scale-110 hover:drop-shadow-2xl">
+              <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent mb-2 pb-1 transition-all duration-300">
+                Peer Review Tools
+              </h1>
+              <div className="h-1 w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-full transition-all duration-300"></div>
             </div>
-            <p className="text-gray-600 text-sm">
+            <p className="text-gray-600 text-sm mt-2">
               Sign in to access your applications
             </p>
           </div>
